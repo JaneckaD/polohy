@@ -19,4 +19,4 @@ jobs:
           [ "$code" = 200 ] || { head -c 300 trains.json; curl -s -m 30 -o sz.json -w "SZ direct %{http_code} %{size_download}\n" -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load'; }
           curl -s -m 60 'https://janeckad.github.io/polohy/tt/planner.json' -o planner.json -w "planner %{http_code}\n"
           curl -s -m 60 'https://janeckad.github.io/polohy/rails.json' -o rails.json -w "rails %{http_code}\n"
-          node .github/probe/trains.mjs trains.json planner.json rails.json public/region.json
+          node .github/probe/rails.mjs rails.json
