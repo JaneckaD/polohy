@@ -48,22 +48,48 @@ async function previousDeploy(path) {
   }
 }
 
+// Směr jízdy u každé zastávky (azimut od předchozí k další zastávce, ve stupních).
+function travelBearings(points) {
+  return points.map((_, i) => {
+    const a = points[Math.max(0, i - 1)];
+    const b = points[Math.min(points.length - 1, i + 1)];
+    const kx = Math.cos((a[1] * Math.PI) / 180);
+    const deg = (Math.atan2((b[0] - a[0]) * kx, b[1] - a[1]) * 180) / Math.PI;
+    return Math.round((deg + 360) % 360);
+  });
+}
+
+async function osrmFetch(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, { headers: UA });
+      if (res.ok) return await res.json();
+      if (res.status === 400) return await res.json().catch(() => null);
+      if (res.status === 429) await sleep(5000);
+    } catch {
+      await sleep(2000);
+    }
+  }
+  return null;
+}
+
 // Trasa po silnicích přes zadané body [lon, lat]. Dlouhé trasy dělíme na kusy.
+// Každá zastávka se přichytí jen na silnici ve směru jízdy (bearings), jinak by se na silnici
+// se dvěma pásy mohla chytit protisměru a trasa by se tam otáčela.
 async function osrmRoute(points) {
   const CHUNK = 40;
+  const bearings = travelBearings(points);
   let line = [];
   for (let i = 0; i < points.length - 1; i += CHUNK - 1) {
     const part = points.slice(i, i + CHUNK);
-    const url = `${OSRM}${part.map((p) => p.join(',')).join(';')}?overview=full&geometries=geojson&continue_straight=true`;
-    let json = null;
-    for (let attempt = 0; attempt < 3 && !json; attempt++) {
-      try {
-        const res = await fetch(url, { headers: UA });
-        if (res.ok) json = await res.json();
-        else if (res.status === 429) await sleep(5000);
-      } catch {
-        await sleep(2000);
-      }
+    const base = `${OSRM}${part.map((p) => p.join(',')).join(';')}?overview=full&geometries=geojson&continue_straight=true`;
+    const withBearings = `${base}&bearings=${bearings.slice(i, i + CHUNK).map((b) => `${b},100`).join(';')}`;
+    let json = await osrmFetch(withBearings);
+    // Když se některá zastávka ve směru jízdy nechytí (třeba v zatáčce), zkusíme to bez směru.
+    if (json?.code !== 'Ok') {
+      await sleep(1100);
+      json = await osrmFetch(base);
+      bearingFallbacks++;
     }
     if (json?.code !== 'Ok') return null;
     const coords = json.routes[0].geometry.coordinates;
@@ -72,6 +98,7 @@ async function osrmRoute(points) {
   }
   return line;
 }
+let bearingFallbacks = 0;
 
 // Linky s indexy zastávek převede na názvy (každý zdroj má vlastní seznam názvů).
 function withStopNames(part) {
@@ -221,7 +248,8 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
         continue;
       }
       const points = located.map((s) => [s[2], s[1]]);
-      const key = points.map((p) => p.join(',')).join(';');
+      // Verze v klíči: trasy spočítané dřív bez směru jízdy se přepočítají.
+      const key = `b1|${points.map((p) => p.join(',')).join(';')}`;
       let geometry = cache.get(key);
       if (geometry) cached++;
       else {
@@ -245,7 +273,7 @@ console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů 
 const turning = (list) => list.filter((r) => r.dir && uTurns(r.line).length);
 const before = turning(previous);
 const after = turning(routes);
-console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length}.`);
+console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez směru jízdy počítáno ${bearingFallbacks}×).`);
 for (const r of after.slice(0, 25)) console.log(`  linka ${r.ref} → ${r.to}: ${uTurns(r.line).map(([x, y]) => `${y},${x}`).join(' ')}`);
 const unlocated = new Set();
 for (const line of tt?.lines ?? []) for (const d of line.directions) for (const v of d.variants) if (!v.coords) for (const s of locateStops(v.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);
