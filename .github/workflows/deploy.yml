@@ -33,6 +33,16 @@ jobs:
       - run: npm run rails
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      # Silnice okolí kraje pro vlastní OSRM (trasy linek); obnovují se jednou týdně.
+      - id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: osrm
+          key: osrm-${{ steps.week.outputs.week }}-v1
+      - name: Vlastní OSRM
+        run: scripts/osrm-local.sh
+        continue-on-error: true
       - run: npm run timetables
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/

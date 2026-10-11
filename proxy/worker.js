@@ -44,7 +44,7 @@ const MPV_BODY = JSON.stringify({ w: 17.1, s: 48.86, e: 18.4, n: 49.54, zoom: 13
 // Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = MHD Valašské Meziříčí.
 const CITY_LICENCES = ['775', '946'];
 // Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
-const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA/i;
+const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA|Transdev|TQM/i;
 
 async function cityBuses() {
   const upstream = await fetch(MPV_URL, {

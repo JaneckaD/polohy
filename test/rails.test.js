@@ -43,19 +43,17 @@ test('poloha zastávky z jízdního řádu se opraví na místo zastavení v OSM
   assert.equal(correct.stats.moved, 1);
 });
 
-test('zastávka na obou stranách silnice: vybere se ta vpravo ve směru jízdy', async () => {
+test('zastávka na obou stranách silnice: jeden bod uprostřed pro oba směry', async () => {
   const { stopCorrector } = await import('../scripts/routes-lib.mjs');
-  // Silnice vede z východu na západ; severní nástupiště je pro jízdu na východ vlevo.
   const correct = stopCorrector([
-    ['Zborovská', 49.22660, 17.70170, 's'], // severní strana
-    ['Zborovská', 49.22630, 17.70170, 's'], // jižní strana
+    ['Zborovská', 49.2266, 17.7017, 's'], // severní strana
+    ['Zborovská', 49.2263, 17.7017, 's'], // jižní strana
+    ['Školní', 49.2215, 17.685, 's'], // jen jedna strana
   ]);
-  const west = [49.2265, 17.695];
-  const east = [49.2265, 17.708];
-  // Na východ: vpravo je jih.
-  assert.deepEqual(correct('Zborovská', 49.22648, 17.7017, west, east), [49.2263, 17.7017]);
-  // Na západ: vpravo je sever.
-  assert.deepEqual(correct('Zborovská', 49.22648, 17.7017, east, west), [49.2266, 17.7017]);
+  assert.deepEqual(correct('Zborovská', 49.22648, 17.7017), [49.22645, 17.7017]);
+  assert.deepEqual(correct('Školní', 49.2222, 17.685), [49.2215, 17.685]);
+  // Daleko od nástupišť se stejným názvem zůstane poloha z jízdního řádu.
+  assert.deepEqual(correct('Školní', 49.24, 17.685), [49.24, 17.685]);
 });
 
 test('otočka do protisměru na trase se pozná', async () => {

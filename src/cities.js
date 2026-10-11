@@ -16,10 +16,10 @@ export const CARRIERS = {
   csad: { name: 'ČSAD BUS Uherské Hradiště', short: 'ČSAD BUS UH', code: '263', live: /ČSAD BUS U/i, main: '#c62828', text: '#ffffff', stop: '#8e1b1b' },
   zgroup: { name: 'Z-Group bus', short: 'Z-Group', code: '312', live: /Z-Group/i, main: '#558b2f', text: '#ffffff', stop: '#33691e' },
   arriva: { name: 'ARRIVA autobusy', short: 'Arriva', code: '88', live: /ARRIVA/i, main: '#7b1fa2', text: '#ffffff', stop: '#4a148c' },
-  tdm: { name: 'Transdev Morava', short: 'Transdev', code: '1425', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
-  tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  tdm: { name: 'Transdev Morava', short: 'Transdev Morava', code: '1425', live: /Transdev Morava/i, main: '#c2185b', text: '#ffffff', stop: '#880e4f' },
+  tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', live: /TQM/i, main: '#6d4c41', text: '#ffffff', stop: '#3e2723' },
   psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
-  tds: { name: 'Transdev Slezsko', short: 'Transdev', code: '267', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  tds: { name: 'Transdev Slezsko', short: 'Transdev Slezsko', code: '267', live: /Transdev Slezsko/i, main: '#546e7a', text: '#ffffff', stop: '#263238' },
   reg: { name: 'IDZK', short: 'IDZK', code: null, main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
 };
 

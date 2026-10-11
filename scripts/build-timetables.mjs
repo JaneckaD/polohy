@@ -21,7 +21,10 @@ const ROUTES = new URL('../public/routes.json', import.meta.url);
 // Trasy regionálních autobusů (dopravci, jejichž vozy ukazujeme na mapě): zvlášť, aplikace je načte, až je potřebuje.
 const BUS_ROUTES = new URL('../public/routes-bus.json', import.meta.url);
 const TT_DIR = new URL('../public/tt/', import.meta.url);
-const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
+// Vlastní OSRM (scripts/osrm-local.sh), jinak veřejný server s omezením na ~1 dotaz za sekundu.
+const OSRM_BASE = process.env.OSRM_URL || 'https://router.project-osrm.org';
+const LOCAL_OSRM = !!process.env.OSRM_URL;
+const PUBLIC_OSRM = 'https://router.project-osrm.org';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Strojově čitelné jízdní řády: balík DSZO obsahuje jen PDF, proto GTFS Integrované dopravy Zlínského kraje
 // (přebalené pro projekt Transitous) a záložně celostátní data CIS JŘ převedená do GTFS (data.jr.ggu.cz).
@@ -56,17 +59,6 @@ async function previousDeploy(path) {
   }
 }
 
-// Směr jízdy u každé zastávky (azimut od předchozí k další zastávce, ve stupních).
-function travelBearings(points) {
-  return points.map((_, i) => {
-    const a = points[Math.max(0, i - 1)];
-    const b = points[Math.min(points.length - 1, i + 1)];
-    const kx = Math.cos((a[1] * Math.PI) / 180);
-    const deg = (Math.atan2((b[0] - a[0]) * kx, b[1] - a[1]) * 180) / Math.PI;
-    return Math.round((deg + 360) % 360);
-  });
-}
-
 async function osrmFetch(url) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -81,32 +73,35 @@ async function osrmFetch(url) {
   return null;
 }
 
-// Trasa po silnicích přes zadané body [lon, lat]. Dlouhé trasy dělíme na kusy.
-// Každá zastávka se přichytí jen na silnici ve směru jízdy (bearings), jinak by se na silnici
-// se dvěma pásy mohla chytit protisměru a trasa by se tam otáčela.
-async function osrmRoute(points) {
+/**
+ * Trasa po silnicích přes zastávky [lon, lat]. Zastávka je jen bod, kolem kterého vůz projede:
+ * přiřazení k silnici (map matching) vybere nejpravděpodobnější cestu do ~60 m od každé zastávky,
+ * takže se trasa kvůli zastávce zakreslené na druhé straně silnice nemusí otáčet do protisměru.
+ * Když přiřazení selže, trasa přímo přes zastávky. Dlouhé trasy po kusech.
+ */
+async function osrmRoute(points, base = OSRM_BASE) {
   const CHUNK = 40;
-  const bearings = travelBearings(points);
+  const pause = base === PUBLIC_OSRM ? 1100 : 0; // veřejný server: nejvýš ~1 dotaz za sekundu
   let line = [];
   for (let i = 0; i < points.length - 1; i += CHUNK - 1) {
     const part = points.slice(i, i + CHUNK);
-    const base = `${OSRM}${part.map((p) => p.join(',')).join(';')}?overview=full&geometries=geojson&continue_straight=true`;
-    const withBearings = `${base}&bearings=${bearings.slice(i, i + CHUNK).map((b) => `${b},100`).join(';')}`;
-    let json = await osrmFetch(withBearings);
-    // Když se některá zastávka ve směru jízdy nechytí (třeba v zatáčce), zkusíme to bez směru.
-    if (json?.code !== 'Ok') {
-      await sleep(1100);
-      json = await osrmFetch(base);
-      bearingFallbacks++;
+    const coords = part.map((p) => p.join(',')).join(';');
+    const radiuses = part.map(() => 20).join(';');
+    let json = await osrmFetch(`${base}/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radiuses}&gaps=ignore&tidy=false`);
+    let geometry = json?.code === 'Ok' && json.matchings?.length === 1 && json.tracepoints?.every(Boolean) ? json.matchings[0].geometry.coordinates : null;
+    if (!geometry) {
+      matchFallbacks++;
+      if (pause) await sleep(pause);
+      json = await osrmFetch(`${base}/route/v1/driving/${coords}?overview=full&geometries=geojson`);
+      geometry = json?.code === 'Ok' ? json.routes[0].geometry.coordinates : null;
     }
-    if (json?.code !== 'Ok') return null;
-    const coords = json.routes[0].geometry.coordinates;
-    line = line.length ? line.concat(coords.slice(1)) : coords;
-    await sleep(1100); // veřejný server OSRM: nejvýš ~1 dotaz za sekundu
+    if (pause) await sleep(pause);
+    if (!geometry) return base !== PUBLIC_OSRM ? osrmRoute(points, PUBLIC_OSRM) : null;
+    line = line.length ? line.concat(geometry.slice(1)) : geometry;
   }
   return line;
 }
-let bearingFallbacks = 0;
+let matchFallbacks = 0;
 
 // Linky s indexy zastávek převede na názvy (každý zdroj má vlastní seznam názvů).
 function withStopNames(part) {
@@ -193,21 +188,12 @@ if (!tt) {
 const osm = existsSync(ROUTES) ? JSON.parse(readFileSync(ROUTES, 'utf8')) : { routes: [], stops: {} };
 if (tt?.lines?.length && osm.platforms?.length) {
   const correct = stopCorrector(osm.platforms);
-  // Sousední zastávky určují směr jízdy, a tedy stranu silnice.
-  const along = (list, i) => [list[i - 1] ?? null, list[i + 1] ?? null];
   for (const line of tt.lines)
     for (const d of line.directions)
-      for (const v of d.variants) {
-        if (!v.coords) continue;
-        const raw = v.coords;
-        v.coords = raw.map((c, i) => (c ? correct(v.stops[i], c[0], c[1], ...along(raw, i)) : c));
-      }
-  for (const t of tt.rawTrips ?? []) {
-    const raw = t.stops.map(([, lat, lon]) => [lat, lon]);
-    t.stops = t.stops.map(([n, lat, lon], i) => [n, ...correct(n, lat, lon, ...along(raw, i))]);
-  }
-  const { checked, moved, sum, sided } = correct.stats;
-  console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m), podle strany silnice ${sided}.`);
+      for (const v of d.variants) if (v.coords) v.coords = v.coords.map((c, i) => (c ? correct(v.stops[i], c[0], c[1]) : c));
+  for (const t of tt.rawTrips ?? []) t.stops = t.stops.map(([n, lat, lon]) => [n, ...correct(n, lat, lon)]);
+  const { checked, moved, sum, paired } = correct.stats;
+  console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m), doprostřed mezi protější nástupiště ${paired}.`);
 }
 
 // MHD Kroměříže a Valašského Meziříčí (ze stejného GTFS IDZK, polohy zastávek bez opravy podle OSM).
@@ -312,8 +298,8 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
         continue;
       }
       const points = located.map((s) => [s[2], s[1]]);
-      // Verze v klíči: trasy spočítané dřív bez směru jízdy se přepočítají.
-      const key = `b1|${points.map((p) => p.join(',')).join(';')}`;
+      // Verze v klíči: trasy spočítané dřív jinak (přes zastávky napevno) se přepočítají.
+      const key = `m1|${points.map((p) => p.join(',')).join(';')}`;
       let geometry = cache.get(key);
       if (geometry) cached++;
       else {
@@ -340,7 +326,7 @@ let cityRouted = 0;
 const busRoutes = [];
 if (!tt?.previous) {
   const routedNetwork = (c) => c in CITIES || !!CARRIERS[c]?.live;
-  const deadline = Date.now() + 25 * 60 * 1000;
+  const deadline = Date.now() + (LOCAL_OSRM ? 120 : 25) * 60 * 1000;
   let postponed = 0;
   const variants = new Map();
   for (const t of tt?.rawTrips ?? []) {
@@ -356,7 +342,7 @@ if (!tt?.previous) {
     const located = t.stops.filter((s) => s[1] != null);
     if (located.length < 2) continue;
     const points = located.map((s) => [s[2], s[1]]);
-    const key = `b1|${points.map((p) => p.join(',')).join(';')}`;
+    const key = `m1|${points.map((p) => p.join(',')).join(';')}`;
     let geometry = cache.get(key);
     if (geometry) cached++;
     else {
@@ -389,7 +375,7 @@ console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů 
 const turning = (list) => list.filter((r) => r.dir && uTurns(r.line).length);
 const before = turning(previous);
 const after = turning(routes);
-console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez směru jízdy počítáno ${bearingFallbacks}×, kličky odstraněny u ${detoursRemoved} tras).`);
+console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez přiřazení k silnici počítáno ${matchFallbacks}×, ${LOCAL_OSRM ? 'vlastní OSRM' : 'veřejný OSRM'}, kličky odstraněny u ${detoursRemoved} tras).`);
 const nearestStop = (r, [x, y]) => r.stops.reduce((best, s) => {
   const d = Math.hypot((s[1] - y) * 110574, (s[2] - x) * 72000);
   return d < best.d ? { d, name: s[0] } : best;

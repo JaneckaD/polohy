@@ -41,7 +41,10 @@ test('regionální autobus vybraného dopravce z mapy IDZK', () => {
   assert.equal(v.headsign, 'Uherské Hradiště, aut.nádr.');
   assert.equal(parseCityBus({ ...t, cr: 'ARRIVA, pr. Zlín' }).city, 'arriva');
   assert.equal(parseCityBus({ ...t, cr: 'Z-Group bus, pr. Kroměříž' }).city, 'zgroup');
-  assert.equal(parseCityBus({ ...t, cr: 'Transdev Morava, pr. Vsetín' }), null, 'ostatní dopravce zatím ne');
+  assert.equal(parseCityBus({ ...t, cr: 'Transdev Morava, pr. Vsetín' }).city, 'tdm');
+  assert.equal(parseCityBus({ ...t, cr: 'TQM - holding' }).city, 'tqm');
+  assert.equal(parseCityBus({ ...t, cr: 'Transdev Slezsko' }).city, 'tds');
+  assert.equal(parseCityBus({ ...t, cr: 'ZDS-Psota' }), null, 'ostatní dopravce ne');
 });
 
 test('dopravce regionální linky podle route_id GTFS IDZK', async () => {

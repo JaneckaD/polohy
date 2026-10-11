@@ -153,11 +153,10 @@ const plainName = (n) => String(n).replace(/^Zlín,\s*/, '');
 
 /**
  * Opravuje polohy zastávek z jízdních řádů podle OpenStreetMap: nejbližší místo zastavení
- * (stop_position, jinak nástupiště) se stejným názvem do 120 m. Jízdní řády mají jednu polohu
- * pro oba směry; když jsou v OSM nástupiště na obou stranách silnice, vybere podle polohy
- * předchozí a další zastávky to vpravo ve směru jízdy (jinak by trasa vedla do protisměru
- * a vůz by se tam musel otáčet).
- * Vrací funkci (název, lat, lon, předchozí [lat, lon]?, další [lat, lon]?) → [lat, lon].
+ * (stop_position, jinak nástupiště) se stejným názvem do 120 m. Zastávka je na mapě jeden bod pro
+ * oba směry: když má v OSM protější nástupiště (stejný název, do 40 m), dáme ji doprostřed mezi ně,
+ * tedy zhruba na osu silnice. Stranu silnice neřešíme, trasa kolem zastávky jen projede.
+ * Vrací funkci (název, lat, lon) → [lat, lon].
  */
 export function stopCorrector(platforms = []) {
   const cells = new Map();
@@ -168,12 +167,10 @@ export function stopCorrector(platforms = []) {
     cells.get(k).push(p);
   }
   const cache = new Map();
-  const stats = { checked: 0, moved: 0, sum: 0, sided: 0 };
-  const correct = (name, lat, lon, prev = null, next = null) => {
+  const stats = { checked: 0, moved: 0, sum: 0, paired: 0 };
+  const correct = (name, lat, lon) => {
     if (lat == null) return [lat, lon];
-    const a = prev?.[0] != null ? prev : [lat, lon];
-    const b = next?.[0] != null ? next : [lat, lon];
-    const key = `${name}|${lat}|${lon}|${a}|${b}`;
+    const key = `${name}|${lat}|${lon}`;
     if (cache.has(key)) return cache.get(key);
     const [ci, cj] = cell(lat, lon).split(',').map(Number);
     const near = [];
@@ -185,35 +182,30 @@ export function stopCorrector(platforms = []) {
         }
       }
     }
-    // Strana silnice: vzdálenost nástupiště vlevo od směru jízdy (v metrech) vůči středu všech nástupišť.
-    const kx = 111320 * Math.cos((lat * Math.PI) / 180);
-    const dx = (b[1] - a[1]) * kx;
-    const dy = (b[0] - a[0]) * 110574;
-    const len = Math.hypot(dx, dy);
-    let sided = false;
-    if (near.length > 1 && len > 30) {
-      const cLat = near.reduce((s, x) => s + x.p[1], 0) / near.length;
-      const cLon = near.reduce((s, x) => s + x.p[2], 0) / near.length;
-      for (const x of near) {
-        const ox = (x.p[2] - cLon) * kx;
-        const oy = (x.p[1] - cLat) * 110574;
-        x.left = (dx * oy - dy * ox) / len;
-      }
-      sided = near.some((x) => x.left > 3) && near.some((x) => x.left < -3);
-    }
     let best = null;
     for (const x of near) {
-      // Místo zastavení na silnici má přednost (sedí na trase), pak to bližší; v protisměru ne.
-      const score = x.d + (x.p[3] === 's' ? 0 : 25) + (sided && x.left > 3 ? 200 : 0);
+      // Místo zastavení na silnici má přednost (sedí na trase), pak to bližší.
+      const score = x.d + (x.p[3] === 's' ? 0 : 25);
       if (!best || score < best.score) best = { score, d: x.d, p: x.p };
     }
     stats.checked++;
-    if (sided) stats.sided++;
     let out = [lat, lon];
-    if (best && (best.d > 8 || sided)) {
-      out = [best.p[1], best.p[2]];
-      stats.moved++;
-      stats.sum += best.d;
+    if (best) {
+      // Protější zastávka stejného druhu (místo zastavení k místu zastavení) přes silnici.
+      let pair = null;
+      for (const x of near) {
+        if (x.p === best.p || x.p[3] !== best.p[3]) continue;
+        const d = metres(best.p[1], best.p[2], x.p[1], x.p[2]);
+        if (d >= 6 && d <= 40 && (!pair || d < pair.d)) pair = { d, p: x.p };
+      }
+      if (pair) {
+        out = [Math.round(((best.p[1] + pair.p[1]) / 2) * 1e6) / 1e6, Math.round(((best.p[2] + pair.p[2]) / 2) * 1e6) / 1e6];
+        stats.paired++;
+      } else if (best.d > 8) out = [best.p[1], best.p[2]];
+      if (out[0] !== lat || out[1] !== lon) {
+        stats.moved++;
+        stats.sum += metres(lat, lon, out[0], out[1]);
+      }
     }
     cache.set(key, out);
     return out;

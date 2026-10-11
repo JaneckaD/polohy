@@ -156,8 +156,11 @@ function lineFeature(coords, color, passed, casing = '#ffffff') {
 }
 
 // Kusy trasy, které v předpočítaných trasách chybí, dopočítáme po silnicích (OSRM) a uložíme.
-const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
-const osrmCache = new Map(Object.entries(readStore('mhd.osrm') ?? {}));
+// Zastávka je jen bod, kolem kterého vůz projede (map matching do ~60 m), aby se trasa kvůli zastávce
+// na druhé straně silnice neotáčela; když přiřazení selže, trasa přímo mezi zastávkami.
+const OSRM = 'https://router.project-osrm.org';
+const STORE = 'mhd.osrm2';
+const osrmCache = new Map(Object.entries(readStore(STORE) ?? {}));
 
 function readStore(key) {
   try {
@@ -167,26 +170,36 @@ function readStore(key) {
   }
 }
 
-async function roadBetween(a, b) {
-  const key = `${a[1].toFixed(5)},${a[0].toFixed(5)};${b[1].toFixed(5)},${b[0].toFixed(5)}`;
-  if (osrmCache.has(key)) return osrmCache.get(key);
+async function osrmJson(url) {
   try {
-    const res = await fetch(`${OSRM}${key}?overview=full&geometries=geojson`);
-    const json = res.ok ? await res.json() : null;
-    const line = json?.code === 'Ok' ? json.routes[0].geometry.coordinates : null;
-    // Objížďka víc než dvakrát delší než vzdušná čára je skoro jistě špatně (zastávka na druhé straně ulice).
-    const direct = Math.hypot((a[1] - b[1]) * 72000, (a[0] - b[0]) * 111000);
-    const ok = line && json.routes[0].distance < Math.max(3 * direct, direct + 600) ? line : null;
-    osrmCache.set(key, ok);
-    try {
-      localStorage.setItem('mhd.osrm', JSON.stringify(Object.fromEntries([...osrmCache].slice(-300))));
-    } catch {
-      /* plné úložiště nevadí */
-    }
-    return ok;
+    const res = await fetch(url);
+    return res.ok ? await res.json() : null;
   } catch {
     return null;
   }
+}
+
+async function roadBetween(a, b) {
+  const key = `${a[1].toFixed(5)},${a[0].toFixed(5)};${b[1].toFixed(5)},${b[0].toFixed(5)}`;
+  if (osrmCache.has(key)) return osrmCache.get(key);
+  let json = await osrmJson(`${OSRM}/match/v1/driving/${key}?overview=full&geometries=geojson&radiuses=20;20&gaps=ignore`);
+  let found = json?.code === 'Ok' && json.matchings?.length === 1 ? json.matchings[0] : null;
+  if (!found) {
+    json = await osrmJson(`${OSRM}/route/v1/driving/${key}?overview=full&geometries=geojson`);
+    found = json?.code === 'Ok' ? json.routes[0] : null;
+  }
+  if (!found && !json) return null; // bez sítě: zkusíme příště
+  // Objížďka víc než trojnásobně delší než vzdušná čára je skoro jistě špatně.
+  const direct = Math.hypot((a[1] - b[1]) * 72000, (a[0] - b[0]) * 111000);
+  const ok = found && found.distance < Math.max(3 * direct, direct + 600) ? found.geometry.coordinates : null;
+  osrmCache.set(key, ok);
+  try {
+    localStorage.setItem(STORE, JSON.stringify(Object.fromEntries([...osrmCache].slice(-300))));
+    localStorage.removeItem('mhd.osrm');
+  } catch {
+    /* plné úložiště nevadí */
+  }
+  return ok;
 }
 
 const geoCache = new Map(); // klíč spoje -> Promise<geometrie>
