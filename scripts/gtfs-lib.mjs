@@ -200,6 +200,8 @@ export function buildFromGtfs(zipBytes, { startDate, days = 120, bbox = ZLIN_BBO
 
   const anyTrolley = [...accepted].some((id) => ['11', '800'].includes(routes.get(id).route_type));
   const result = new Map();
+  // Každý spoj tak, jak jede (pořadí zastávek ze stop_times), pro vyhledávání spojení.
+  const rawTrips = [];
   for (const [id, list] of tripStops) {
     const trip = trips.get(id);
     if (!accepted.has(trip.route_id) || list.length < 2) continue;
@@ -213,6 +215,16 @@ export function buildFromGtfs(zipBytes, { startDate, days = 120, bbox = ZLIN_BBO
     const type = ['11', '800'].includes(route.route_type) || (!anyTrolley && Number(ref) < 30) ? 'trolleybus' : 'bus';
     const entry = result.get(ref) ?? { ref, type, name: route.route_long_name || '', dirs: { A: [], B: [] } };
     result.set(ref, entry);
+    rawTrips.push({
+      ref,
+      type,
+      mask,
+      times: list.map((s) => s.time),
+      stops: list.map((s) => {
+        const st = stops.get(s.stop);
+        return [displayStopName(st?.name ?? s.stop), st?.lat ?? null, st?.lon ?? null];
+      }),
+    });
     const dir = trip.direction_id === '1' ? 'B' : 'A';
     entry.dirs[dir].push({
       stops: list.map((s) => idx(s.stop)),
@@ -237,6 +249,6 @@ export function buildFromGtfs(zipBytes, { startDate, days = 120, bbox = ZLIN_BBO
     }
   }
   log(`GTFS: tvary tras ${shapes.size ? 'jsou' : 'chybí'} (${shapes.size})`);
-  return { startDate, days, stopNames, lines };
+  return { startDate, days, stopNames, lines, rawTrips };
 }
 

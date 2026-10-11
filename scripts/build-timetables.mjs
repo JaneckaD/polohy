@@ -6,8 +6,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
-import { buildPlannerData } from './planner-data.mjs';
-import { locateStops, simplifyLine } from './routes-lib.mjs';
+import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
+import { locateStops, simplifyLine, stopCorrector } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
@@ -143,7 +143,7 @@ if (!tt) {
       const startDate = pragueToday();
       const part = buildFromGtfs(bytes, { startDate, log: (m) => console.log(m) });
       if (part.lines.length) {
-        tt = { startDate, days: part.days, lines: withStopNames(part), source: url };
+        tt = { startDate, days: part.days, lines: withStopNames(part), rawTrips: part.rawTrips, source: url };
         break;
       }
       console.warn('V GTFS nejsou linky DSZO.');
@@ -154,10 +154,22 @@ if (!tt) {
   if (tt) console.log(`Jízdní řády z GTFS: ${tt.lines.length} linek (${tt.lines.map((l) => l.ref).join(', ')})`);
 }
 
+// Polohy zastávek z jízdních řádů bývají o kus vedle: opravíme je podle OpenStreetMap.
+const osm = existsSync(ROUTES) ? JSON.parse(readFileSync(ROUTES, 'utf8')) : { routes: [], stops: {} };
+if (tt?.lines?.length && osm.platforms?.length) {
+  const correct = stopCorrector(osm.platforms);
+  for (const line of tt.lines)
+    for (const d of line.directions)
+      for (const v of d.variants) if (v.coords) v.coords = v.coords.map((c, i) => (c ? correct(v.stops[i], c[0], c[1]) : c));
+  for (const t of tt.rawTrips ?? []) t.stops = t.stops.map(([n, lat, lon]) => [n, ...correct(n, lat, lon)]);
+  const { checked, moved, sum } = correct.stats;
+  console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m).`);
+}
+
 mkdirSync(TT_DIR, { recursive: true });
 if (tt) {
   // Data pro vyhledávání spojení a seznam linek (filtr).
-  const planner = buildPlannerData(tt);
+  const planner = tt.rawTrips ? buildPlannerFromTrips(tt) : buildPlannerData(tt);
   writeFileSync(new URL('planner.json', TT_DIR), JSON.stringify(planner));
   writeFileSync(new URL('index.json', TT_DIR), JSON.stringify({ startDate: tt.startDate, days: tt.days, lines: tt.lines.map((l) => ({ ref: l.ref, type: l.type })) }));
   console.log(`Vyhledávání spojení: ${planner.stops.length} zastávek, ${planner.patterns.length} variant, ${planner.trips.length} spojů.`);
@@ -174,7 +186,6 @@ if (tt) {
 }
 
 // --- 2. Trasy po silnicích podle zastávek ------------------------------------
-const osm = existsSync(ROUTES) ? JSON.parse(readFileSync(ROUTES, 'utf8')) : { routes: [], stops: {} };
 const previous = (await previousDeploy('routes.json'))?.routes ?? [];
 const cache = new Map(previous.filter((r) => r.key && r.line?.length > 1).map((r) => [r.key, r.line]));
 
@@ -219,7 +230,7 @@ const osmFallback = osm.routes.filter((r) => !covered.has(r.ref));
 // Slovník poloh zastávek (pro trasu podle jízdního řádu vozu): OSM doplněné o zastávky z jízdních řádů.
 const stopDict = { ...osm.stops };
 for (const r of routes) for (const [name, lat, lon] of r.stops) stopDict[normalizeName(name)] ??= [lat, lon];
-writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: stopDict }));
+writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: stopDict, platforms: osm.platforms ?? [] }));
 console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů ${shaped}, nově spočítané ${routed}, z cache ${cached}), bez poloh zastávek ${missing}, z OSM navíc ${osmFallback.length}.`);
 const unlocated = new Set();
 for (const line of tt?.lines ?? []) for (const d of line.directions) for (const v of d.variants) if (!v.coords) for (const s of locateStops(v.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);

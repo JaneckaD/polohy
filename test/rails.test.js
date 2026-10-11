@@ -29,3 +29,16 @@ test('zjednodušení vynechá body na přímce', () => {
   const line = [[17.5, 49.2], [17.505, 49.2], [17.51, 49.2], [17.51, 49.21]];
   assert.deepEqual(simplify(line), [[17.5, 49.2], [17.51, 49.2], [17.51, 49.21]]);
 });
+
+test('poloha zastávky z jízdního řádu se opraví na místo zastavení v OSM se stejným názvem', async () => {
+  const { stopCorrector } = await import('../scripts/routes-lib.mjs');
+  const correct = stopCorrector([
+    ['Zlín, náměstí Míru', 49.22610, 17.66500, 'p'],
+    ['Zlín, náměstí Míru', 49.22600, 17.66520, 's'],
+    ['Dlouhá', 49.22605, 17.66510, 's'], // jiný název
+    ['náměstí Míru', 49.23500, 17.66500, 's'], // moc daleko
+  ]);
+  assert.deepEqual(correct('náměstí Míru', 49.22546, 17.66479), [49.226, 17.6652]);
+  assert.deepEqual(correct('Prštné', 49.21996, 17.64071), [49.21996, 17.64071]);
+  assert.equal(correct.stats.moved, 1);
+});

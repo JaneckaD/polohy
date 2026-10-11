@@ -75,7 +75,7 @@ export function connectionsFor(P, date) {
  * Jedno nejrychlejší spojení. origins = [{ stop, walk }] (walk = minuty chůze k zastávce, 0 pro zvolenou zastávku),
  * target = index cílové zastávky, time = minuty od půlnoci. Vrací seznam úseků nebo null.
  */
-export function earliestJourney(P, { origins, target, date, time }) {
+export function earliestJourney(P, { origins, target, date, time, penalty = 0 }) {
   const conns = connectionsFor(P, date);
   const n = P.stops.length;
   const arrival = new Array(n).fill(Infinity); // kdy tam nejdřív jsem
@@ -83,9 +83,10 @@ export function earliestJourney(P, { origins, target, date, time }) {
   const how = new Array(n).fill(null);
   const tripEnter = new Map();
 
-  const reachByWalk = (from, t, viaWalks) => {
+  // penalty = minuty navíc za každý přestup: hledání pak dává přednost spojení s méně přestupy.
+  const reachByWalk = (from, t, viaWalks, extra = 0) => {
     for (const w of viaWalks) {
-      const at = t + w.min;
+      const at = t + w.min + extra;
       if (at < arrival[w.to]) {
         arrival[w.to] = at;
         ready[w.to] = at;
@@ -121,9 +122,9 @@ export function earliestJourney(P, { origins, target, date, time }) {
     if (!inTrip) tripEnter.set(key, c);
     if (c.arr < arrival[c.to]) {
       arrival[c.to] = c.arr;
-      ready[c.to] = Math.min(ready[c.to], c.arr + MIN_CHANGE_MIN);
+      ready[c.to] = Math.min(ready[c.to], c.arr + MIN_CHANGE_MIN + penalty);
       how[c.to] = { type: 'ride', enter: tripEnter.get(key), exit: c };
-      reachByWalk(c.to, c.arr, P.walks[c.to]);
+      reachByWalk(c.to, c.arr, P.walks[c.to], penalty);
     }
   }
   if (!Number.isFinite(arrival[target])) return null;
@@ -168,6 +169,16 @@ function finishJourney(legs) {
     l.dep = prev ? prev.arr : next.dep - l.min;
     l.arr = l.dep + l.min;
   }
+  // Stejná linka pokračuje ze stejné zastávky (např. přes konečnou): v praxi se zůstává ve voze.
+  let stays = 0;
+  for (let i = 1; i < legs.length; i++) {
+    const a = legs[i - 1];
+    const b = legs[i];
+    if (a.type === 'ride' && b.type === 'ride' && a.to === b.from && a.trip.pattern.r === b.trip.pattern.r && b.dep - a.arr <= 10) {
+      b.stay = true;
+      stays++;
+    }
+  }
   const dep = legs[0].dep;
   const arr = legs.at(-1).arr;
   return {
@@ -175,30 +186,56 @@ function finishJourney(legs) {
     dep,
     arr,
     duration: arr - dep,
-    transfers: rides.length - 1,
+    transfers: rides.length - 1 - stays,
     walkTransfers: legs.filter((l, i) => l.type === 'walk' && i > 0 && i < legs.length - 1).length,
     firstRideDep: rides[0].dep,
   };
 }
 
-/** Několik spojení po sobě od zadaného času. */
+/** Několik spojení po sobě od zadaného času: nejrychlejší i ta s méně přestupy. */
 export function searchJourneys(P, { origins, target, date, time, count = 5 }) {
-  const out = [];
+  const found = [];
   const seen = new Set();
-  let t = time;
-  for (let i = 0; i < count * 3 && out.length < count; i++) {
-    const j = earliestJourney(P, { origins, target, date, time: t });
-    if (!j) break;
+  const add = (j) => {
+    if (!j) return;
     const sig = j.legs.map((l) => (l.type === 'ride' ? `${l.trip.id}:${l.from}-${l.to}` : `w${l.to}`)).join('|');
-    if (!seen.has(sig)) {
-      seen.add(sig);
-      out.push(j);
-    }
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    found.push(j);
+  };
+  let t = time;
+  for (let i = 0; i < count * 3; i++) {
+    const fast = earliestJourney(P, { origins, target, date, time: t });
+    if (!fast) break;
+    add(fast);
+    // Totéž s „cenou“ přestupu: najde spojení s méně přestupy, i když přijede o pár minut později.
+    if (fast.transfers) add(earliestJourney(P, { origins, target, date, time: t, penalty: 10 }));
     // Další hledání od odjezdu prvního vozu + 1 min (dřív odejít nemá smysl).
-    t = j.firstRideDep - (j.legs[0].type === 'walk' ? j.legs[0].min : 0) + 1;
+    t = fast.firstRideDep - (fast.legs[0].type === 'walk' ? fast.legs[0].min : 0) + 1;
+    if (found.filter((j) => !dominated(j, found)).length >= count) break;
   }
-  // Vyřadíme spojení, která jiné předčí: odjíždí později (nebo stejně) a přijede dřív (nebo stejně).
-  return out.filter((j, i) => !out.some((k, m) => m !== i && ((k.dep >= j.dep && k.arr < j.arr) || (k.dep > j.dep && k.arr <= j.arr))));
+  const good = found.filter((j) => !dominated(j, found));
+  // Výrazně horší spojení (pomalé, s víc přestupy) nemá cenu nabízet.
+  const cost = (j) => j.duration + 5 * j.transfers + 3 * j.walkTransfers;
+  const best = Math.min(...good.map(cost));
+  return good
+    .filter((j) => cost(j) <= best * 1.4 + 8)
+    .sort((a, b) => a.dep - b.dep || a.arr - b.arr)
+    .slice(0, count);
+}
+
+// Spojení je zbytečné, když jiné odjíždí později (nebo stejně), přijede dřív (nebo stejně)
+// a nemá víc přestupů ani pěších přestupů – a aspoň v jednom je lepší.
+function dominated(j, all) {
+  return all.some(
+    (k) =>
+      k !== j &&
+      k.dep >= j.dep &&
+      k.arr <= j.arr &&
+      k.transfers <= j.transfers &&
+      k.walkTransfers <= j.walkTransfers &&
+      (k.dep > j.dep || k.arr < j.arr || k.transfers < j.transfers || k.walkTransfers < j.walkTransfers),
+  );
 }
 
 /** Zastávky podle textu (bez diakritiky, slova od začátku). */

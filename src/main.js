@@ -154,6 +154,7 @@ async function updateSelected(first = false) {
     renderTrip(selected.trip, v, {
       scroll: first,
       showPassed: selected.showPassed,
+      atStop: selected.atStop ?? true,
       onTogglePassed: () => {
         selected.showPassed = !selected.showPassed;
         updateSelected();
@@ -166,6 +167,12 @@ async function updateSelected(first = false) {
   if (!selected || selected.token !== token) return;
   if (route) drawRoute(map, route, v.type);
   else clearRoute(map);
+  // Poloha vůči zastávkám je známá až z trasy: když vůz už odjel ze zastávky, překreslíme seznam.
+  const atStop = route?.atStop ?? true;
+  if (atStop !== (selected.atStop ?? true)) {
+    selected.atStop = atStop;
+    updateSelected();
+  }
 }
 
 const isWide = () => matchMedia('(min-width: 720px)').matches;

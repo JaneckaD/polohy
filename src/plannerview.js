@@ -314,17 +314,35 @@ async function search(results, more = false) {
   drawResults(results, state.results);
 }
 
-function chain(j, P) {
-  const el = h('div', 'plan-chain');
+// Přehled spojení v seznamu: každá jízda na řádku (linka, odjezd, odkud → kam), pěší přesuny mezi nimi.
+function legRows(j, P) {
+  const el = h('div', 'result-legs');
   j.legs.forEach((l, i) => {
-    if (i) el.append(h('span', 'chain-sep', '›'));
-    if (l.type === 'ride') el.append(lineBadge(l.trip.pattern.r, l.trip.pattern.y));
-    else {
-      const w = h('span', `chain-walk${i > 0 && i < j.legs.length - 1 ? ' transfer' : ''}`);
-      w.innerHTML = ICON_WALK;
-      w.append(`${l.min}`);
-      el.append(w);
+    if (l.type === 'walk') {
+      const transfer = i > 0 && i < j.legs.length - 1;
+      const row = h('div', `rleg rleg-walk${transfer ? ' transfer' : ''}`);
+      const icon = h('span', 'rleg-icon');
+      icon.innerHTML = ICON_WALK;
+      const to = P.stops[l.to].name;
+      row.append(icon, h('span', 'rleg-text', transfer ? `${l.min} min pěšky na zastávku ${to}` : i === 0 ? `${l.min} min pěšky na ${to}` : `${l.min} min pěšky do cíle`));
+      el.append(row);
+      return;
     }
+    if (l.stay) {
+      const row = h('div', 'rleg rleg-stay');
+      row.append(h('span', 'rleg-icon'), h('span', 'rleg-text', `pokračuje dál jako ${l.trip.pattern.r}, zůstaň ve voze`));
+      el.append(row);
+      return;
+    }
+    // Konec jízdy: poslední navazující úsek stejné linky
+    let end = l;
+    for (let k = i + 1; k < j.legs.length && j.legs[k].stay; k++) end = j.legs[k];
+    const row = h('div', 'rleg');
+    row.append(lineBadge(l.trip.pattern.r, l.trip.pattern.y));
+    const text = h('span', 'rleg-text');
+    text.append(h('b', 'rleg-time', fmt(l.dep)), ` ${P.stops[l.from].name} `, h('span', 'rleg-arrow', '→'), ` ${P.stops[end.to].name}`);
+    row.append(text);
+    el.append(row);
   });
   return el;
 }
@@ -339,23 +357,25 @@ function drawResults(results, { list, date, P, done }) {
   const now = nowMinutes();
   results.append(h('h3', 'section-title', today ? 'Nejbližší spojení' : `Spojení ${Number(date.slice(8))}. ${Number(date.slice(5, 7))}.`));
   const group = h('div', 'group result-list');
+  const fastest = Math.min(...list.map((j) => j.duration));
   for (const j of list) {
     const b = h('button', 'result');
     b.type = 'button';
     const top = h('div', 'result-top');
-    top.append(h('span', 'result-times', `${fmt(j.dep)} – ${fmt(j.arr)}`), h('span', 'result-dur', durationText(j.duration)));
-    const meta = [];
-    if (today && j.dep >= now) meta.push(j.dep - now < 60 ? `odjezd za ${j.dep - now} min` : `odjezd v ${fmt(j.dep)}`);
-    meta.push(j.transfers ? plural(j.transfers, 'přestup', 'přestupy', 'přestupů') : 'bez přestupu');
-    const first = j.legs.find((l) => l.type === 'ride');
-    meta.push(`z ${P.stops[first.from].name}`);
-    b.append(top, chain(j, P), h('div', 'result-meta', meta.join(' · ')));
+    const times = h('span', 'result-times');
+    times.append(fmt(j.dep), h('span', 'result-dash', ' → '), fmt(j.arr));
+    top.append(times, h('span', 'result-dur', durationText(j.duration)));
+    const tags = h('div', 'result-tags');
+    if (today && j.dep >= now && j.dep - now < 60) tags.append(h('span', 'tag tag-soon', j.dep === now ? 'odjíždí teď' : `za ${j.dep - now} min`));
+    tags.append(h('span', 'tag', j.transfers ? plural(j.transfers, 'přestup', 'přestupy', 'přestupů') : 'přímý spoj'));
+    if (j.duration === fastest && list.length > 1) tags.append(h('span', 'tag tag-best', 'nejrychlejší'));
     if (j.walkTransfers) {
-      const warn = h('div', 'result-warn');
+      const warn = h('span', 'tag tag-warn');
       warn.innerHTML = ICON_WARN;
-      warn.append(` Přestup pěšky na jinou zastávku`);
-      b.append(warn);
+      warn.append(' přestup pěšky');
+      tags.append(warn);
     }
+    b.append(top, tags, legRows(j, P));
     b.append(h('span', 'chevron', '›'));
     b.addEventListener('click', () => show(() => renderDetail(j, P, date)));
     group.append(b);
@@ -403,7 +423,8 @@ function renderDetail(j, P, date) {
     }
     // Přestup na stejné zastávce: čekání
     const prev = j.legs[i - 1];
-    if (prev?.type === 'ride') legsEl.append(h('div', 'leg-change', `Přestup na stejné zastávce · čekání ${l.dep - prev.arr} min`));
+    if (l.stay) legsEl.append(h('div', 'leg-change', `Spoj pokračuje dál jako linka ${l.trip.pattern.r}, zůstaň ve voze${l.dep - prev.arr ? ` (stojí ${l.dep - prev.arr} min)` : ''}`));
+    else if (prev?.type === 'ride') legsEl.append(h('div', 'leg-change', `Přestup na stejné zastávce · čekání ${l.dep - prev.arr} min`));
     else if (prev?.type === 'walk' && l.dep - prev.arr > 0 && i > 1) legsEl.append(h('div', 'leg-change', `Čekání ${l.dep - prev.arr} min`));
 
     const stops = rideStops(P, l);

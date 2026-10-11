@@ -7,12 +7,17 @@ import { writeFileSync } from 'node:fs';
 import { buildRails } from './rails-lib.mjs';
 import { overpass, previousDeploy } from './overpass.mjs';
 
-// CZ-72 = Zlínský kraj. Jen koleje (ne nástupiště) z tras osobních vlaků, které krajem projíždějí.
+// CZ-72 = Zlínský kraj. Koleje z tras osobních vlaků (relace route=train) a k tomu hlavní
+// a vedlejší tratě bez vleček a kolejišť, protože některé regionální tratě (např. Vlárská dráha
+// nebo Luhačovice) relaci vlaku v OSM nemají. Čistě nákladní tratě vynecháme.
 const QUERY = `
 [out:json][timeout:180];
 area["ISO3166-2"="CZ-72"]["boundary"="administrative"]->.kraj;
 relation["type"="route"]["route"="train"](area.kraj)->.r;
-way(r.r)["railway"~"^(rail|narrow_gauge|light_rail)$"](area.kraj);
+(
+  way(r.r)["railway"~"^(rail|narrow_gauge|light_rail)$"](area.kraj);
+  way["railway"="rail"]["usage"~"^(main|branch)$"][!"service"]["railway:traffic_mode"!="freight"]["passenger"!="no"](area.kraj);
+);
 out geom;
 `;
 

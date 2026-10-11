@@ -273,6 +273,11 @@ export function tripGeometry(trip, routes, ref, stopIndex = {}) {
  * kterou naposledy projel (−1 = neznámý, pak podle polohy vozu).
  * Vrací passedLines / upcomingLines (seznamy čar, mezery bez trasy zůstanou prázdné) a zastávky.
  */
+function distanceM(lat1, lon1, lat2, lon2) {
+  const kx = 111320 * Math.cos((lat1 * Math.PI) / 180);
+  return Math.hypot((lat1 - lat2) * 110574, (lon1 - lon2) * kx);
+}
+
 export function splitTrip(geo, vehicle, currentIdx, trip = []) {
   let cur = currentIdx;
   let cut = null; // { seg, proj }
@@ -309,11 +314,14 @@ export function splitTrip(geo, vehicle, currentIdx, trip = []) {
     } else if (cur >= 0 && i < cur) push(passedLines, seg);
     else push(upcomingLines, seg);
   });
+  // Stojí vůz v zastávce, nebo už jede k další? (DSZO hlásí poslední zastávku, dokud nedorazí k další.)
+  const at = cur >= 0 ? geo.coords[cur] : null;
+  const atStop = at ? distanceM(at[0], at[1], vehicle.lat, vehicle.lon) < 70 : true;
   const stops = [];
   geo.names.forEach((name, i) => {
     const c = geo.coords[i];
     if (!c) return;
     stops.push({ name, lat: c[0], lon: c[1], passed: cur >= 0 && i <= cur, ...(trip[i]?.time ? { time: trip[i].time } : {}) });
   });
-  return { passedLines, upcomingLines, stops };
+  return { passedLines, upcomingLines, stops, atStop };
 }

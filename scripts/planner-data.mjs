@@ -78,3 +78,81 @@ export function buildPlannerData(tt) {
     trips,
   };
 }
+
+const distM = (a, b) => {
+  const kx = 111320 * Math.cos((a[0] * Math.PI) / 180);
+  return Math.hypot((a[0] - b[0]) * 110574, (a[1] - b[1]) * kx);
+};
+
+/**
+ * Totéž přímo ze spojů tak, jak jedou (GTFS stop_times), bez skládání do směrů linky.
+ * tt.rawTrips = [{ ref, type, mask, times: [min], stops: [[název, lat, lon]] }]
+ * Zastávky se slučují podle názvu (všechna nástupiště jsou jedno místo pro přestup),
+ * stejný název na místech dál než 400 m od sebe zůstane jako dvě zastávky.
+ */
+export function buildPlannerFromTrips(tt) {
+  const places = []; // { name, pts: [[lat, lon]], key }
+  const byName = new Map();
+  const ptKeys = new Map(); // nástupiště (název+poloha) -> index místa
+  const placeOf = ([name, lat, lon]) => {
+    const pk = `${name}|${lat}|${lon}`;
+    if (ptKeys.has(pk)) return ptKeys.get(pk);
+    const list = byName.get(name) ?? [];
+    byName.set(name, list);
+    let at = -1;
+    if (lat == null) at = list[0] ?? -1;
+    else at = list.find((i) => places[i].pts.some((p) => distM(p, [lat, lon]) < 400)) ?? -1;
+    if (at < 0) {
+      at = places.length;
+      places.push({ name, pts: [] });
+      list.push(at);
+    }
+    if (lat != null) places[at].pts.push([lat, lon]);
+    ptKeys.set(pk, at);
+    return at;
+  };
+
+  const masks = [];
+  const maskIdx = new Map();
+  const patterns = [];
+  const patternIdx = new Map();
+  const trips = [];
+  let skipped = 0;
+  for (const t of tt.rawTrips) {
+    if (!t.mask.includes('1') || t.stops.length < 2) continue;
+    const seq = t.stops.map(placeOf);
+    // Časy musí jít popořadě, jinak je spoj v datech poškozený.
+    if (t.times.some((x, i) => i && x < t.times[i - 1])) {
+      skipped++;
+      continue;
+    }
+    if (!maskIdx.has(t.mask)) {
+      maskIdx.set(t.mask, masks.length);
+      masks.push(t.mask);
+    }
+    const headsign = t.stops.at(-1)[0];
+    const key = `${t.ref}|${seq.join(',')}`;
+    if (!patternIdx.has(key)) {
+      patternIdx.set(key, patterns.length);
+      patterns.push({ r: t.ref, y: t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq });
+    }
+    trips.push([patternIdx.get(key), maskIdx.get(t.mask), t.times[0], ...t.times.slice(1).map((x, i) => x - t.times[i])]);
+  }
+  // Stejné spoje seřadíme podle odjezdu, ať jsou data stabilní.
+  trips.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  const round = (x) => Math.round(x * 1e5) / 1e5;
+  return {
+    startDate: tt.startDate,
+    days: tt.days,
+    stops: places.map((p) => {
+      if (!p.pts.length) return [p.name, null, null];
+      const lat = p.pts.reduce((a, q) => a + q[0], 0) / p.pts.length;
+      const lon = p.pts.reduce((a, q) => a + q[1], 0) / p.pts.length;
+      return [p.name, round(lat), round(lon)];
+    }),
+    masks,
+    patterns,
+    trips,
+    skipped,
+  };
+}

@@ -3,7 +3,7 @@
 //  - soubory aplikace: nejdřív síť, při výpadku uložená verze (aby se aspoň otevřela s hláškou)
 //  - jízdní řády, trasy, tratě a hranice kraje (tt/*, routes.json, rails.json, region.json): hned z uložených dat a na pozadí se obnoví
 //  - mapové dlaždice a písma OpenFreeMap: z uložených dat, jinak ze sítě (omezený počet)
-const VERSION = 'v2';
+const VERSION = 'v3';
 const APP = `mhd-app-${VERSION}`;
 const DATA = `mhd-data-${VERSION}`;
 const TILES = `mhd-tiles-${VERSION}`;

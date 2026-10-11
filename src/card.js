@@ -93,7 +93,7 @@ const toMinutes = (t) => {
  * Trasa spoje jako časová osa: projeté zastávky sbalené, poloha vozu, příští zastávka
  * zvýrazněná a u každé další zastávky odpočet (s aktuálním zpožděním).
  */
-export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogglePassed } = {}) {
+export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogglePassed, atStop = true } = {}) {
   const box = h('div', 'trip');
   if (!trip) {
     box.append(h('div', 'trip-empty', 'Načítám zastávky spoje…'));
@@ -117,17 +117,17 @@ export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogg
     list.append(li);
   }
 
+  // Vůz je mezi zastávkami (od poslední ohlášené zastávky už odjel): ukážeme ho mezi nimi.
+  const between = !atStop && current >= 0 && current < trip.length - 1;
   trip.forEach((s, i) => {
     if (i < current && !showPassed) return;
-    const cls = i < current ? 'passed' : i === current ? 'current' : i === current + 1 ? 'next' : 'upcoming';
-    const li = h('li', `tl-stop ${cls}${i === trip.length - 1 ? ' terminus' : ''}`);
-    if (i === current) {
-      const puck = h('span', 'tl-puck', v.line);
-      li.append(puck);
-    } else li.append(h('span', 'tl-dot'));
+    const cls = i < current || (between && i === current) ? 'passed' : i === current ? 'current' : i === current + 1 ? 'next' : 'upcoming';
+    const li = h('li', `tl-stop ${cls}${i === trip.length - 1 ? ' terminus' : ''}${between && i === current ? ' last-passed' : ''}`);
+    if (i === current && !between) li.append(h('span', 'tl-puck', v.line));
+    else li.append(h('span', 'tl-dot'));
     const text = h('div', 'tl-text');
     text.append(h('span', 'tl-name', s.name));
-    if (i === current) text.append(h('span', 'tl-sub', 'vůz je tady'));
+    if (i === current && !between) text.append(h('span', 'tl-sub', 'vůz je v zastávce'));
     else if (i === current + 1) text.append(h('span', 'tl-sub', 'příští zastávka'));
     else if (i === trip.length - 1) text.append(h('span', 'tl-sub', 'konečná'));
     li.append(text);
@@ -139,6 +139,14 @@ export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogg
     }
     li.append(right);
     list.append(li);
+    if (between && i === current) {
+      const mid = h('li', 'tl-between current');
+      mid.append(h('span', 'tl-puck', v.line));
+      const t = h('div', 'tl-text');
+      t.append(h('span', 'tl-name', 'Na cestě'), h('span', 'tl-sub', `jede z ${s.name} na ${trip[i + 1].name}`));
+      mid.append(t, h('div'));
+      list.append(mid);
+    }
   });
   box.append(list);
   // Při otevření posuneme seznam na polohu vozu (jen seznam, ne celý panel).

@@ -130,10 +130,13 @@ export function buildRoutes(overpass) {
 
   // Slovník všech pojmenovaných zastávek pro případ, že trasa linky v OSM chybí.
   const sums = new Map();
+  // Všechna místa zastavení a nástupiště (na opravu poloh zastávek z jízdních řádů).
+  const platforms = [];
   for (const n of nodes.values()) {
     const t = n.tags;
     if (!t?.name) continue;
     if (!(t.public_transport === 'platform' || t.public_transport === 'stop_position' || t.highway === 'bus_stop')) continue;
+    platforms.push([t.name, round(n.lat), round(n.lon), t.public_transport === 'stop_position' ? 's' : 'p']);
     const key = normalizeName(t.name);
     const s = sums.get(key) ?? [0, 0, 0];
     s[0] += n.lat; s[1] += n.lon; s[2]++;
@@ -142,7 +145,55 @@ export function buildRoutes(overpass) {
   const stops = {};
   for (const [key, [lat, lon, c]] of sums) stops[key] = [round(lat / c), round(lon / c)];
 
-  return { routes, stops };
+  return { routes, stops, platforms };
+}
+
+const metres = (lat1, lon1, lat2, lon2) => Math.hypot((lat1 - lat2) * 110574, (lon1 - lon2) * 111320 * Math.cos((lat1 * Math.PI) / 180));
+const plainName = (n) => String(n).replace(/^Zlín,\s*/, '');
+
+/**
+ * Opravuje polohy zastávek z jízdních řádů podle OpenStreetMap: nejbližší místo zastavení
+ * (stop_position, jinak nástupiště) se stejným názvem do 120 m. Vrací funkci (název, lat, lon) → [lat, lon].
+ */
+export function stopCorrector(platforms = []) {
+  const cells = new Map();
+  const cell = (lat, lon) => `${Math.round(lat * 200)},${Math.round(lon * 130)}`; // ~550 m
+  for (const p of platforms) {
+    const k = cell(p[1], p[2]);
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push(p);
+  }
+  const cache = new Map();
+  const stats = { checked: 0, moved: 0, sum: 0 };
+  const correct = (name, lat, lon) => {
+    if (lat == null) return [lat, lon];
+    const key = `${name}|${lat}|${lon}`;
+    if (cache.has(key)) return cache.get(key);
+    const [ci, cj] = cell(lat, lon).split(',').map(Number);
+    let best = null;
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        for (const p of cells.get(`${ci + di},${cj + dj}`) ?? []) {
+          const d = metres(lat, lon, p[1], p[2]);
+          if (d > 120 || nameSimilarity(plainName(p[0]), plainName(name)) < 0.75) continue;
+          // Místo zastavení na silnici má přednost (sedí na trase), pak to bližší.
+          const score = d + (p[3] === 's' ? 0 : 25);
+          if (!best || score < best.score) best = { score, d, p };
+        }
+      }
+    }
+    stats.checked++;
+    let out = [lat, lon];
+    if (best && best.d > 8) {
+      out = [best.p[1], best.p[2]];
+      stats.moved++;
+      stats.sum += best.d;
+    }
+    cache.set(key, out);
+    return out;
+  };
+  correct.stats = stats;
+  return correct;
 }
 
 /** Zjednodušená a zaokrouhlená lomená čára [[lon, lat]]. */
