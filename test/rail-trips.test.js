@@ -82,3 +82,14 @@ test('trasa po kolejích přes odbočku, kde se čáry po zjednodušení nedotý
   const far = new RailNetwork([main, [[17.45, 49.4], [17.5, 49.45]]]);
   assert.equal(far.path([49.3, 17.41], [49.449, 17.499]), null);
 });
+
+test('odbočka končící kus od hlavní trati se napojí, i když je síť jinudy propojená', () => {
+  // Hlavní trať a odbočka, která se s ní potká až 20 km daleko; ve stanici končí 150 m od hlavní trati.
+  const main = [[17.4, 49.3], [17.5, 49.3], [17.7, 49.3]];
+  const branch = [[17.452, 49.3014], [17.46, 49.35], [17.7, 49.35], [17.7, 49.3]];
+  const net = new RailNetwork([main, branch]);
+  const path = net.path([49.3, 17.41], [49.349, 17.46]);
+  assert.ok(path, 'cesta existuje');
+  const len = path.reduce((s, p, i) => (i ? s + Math.hypot((p[0] - path[i - 1][0]) * 72700, (p[1] - path[i - 1][1]) * 111200) : 0), 0);
+  assert.ok(len < 12000, `krátká cesta přes stanici (${Math.round(len)} m)`);
+});

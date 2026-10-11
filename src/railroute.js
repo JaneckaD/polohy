@@ -5,6 +5,7 @@
 const KY = 110574;
 const kxAt = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
 const CELL = 0.01; // mřížka pro hledání blízkých úseků (asi 1 km)
+const DEAD_END_M = 300; // slepý konec trati se napojí na jinou kolej nejvýš takhle daleko
 const BRIDGE_M = 1000; // nejdelší spojka mezi nesouvisejícími kusy tratí (kolejiště velkých stanic v datech chybí)
 
 function project(p, a, b) {
@@ -57,6 +58,14 @@ export class RailNetwork {
     for (const e of ends) {
       if (this.adj[e].length > 1) continue;
       const hit = this.nearest(this.pts[e], 30, e);
+      if (hit) this.link(e, this.split(hit));
+    }
+    // Slepé konce (ve velkých stanicích chybí kolejiště a odbočka končí kus od hlavní trati):
+    // napojíme je na nejbližší kolej do 300 m, na kterou se po kolejích nedá dostat zblízka.
+    for (const e of ends) {
+      if (this.adj[e].length !== 1) continue;
+      const near = this.within(e, 1500);
+      const hit = this.nearest(this.pts[e], DEAD_END_M, -1, ([a, b]) => !near.has(a) && !near.has(b));
       if (hit) this.link(e, this.split(hit));
     }
     this.bridge(BRIDGE_M);
@@ -125,8 +134,26 @@ export class RailNetwork {
       }
   }
 
-  /** Nejbližší úsek k bodu (do maxDist metrů); skip = bod, jehož úseky nepočítáme. */
-  nearest(p, maxDist, skip = -1) {
+  /** Body dosažitelné po kolejích z bodu start do maxDist metrů. */
+  within(start, maxDist) {
+    const dist = new Map([[start, 0]]);
+    const heap = [[0, start]];
+    while (heap.length) {
+      const [du, u] = pop(heap);
+      if (du > (dist.get(u) ?? Infinity)) continue;
+      for (const [v, w] of this.adj[u]) {
+        const dv = du + w;
+        if (dv <= maxDist && dv < (dist.get(v) ?? Infinity)) {
+          dist.set(v, dv);
+          push(heap, [dv, v]);
+        }
+      }
+    }
+    return dist;
+  }
+
+  /** Nejbližší úsek k bodu (do maxDist metrů); skip = bod, jehož úseky nepočítáme, accept = který úsek smí být. */
+  nearest(p, maxDist, skip = -1, accept = null) {
     const cx = Math.floor(p[0] / CELL);
     const cy = Math.floor(p[1] / CELL);
     let best = null;
@@ -135,7 +162,7 @@ export class RailNetwork {
       for (let y = cy - r; y <= cy + r; y++)
         for (const i of this.grid.get(`${x},${y}`) ?? []) {
           const [a, b] = this.segs[i];
-          if (a === skip || b === skip) continue;
+          if (a === skip || b === skip || (accept && !accept(this.segs[i]))) continue;
           const pr = project(p, this.pts[a], this.pts[b]);
           if (pr.dist <= maxDist && (!best || pr.dist < best.dist)) best = { ...pr, seg: i };
         }

@@ -18,3 +18,4 @@ for (const [x, y] of [['Kroměříž', 'Hulín'], ['Hulín', 'Třebětice'], ['H
   console.log(`${x} (${A[1]},${A[2]}) → ${y} (${B[1]},${B[2]}): přímo ${Math.round(direct)} m, přichycení ${ha ? Math.round(ha.dist) : '-'} / ${hb ? Math.round(hb.dist) : '-'} m, body ${a}/${b}, po kolejích ${dist.has(b) ? Math.round(dist.get(b)) : 'NEDOSTUPNÉ'} m, limit ${Math.round(direct * 3 + 2000)}, path ${net.path([A[1], A[2]], [B[1], B[2]]) ? 'ok' : 'null'}`);
   if (a >= 0) console.log(`   okolí A: stupně ${[...new Set(net.adj[a].map(([v]) => net.adj[v].length))].join(',')}, sousedé ${net.adj[a].length}`);
 }
+// v2
