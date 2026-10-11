@@ -18,9 +18,10 @@ export function matchJourneyVehicles(journey, P, vehicles, now) {
         return train?.id ?? null;
       }
       for (const v of vehicles) {
-        if (used.has(v.id) || String(v.line) !== String(pat.r) || !v.stop) continue;
-        if (v.headsign && nameSimilarity(v.headsign, P.stops[pat.s.at(-1)].name) < 0.5 && nameSimilarity(v.headsign, pat.h) < 0.5) continue;
-        const stop = stripPlatform(v.stop);
+        if (used.has(v.id) || v.type === 'train' || (v.city ?? null) !== (pat.c ?? null) || String(v.line) !== String(pat.r) || !v.stop) continue;
+        const headsign = v.rawHeadsign ?? v.headsign;
+        if (headsign && nameSimilarity(headsign, P.stops[pat.s.at(-1)].name) < 0.5 && nameSimilarity(headsign, pat.h) < 0.5) continue;
+        const stop = stripPlatform(v.rawStop ?? v.stop);
         for (let k = 0; k <= leg.toK; k++) {
           if (nameSimilarity(stop, P.stops[pat.s[k]].name) < 0.75) continue;
           // Vůz u zastávky k: podle jízdního řádu tam má být v čase times[k] (+ zpoždění).

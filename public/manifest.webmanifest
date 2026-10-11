@@ -1,6 +1,6 @@
 {
-  "name": "Polohy – MHD a vlaky ve Zlínském kraji",
-  "short_name": "Polohy",
+  "name": "IDZK live – MHD a vlaky ve Zlínském kraji",
+  "short_name": "IDZK live",
   "description": "Živé polohy MHD a vlaků ve Zlínském kraji, vyhledávání spojení.",
   "lang": "cs",
   "start_url": "./",

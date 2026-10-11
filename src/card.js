@@ -1,8 +1,9 @@
 // Karta s detaily vozu (při najetí myší) a spodní panel s jízdním řádem spoje (po klepnutí).
 import { FEATURES } from './dszo.js';
-import { applyTypeColors, applyVehicleColors, TYPE_LABELS, delayLevel } from './colors.js';
+import { applyVehicleColors, TYPE_LABELS, delayLevel } from './colors.js';
 import { currentTripIndex } from './route-match.js';
 import { TRAIN_KINDS } from './trains.js';
+import { CITIES } from './cities.js';
 
 const svg = (body) =>
   `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -66,28 +67,13 @@ function renderTrainDetails(v, trip) {
   pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
   card.append(pills);
 
-  // Přehled: odkud kam, linka, kde naposledy projel a kdy bude v příští zastávce.
-  const facts = h('dl', 'card-facts');
-  const fact = (label, value) => {
-    if (!value) return;
-    facts.append(h('dt', null, label), h('dd', null, value));
-  };
-  const delayMin = v.delay > 0 ? Math.round(v.delay / 60) : 0;
-  const expected = (t) => (t && delayMin ? `${t} → ${hhmm(toMinutes(t) + delayMin)}` : t);
-  fact('Trasa', v.from && v.headsign ? `${v.from} → ${v.headsign}` : v.headsign);
-  fact('Linka', trip?.line);
-  if (v.stop) fact('Naposledy projel', `${v.stop}${v.stopReal ? ` v ${v.stopReal}` : ''}${v.stopPlanned && v.stopReal && v.stopPlanned !== v.stopReal ? ` (podle plánu ${v.stopPlanned})` : ''}`);
-  if (v.next) fact('Příští zastávka', `${v.next}${v.nextArr ? `, příjezd ${expected(v.nextArr)}` : ''}`);
-  if (trip?.length) fact('Zastávek celkem', String(trip.length));
-  fact('Dopravce', v.operator.name);
-  card.append(facts);
   return card;
 }
 
 /** Detail vozu (u vlaku s jízdním řádem trip, pokud ho známe). */
 export function renderDetails(v, trip = null) {
   if (v.type === 'train') return renderTrainDetails(v, trip);
-  const card = applyTypeColors(h('div', 'card'), v.type);
+  const card = applyVehicleColors(h('div', 'card'), v);
 
   const head = h('div', 'card-head');
   const badge = h('div', 'card-line', v.line);
@@ -95,7 +81,8 @@ export function renderDetails(v, trip = null) {
   title.append(h('div', 'card-headsign', v.headsign ? `→ ${v.headsign}` : `Linka ${v.line}`));
   const type = h('div', 'card-type');
   type.innerHTML = ICONS[v.type] ?? '';
-  type.append(` ${TYPE_LABELS[v.type] ?? 'Vůz'} · vůz ${v.id}`);
+  const label = TYPE_LABELS[v.type] ?? 'Vůz';
+  type.append(v.city ? ` ${label} · MHD ${CITIES[v.city].name}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
   title.append(type);
   head.append(badge, title);
   card.append(head);
@@ -108,6 +95,8 @@ export function renderDetails(v, trip = null) {
   // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
   if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));
 
+  // U MHD jiných měst výbavu vozu neznáme (jen nízkopodlažnost), řádek s výbavou vynecháme.
+  if (v.city) return card;
   const feats = h('div', 'card-features');
   for (const [key, label] of Object.entries(FEATURES)) {
     const has = v.features?.includes(key);

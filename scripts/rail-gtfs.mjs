@@ -38,6 +38,16 @@ export function operatorName(name = '') {
  * Z GTFS vlaků vybere ty, které projíždějí krajem, a vrátí je jako rawTrips pro buildPlannerFromTrips:
  * { ref: 'Os 14244', type: 'train', number, code, operator, mask, times (odjezdy), arr (příjezdy), stops: [[název, lat, lon]] }
  */
+function regionBox(region) {
+  let box = [Infinity, Infinity, -Infinity, -Infinity];
+  const walk = (c) => {
+    if (typeof c[0] === 'number') box = [Math.min(box[0], c[0]), Math.min(box[1], c[1]), Math.max(box[2], c[0]), Math.max(box[3], c[1])];
+    else c.forEach(walk);
+  };
+  walk(region.coordinates ?? region.geometry?.coordinates ?? region.features?.map((f) => f.geometry.coordinates) ?? []);
+  return box;
+}
+
 export function railTrips(zipBytes, { startDate, days, region, log = () => {} }) {
   const agencies = new Map();
   const routes = new Map();
@@ -100,6 +110,25 @@ export function railTrips(zipBytes, { startDate, days, region, log = () => {} })
     return mask;
   };
 
+  // Vlak jede krajem, když v něm zastaví, nebo jím aspoň projede mezi dvěma zastaveními
+  // (rychlíky a mezinárodní vlaky často projedou bez zastavení). Úsek mezi stanicemi zkoušíme po kouscích.
+  const [minLon, minLat, maxLon, maxLat] = regionBox(region);
+  const inBox = (lon, lat) => lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat;
+  const inRegion = (lon, lat) => inBox(lon, lat) && regionContains(region, lon, lat);
+  const throughRegion = (located) => {
+    const pts = located.map((s) => [Number(s.stop_lon), Number(s.stop_lat)]);
+    if (pts.some(([lon, lat]) => inRegion(lon, lat))) return true;
+    for (let i = 1; i < pts.length; i++) {
+      const [a, b] = [pts[i - 1], pts[i]];
+      for (let k = 1; k < 20; k++) {
+        const lon = a[0] + ((b[0] - a[0]) * k) / 20;
+        const lat = a[1] + ((b[1] - a[1]) * k) / 20;
+        if (inRegion(lon, lat)) return true;
+      }
+    }
+    return false;
+  };
+
   const out = [];
   for (const [id, list] of times) {
     const trip = trips.get(id);
@@ -107,8 +136,7 @@ export function railTrips(zipBytes, { startDate, days, region, log = () => {} })
     if (!route) continue;
     list.sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
     const located = list.map((r) => stops.get(r.stop_id)).filter(Boolean);
-    const inside = located.filter((s) => regionContains(region, Number(s.stop_lon), Number(s.stop_lat))).length;
-    if (inside < 2) continue;
+    if (!throughRegion(located)) continue;
     const mask = maskOf(trip.service_id);
     if (!mask.includes('1')) continue;
     const dep = list.map((r) => toMinutes(r.departure_time) ?? toMinutes(r.arrival_time));

@@ -23,6 +23,7 @@ export const store = {
   filter: { type: 'all', lines: [], trainKinds: [], operators: [], ...load('mhd.filter', {}), delayed: false },
   vehicles: [],
   trains: [],
+  cityBuses: [],
 
   setFilter(patch) {
     this.filter = { ...this.filter, ...patch };
@@ -33,6 +34,11 @@ export const store = {
   setVehicles(list) {
     this.vehicles = list;
     save('mhd.vehicles', { at: Date.now(), list });
+    this.emit();
+  },
+
+  setCityBuses(list) {
+    this.cityBuses = list;
     this.emit();
   },
 
@@ -72,6 +78,8 @@ export function matchesFilter(v, f) {
   }
   if (f.type === 'train') return false;
   if (f.type !== 'all' && v.type !== f.type) return false;
+  // Vybrané linky (Zlín a Otrokovice): MHD jiných měst schováme, mají stejná čísla linek.
+  if (v.city && f.lines.length) return false;
   if (f.lines.length && !f.lines.includes(v.line)) return false;
   // Filtr druhů vlaků nebo dopravců bez výběru linek: MHD necháme.
   return true;

@@ -35,3 +35,25 @@ test('proxy /trains: vlaky Správy železnic jen z okolí Zlínského kraje, jen
   assert.equal(data.trains[0].zst_sr70, undefined);
   fetchMock.mock.restore();
 });
+
+test('proxy /mhd: vozy MHD Kroměříž a Valašské Meziříčí z mapy IDZK', async () => {
+  let req = null;
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
+    req = { url: String(url), init };
+    return Response.json({
+      transmitters: [
+        { cn: '946001|1|58|Valašské Meziříčí,Tesla I|130|Valašské Meziříčí,sklárny|94|1116|Valašské Meziříčí,stan.MHD u náměstí|Krhová,točna|1|2TD5812', x: 49.47, y: 17.98, ico: 'a_0.png', ds: '$z1~min.~34~s', tm: '18:36:45', cr: 'TQM–MHDVM', cat: 2 },
+        { cn: '823150|150|234|Kroměříž,Bílany,rozc.', x: 49.3, y: 17.4, ico: 'a_0.png', ds: '', tm: '', cat: 2 },
+      ],
+    });
+  });
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/mhd'));
+  assert.equal(req.url, 'https://mpvnet.cz/zlin/map/mapData');
+  assert.equal(req.init.method, 'POST');
+  assert.equal(req.init.headers.Origin, 'https://mpvnet.cz');
+  const data = await res.json();
+  assert.equal(data.vehicles.length, 1);
+  assert.ok(data.vehicles[0].cn.startsWith('946001|1|'));
+  assert.equal(data.vehicles[0].cr, undefined);
+  fetchMock.mock.restore();
+});

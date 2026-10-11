@@ -10,6 +10,7 @@ import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
 import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
+import { cityTrips } from './city-gtfs.mjs';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
 
@@ -173,7 +174,7 @@ if (!tt) {
       const startDate = pragueToday();
       const part = buildFromGtfs(bytes, { startDate, log: (m) => console.log(m) });
       if (part.lines.length) {
-        tt = { startDate, days: part.days, lines: withStopNames(part), rawTrips: part.rawTrips, source: url };
+        tt = { startDate, days: part.days, lines: withStopNames(part), rawTrips: part.rawTrips, source: url, gtfs: bytes };
         break;
       }
       console.warn('V GTFS nejsou linky DSZO.');
@@ -203,6 +204,16 @@ if (tt?.lines?.length && osm.platforms?.length) {
   }
   const { checked, moved, sum, sided } = correct.stats;
   console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m), podle strany silnice ${sided}.`);
+}
+
+// MHD Kroměříže a Valašského Meziříčí (ze stejného GTFS IDZK, polohy zastávek bez opravy podle OSM).
+if (tt?.gtfs) {
+  try {
+    tt.rawTrips.push(...cityTrips(tt.gtfs, { startDate: tt.startDate, days: tt.days, log: (m) => console.log(m) }));
+  } catch (err) {
+    console.warn(`MHD dalších měst se nepodařilo zpracovat: ${err.stack}`);
+  }
+  delete tt.gtfs;
 }
 
 // Vlaky přes kraj (až po opravě poloh zastávek: ta platí jen pro autobusová nástupiště).

@@ -34,10 +34,10 @@ function createElement() {
   return el;
 }
 
-// Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku druh (barva podle druhu) a číslo
-// na barvě dopravce.
+// Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku jen druh (Os, R…) v barvě druhu
+// s tenkým rámečkem v barvě dopravce. Číslo vlaku je až v detailu.
 function setLabel(el, v) {
-  const key = v.type === 'train' ? `${v.code}|${v.number}|${v.operator?.short}` : v.line;
+  const key = v.type === 'train' ? `${v.code}|${v.operator?.short}` : v.line;
   if (el.dataset.label === key) return;
   el.dataset.label = key;
   const dot = el.querySelector('.vehicle-dot');
@@ -49,16 +49,14 @@ function setLabel(el, v) {
   kind.className = 'train-kind';
   kind.textContent = v.code;
   kind.style.background = TRAIN_KINDS[v.kind]?.color ?? '#6c6c70';
-  const num = document.createElement('span');
-  num.className = 'train-num';
-  num.textContent = v.number;
-  dot.replaceChildren(kind, num);
+  dot.replaceChildren(kind);
+  el.title = `${v.code} ${v.number} · ${v.operator?.short ?? ''}`;
   el.style.setProperty('--vehicle-color', v.operator?.color ?? '#636366');
   el.style.setProperty('--vehicle-text', v.operator?.text ?? '#ffffff');
 }
 
 const STACK_GRID = 0.0004; // ~40 m
-const STACK_STEP_PX = 28;
+const STACK_STEP_PX = 24;
 
 export class VehicleLayer {
   /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
@@ -96,6 +94,8 @@ export class VehicleLayer {
       const bearing = Number.isFinite(v.bearing) ? v.bearing : item.bearing;
       item.vehicle = { ...v, bearing };
       item.el.dataset.type = v.type;
+      if (v.city) item.el.dataset.city = v.city;
+      else delete item.el.dataset.city;
       setLabel(item.el, v);
       this.setBearing(item, bearing);
     }
@@ -162,8 +162,8 @@ export class VehicleLayer {
       if (item.el.dataset.type === 'train') {
         // Vlak je obdélník: šipka obíhá těsně kolem jeho okraje.
         const dot = item.el.querySelector('.vehicle-dot');
-        const w = dot.offsetWidth || 60;
-        const h = dot.offsetHeight || 24;
+        const w = dot.offsetWidth || 30;
+        const h = dot.offsetHeight || 20;
         const rad = (bearing * Math.PI) / 180;
         const r = Math.round(Math.abs(Math.sin(rad)) * (w / 2) + Math.abs(Math.cos(rad)) * (h / 2) + 9);
         arrow.style.setProperty('--arrow-r', `${r}px`);

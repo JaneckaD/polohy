@@ -1,6 +1,7 @@
 // Záložka Spojení: odkud, kam, den a čas → nejbližší spojení s přestupy (i pěšími) → detail spojení.
 import { applyTypeColors, applyVehicleColors } from './colors.js';
 import { TRAIN_KINDS, trainKind, trainOperator } from './trains.js';
+import { CITIES } from './cities.js';
 import { preparePlanner, searchJourneys, findStops, nearbyStops, rideStops } from './planner.js';
 
 const body = document.getElementById('pl-body');
@@ -63,11 +64,13 @@ function lineBadge(pat) {
     badge.append(k, h('span', null, t.number));
     return badge;
   }
-  return applyTypeColors(h('span', 'line-badge', pat.r), pat.y === 't' ? 'trolleybus' : 'bus');
+  return colorRide(h('span', 'line-badge', pat.r), pat);
 }
 
-const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
-const rideKind = (pat) => (pat.y === 'v' ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}` : pat.y === 't' ? 'Trolejbus' : 'Autobus');
+// MHD jiného města (Kroměříž, Valašské Meziříčí) má barvu města.
+const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : pat.c ? applyVehicleColors(el, { city: pat.c }) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
+const rideKind = (pat) =>
+  pat.y === 'v' ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}` : pat.c ? `Autobus · MHD ${CITIES[pat.c]?.name ?? ''}` : pat.y === 't' ? 'Trolejbus' : 'Autobus';
 
 // --- stav formuláře (pamatuje se mezi návštěvami) -----------------------------------
 const MY_LOCATION = { name: 'Moje poloha', here: true };

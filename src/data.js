@@ -1,5 +1,6 @@
 import { parseVehiclesPage, parseTable, mergeVehicles, parseTrip } from './dszo.js';
 import { fetchTrains } from './trains.js';
+import { fetchCityBuses } from './cities.js';
 
 // DSZO obnovuje data zhruba každých 15 s.
 export const REFRESH_MS = 15000;
@@ -41,6 +42,12 @@ export async function fetchTrip(v) {
   } catch {
     return [];
   }
+}
+
+/** Vozy MHD Kroměříže a Valašského Meziříčí (mapa IDZK přes proxy). */
+export function fetchCityVehicles() {
+  if (!PROXY) return Promise.resolve([]);
+  return fetchCityBuses(PROXY);
 }
 
 /** Vlaky uvnitř kraje (region = hranice kraje z region.json). */

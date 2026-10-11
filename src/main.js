@@ -4,9 +4,10 @@ import { Map, Marker, AttributionControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
-import { fetchVehicles, fetchTrip, fetchRegionTrains, proxyConfigured, REFRESH_MS } from './data.js';
+import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, proxyConfigured, REFRESH_MS } from './data.js';
+import { cityTrip } from './cities.js';
 import { renderDetails, renderTrip } from './card.js';
-import { applyVehicleColors, trainColors } from './colors.js';
+import { applyVehicleColors, trainColors, TYPE_COLORS } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
 import { drawRegion, loadRegion } from './region.js';
 import { TRAIN_REFRESH_MS } from './trains.js';
@@ -84,7 +85,7 @@ function journeyVehicleIds() {
   const { journey, P, date } = journeyFocus;
   const now = pragueNow();
   // Vozy hledáme jen pro dnešní spojení, které už brzy jede nebo právě jede.
-  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.trains], now.min) : [];
+  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.cityBuses, ...store.trains], now.min) : [];
   journeyFocus.ids = ids;
   return new Set(ids.filter(Boolean));
 }
@@ -197,6 +198,13 @@ async function fetchTrainTrip(v) {
   return trainTrip(P, v.number, date, min) ?? [];
 }
 
+/** Spoj vozu MHD Kroměříže nebo Valašského Meziříčí z jízdních řádů IDZK. */
+async function fetchCityTrip(v) {
+  const P = await loadPlanner();
+  const { date, min } = pragueNow();
+  return cityTrip(P, v, date, min);
+}
+
 async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
@@ -223,7 +231,7 @@ async function updateSelected(first = false) {
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? [], pos?.current);
   if (!selected || selected.token !== token) return;
-  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.operator) : null);
+  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.operator) : v.city ? TYPE_COLORS[v.city] : null);
   else clearRoute(map);
   if (pos) return; // u vlaku poloha vůči zastávkám už je známá
   // Poloha vůči zastávkám je známá až z trasy: když vůz už odjel ze zastávky, překreslíme seznam.
@@ -285,13 +293,14 @@ async function select(v) {
   // Vůz ze zobrazeného spojení: spojení necháme na mapě.
   if (!journeyFocus?.ids?.includes(v.id)) hideJourney();
   const token = Symbol();
-  selected = { id: v.id, trip: null, token };
+  // Vlak: hned celý jízdní řád včetně projetých stanic (dají se skrýt).
+  selected = { id: v.id, trip: null, token, showPassed: v.type === 'train' };
   vehicles.select(v.id);
   sheetEl.hidden = false;
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = v.type === 'train' ? await fetchTrainTrip(v) : await fetchTrip(v);
+  const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   updateSelected(true);
@@ -320,7 +329,7 @@ let trainTimer = null;
 let lastUpdate = null;
 function render() {
   const mine = journeyVehicleIds();
-  const all = [...store.vehicles, ...store.trains];
+  const all = [...store.vehicles, ...store.cityBuses, ...store.trains];
   const shown = mine ? all.filter((v) => mine.has(v.id)) : all.filter((v) => matchesFilter(v, store.filter));
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...all.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
@@ -328,7 +337,7 @@ function render() {
   updateSelected();
   drawRegion(map);
   if (lastUpdate) {
-    const total = store.vehicles.length;
+    const total = store.vehicles.length + store.cityBuses.length;
     const buses = shown.filter((v) => v.type !== 'train').length;
     const trains = shown.length - buses;
     const parts = [buses === total ? `${total} vozů` : `${buses} z ${total} vozů`];
@@ -357,6 +366,15 @@ async function refreshTrains() {
   }
 }
 
+async function refreshCities() {
+  try {
+    store.setCityBuses(await fetchCityVehicles());
+  } catch (err) {
+    // MHD dalších měst je doplněk (starší proxy bez /mhd): Zlín funguje dál.
+    console.warn('MHD dalších měst se nepodařilo načíst:', err.message);
+  }
+}
+
 let lastFilter = '';
 store.subscribe(() => {
   render();
@@ -376,7 +394,11 @@ function start() {
   if (timer) return;
   refresh();
   refreshTrains();
-  timer = setInterval(refresh, REFRESH_MS);
+  refreshCities();
+  timer = setInterval(() => {
+    refresh();
+    refreshCities();
+  }, REFRESH_MS);
   trainTimer = setInterval(refreshTrains, TRAIN_REFRESH_MS);
 }
 
@@ -409,6 +431,21 @@ fetch('./tt/index.json')
   .then((r) => (r.ok ? r.json() : { lines: [] }))
   .catch(() => ({ lines: [] }))
   .then((index) => setKnownLines(index.lines ?? []));
+
+// Obnovit: stáhne novou verzi aplikace (i na ploše) a čerstvé jízdní řády, pak stránku načte znovu,
+// takže se obnoví i polohy všech vozů.
+document.getElementById('reload').addEventListener('click', async (e) => {
+  e.currentTarget.classList.add('spinning');
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    await reg?.update();
+    const keys = (await globalThis.caches?.keys()) ?? [];
+    await Promise.all(keys.filter((k) => !k.includes('tiles')).map((k) => caches.delete(k)));
+  } catch (err) {
+    console.warn('Obnovení aplikace:', err.message);
+  }
+  location.reload();
+});
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   // Aplikace na ploše se po přepnutí zpět jen probudí a běží dál stará verze.

@@ -212,12 +212,13 @@ async function geometryFor(trip, ref, train = false) {
 export async function computeRoute(vehicle, trip, current) {
   const train = vehicle.type === 'train';
   if (trip?.length > 1) {
-    const geo = await geometryFor(trip, vehicle.line, train);
+    // MHD jiných měst: trasy linek DSZO nepoužijeme (stejná čísla linek), jen silnice mezi zastávkami.
+    const geo = await geometryFor(trip, vehicle.city ? `${vehicle.city}:${vehicle.line}` : vehicle.line, train);
     if (geo.segments.some(Boolean)) {
       return splitTrip(geo, { lat: vehicle.rawLat ?? vehicle.lat, lon: vehicle.rawLon ?? vehicle.lon }, current ?? currentTripIndex(trip, vehicle.stop), trip);
     }
   }
-  if (train) return null;
+  if (train || vehicle.city) return null;
   // Než dorazí jízdní řád spoje (nebo když ho nemáme): trasa linky podle polohy a směru vozu.
   const data = await loadRoutes();
   const match = findRoute(data.routes, vehicle, trip);
@@ -340,7 +341,7 @@ export async function drawJourney(map, journey, P) {
     }
     const pat = leg.trip.pattern;
     const type = pat.y === 'v' ? 'train' : pat.y === 't' ? 'trolleybus' : 'bus';
-    const colors = type === 'train' ? trainColors(trainOperator(pat.o)) : TYPE_COLORS[type];
+    const colors = type === 'train' ? trainColors(trainOperator(pat.o)) : TYPE_COLORS[pat.c ?? type];
     const { main, casing } = colors;
     const stops = [];
     for (let k = leg.fromK; k <= leg.toK; k++) {
@@ -348,7 +349,7 @@ export async function drawJourney(map, journey, P) {
       const times = k === leg.toK ? leg.trip.arr : leg.trip.times;
       stops.push({ name: s.name, lat: s.lat, lon: s.lon, time: hhmm(times[k] - leg.shift) });
     }
-    const geo = await geometryFor(stops, pat.r, type === 'train');
+    const geo = await geometryFor(stops, pat.c ? `${pat.c}:${pat.r}` : pat.r, type === 'train');
     for (const seg of geo.segments) {
       if (seg?.length > 1) {
         features.push({ type: 'Feature', properties: { kind: 'ride', color: main, casing: type === 'trolleybus' ? casing : '#ffffff' }, geometry: { type: 'LineString', coordinates: seg } });

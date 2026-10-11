@@ -158,6 +158,22 @@ input:focus-visible {
   pointer-events: auto;
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+#reload.spinning svg {
+  animation: reload-spin 0.8s linear infinite;
+}
+
+@keyframes reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -2269,21 +2285,28 @@ input:focus-visible {
 /* Vlaky: obdélník v barvě dopravce, vlevo druh vlaku (barva podle druhu), vpravo číslo. */
 .vehicle[data-type='train'] {
   width: auto;
-  height: 24px;
+  height: 20px;
 }
 
+/* Vlak: jen druh (Os, R…), kolem tenký rámeček v barvě dopravce */
 .vehicle[data-type='train'] .vehicle-dot {
   position: relative;
   inset: auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 7px 0 2px;
-  border-radius: 7px;
-  font-size: 12px;
+  height: 20px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  font-size: 11px;
   line-height: 1;
   white-space: nowrap;
+}
+
+.vehicle[data-type='train'] .vehicle-dot .train-kind {
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
 }
 
 .train-kind {
@@ -2324,24 +2347,6 @@ input:focus-visible {
   font-size: 15px;
 }
 
-/* Přehled u vlaku: dvojice popis – hodnota */
-.card-facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 10px 0 0;
-  font-size: 14px;
-}
-
-.card-facts dt {
-  color: var(--label-2);
-}
-
-.card-facts dd {
-  margin: 0;
-  color: var(--label);
-}
-
 /* Vlak ve vyhledávání spojení */
 .line-badge.train-badge {
   gap: 4px;
@@ -2354,4 +2359,13 @@ input:focus-visible {
 .line-badge.train-badge .train-kind {
   height: 22px;
   font-size: 12px;
+}
+
+/* MHD dalších měst: barva města (Kroměříž oranžová, Valašské Meziříčí zelenomodrá) */
+.vehicle[data-type='bus'][data-city='km'] {
+  --vehicle-color: #e8590c;
+}
+
+.vehicle[data-type='bus'][data-city='vm'] {
+  --vehicle-color: #00897b;
 }

@@ -8,8 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Polohy" />
-    <title>Polohy</title>
+    <meta name="apple-mobile-web-app-title" content="IDZK live" />
+    <title>IDZK live</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
@@ -24,14 +24,19 @@
           <div class="brand glass">
             <span class="brand-dot" aria-hidden="true"></span>
             <div>
-              <div class="brand-name">Polohy</div>
+              <div class="brand-name">IDZK live</div>
               <div id="status" class="brand-status" role="status">Načítám…</div>
             </div>
           </div>
-          <button id="filter-open" class="round-btn glass" type="button" aria-label="Filtr vozidel a vlaků">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg>
-            <span id="filter-badge" class="badge" hidden></span>
-          </button>
+          <div class="topbar-actions">
+            <button id="reload" class="round-btn glass" type="button" title="Obnovit" aria-label="Obnovit aplikaci a polohy vozů">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+            </button>
+            <button id="filter-open" class="round-btn glass" type="button" aria-label="Filtr vozidel a vlaků">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg>
+              <span id="filter-badge" class="badge" hidden></span>
+            </button>
+          </div>
         </header>
 
         <div id="active-filter" class="active-filter glass" hidden></div>
@@ -107,7 +112,7 @@
     <div id="offline" class="offline" hidden>Bez připojení: polohy vozů se neaktualizují</div>
     <div id="install" class="install glass" hidden>
       <img class="install-icon" src="./icons/icon-192.png" alt="" />
-      <span>Přidat Polohy na plochu</span>
+      <span>Přidat IDZK live na plochu</span>
       <button id="install-btn" class="btn primary small" type="button">Instalovat</button>
       <button id="install-close" class="icon-btn" type="button" aria-label="Zavřít">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>

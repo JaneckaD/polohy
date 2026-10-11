@@ -2,6 +2,7 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje.
+// /mhd: polohy vozů MHD dalších měst kraje z mapy IDZK (mpvnet.cz), jen vybrané městské linky.
 
 const UPSTREAM = 'https://www.dszo.cz';
 const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php', '/online/spoj.php']);
@@ -37,12 +38,35 @@ async function trains() {
   });
 }
 
+// Mapa IDZK: odpovídá jen s hlavičkou Origin své vlastní stránky.
+const MPV_URL = 'https://mpvnet.cz/zlin/map/mapData';
+const MPV_BODY = JSON.stringify({ w: 17.1, s: 48.86, e: 18.4, n: 49.54, zoom: 13, showStops: false, mapFilterId: null });
+// Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = MHD Valašské Meziříčí.
+const CITY_LICENCES = ['775', '946'];
+
+async function cityBuses() {
+  const upstream = await fetch(MPV_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
+    body: MPV_BODY,
+  });
+  if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
+  const data = await upstream.json();
+  const vehicles = (data.transmitters ?? [])
+    .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)))
+    .map(({ cn, x, y, ico, ds, tm }) => ({ cn, x, y, ico, ds, tm }));
+  return new Response(JSON.stringify({ vehicles }), {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+  });
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/trains') return trains();
+    if (request.method === 'GET' && url.pathname === '/mhd') return cityBuses();
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {
       return new Response('Not found', { status: 404, headers: CORS });
     }

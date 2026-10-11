@@ -131,11 +131,13 @@ export function buildPlannerFromTrips(tt) {
       masks.push(t.mask);
     }
     const headsign = t.stops.at(-1)[0];
-    const key = `${t.ref}|${seq.join(',')}`;
+    const key = `${t.city ?? ''}|${t.ref}|${seq.join(',')}`;
     if (!patternIdx.has(key)) {
       patternIdx.set(key, patterns.length);
       const pattern = { r: t.ref, y: t.type === 'train' ? 'v' : t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq };
       // Vlak: číslo, druh a dopravce.
+      // MHD jiného města (Kroměříž, Valašské Meziříčí): stejná čísla linek jako ve Zlíně.
+      if (t.city) pattern.c = t.city;
       if (t.type === 'train') Object.assign(pattern, { n: t.number, k: t.code, o: t.operator, ...(t.line ? { l: t.line } : {}) });
       patterns.push(pattern);
     }
