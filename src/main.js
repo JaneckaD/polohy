@@ -6,7 +6,7 @@ import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
 import { fetchVehicles, fetchTrip, proxyConfigured, REFRESH_MS } from './data.js';
 import { renderDetails, renderTrip } from './card.js';
-import { TYPE_COLORS } from './colors.js';
+import { applyTypeColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes } from './route.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
@@ -130,11 +130,12 @@ async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
   if (!v) return deselect();
-  sheetEl.style.setProperty('--trip-color', (TYPE_COLORS[v.type] ?? TYPE_COLORS.bus).main);
+  applyTypeColors(sheetEl, v.type);
   sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v));
   sheetEl.querySelector('.sheet-trip').replaceChildren(renderTrip(selected.trip, v, { scroll: first }));
-  followBtn.textContent = following === v.id ? 'Přestat sledovat' : 'Sledovat vůz';
-  followBtn.classList.toggle('primary', following === v.id);
+  followBtn.textContent = following === v.id ? 'Sledováno' : 'Sledovat';
+  followBtn.classList.toggle('following', following === v.id);
+  followBtn.setAttribute('aria-pressed', String(following === v.id));
   if (following === v.id) map.easeTo({ center: [v.lon, v.lat], duration: 1000 });
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? []);
@@ -143,12 +144,51 @@ async function updateSelected(first = false) {
   else clearRoute(map);
 }
 
+const isWide = () => matchMedia('(min-width: 720px)').matches;
+
 function sheetPadding() {
-  const wide = matchMedia('(min-width: 720px)').matches;
-  return wide
+  return isWide()
     ? { left: sheetEl.getBoundingClientRect().right, top: 0, right: 0, bottom: 0 }
-    : { bottom: map.getContainer().clientHeight * 0.55, top: 0, left: 0, right: 0 };
+    : { bottom: map.getContainer().clientHeight - sheetEl.getBoundingClientRect().top + 8, top: 60, left: 0, right: 0 };
 }
+
+// Tažení panelu za horní okraj: nahoru = celá výška, dolů = menší výška, nebo zavřít.
+(() => {
+  let start = null;
+  const handle = sheetEl.querySelector('.sheet-handle');
+  const details = sheetEl.querySelector('.sheet-details');
+  const begin = (e) => {
+    if (isWide() || e.target.closest('button')) return;
+    start = { y: e.clientY, t: Date.now() };
+    sheetEl.classList.add('dragging');
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const move = (e) => {
+    if (!start) return;
+    const dy = e.clientY - start.y;
+    // Nahoru jen s odporem (panel se pak roztáhne), dolů za prstem.
+    sheetEl.style.transform = `translateY(${dy > 0 ? dy : dy * 0.35}px)`;
+  };
+  const end = (e) => {
+    if (!start) return;
+    const dy = e.clientY - start.y;
+    const fast = Math.abs(dy) / Math.max(1, Date.now() - start.t) > 0.5;
+    start = null;
+    sheetEl.classList.remove('dragging');
+    sheetEl.style.transform = '';
+    if (dy < -40 || (fast && dy < -10)) sheetEl.classList.add('expanded');
+    else if (dy > 60 || (fast && dy > 10)) {
+      if (sheetEl.classList.contains('expanded')) sheetEl.classList.remove('expanded');
+      else deselect();
+    } else if (Math.abs(dy) < 5 && e.currentTarget === handle) sheetEl.classList.toggle('expanded');
+  };
+  for (const el of [handle, details]) {
+    el.addEventListener('pointerdown', begin);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+})();
 
 async function select(v) {
   hideHover();
@@ -173,6 +213,7 @@ function deselect() {
   following = null;
   vehicles.select(null);
   sheetEl.hidden = true;
+  sheetEl.classList.remove('expanded');
   clearRoute(map);
 }
 
@@ -250,14 +291,15 @@ function stop() {
 // Když je aplikace na pozadí, data nestahujeme.
 document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
 
-map.on('load', async () => {
-  // Poslední známé polohy z minula, než dorazí čerstvá data.
-  const cached = store.cachedVehicles();
-  if (cached) store.setVehicles(cached);
-  start();
-  routes = (await loadRoutes()).routes;
-  drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
+// Vozy načítáme hned, nečekáme na mapu: když se nenačtou podklady mapy, polohy vozů se ukážou i tak.
+const cached = store.cachedVehicles();
+if (cached) store.setVehicles(cached);
+start();
+loadRoutes().then((data) => {
+  routes = data.routes;
+  if (map.isStyleLoaded()) drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
 });
+map.on('load', () => drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref))));
 
 initFilter();
 initInstall();

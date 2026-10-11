@@ -101,3 +101,36 @@ test('reads the compact "out geom" Overpass format', () => {
   assert.equal(routes.length, 2);
   assert.deepEqual(routes[0].line, buildRoutes(OVERPASS).routes[0].line);
 });
+
+test('trasa podle spoje: skládá kusy tras, dělí v místě vozu a nekreslí rovné čáry přes mezery', async () => {
+  const { tripGeometry, splitTrip } = await import('../src/route-match.js');
+  const routes = [
+    // Linka 2: A → B → C po ulici se zalomením
+    { ref: '2', stops: [['A', 49.0, 17.0], ['B', 49.0, 17.01], ['C', 49.01, 17.01]], line: [[17.0, 49.0], [17.005, 49.0], [17.01, 49.0], [17.01, 49.005], [17.01, 49.01]] },
+    // Jiná linka pokrývá C → D
+    { ref: '7', stops: [['C', 49.01, 17.01], ['D', 49.01, 17.02]], line: [[17.01, 49.01], [17.02, 49.01]] },
+  ];
+  const trip = [{ time: '10:00', name: 'A A' }, { time: '10:02', name: 'B' }, { time: '10:04', name: 'C' }, { time: '10:06', name: 'D' }, { time: '10:09', name: 'E' }];
+  const geo = tripGeometry(trip, routes, '2', { e: [49.02, 17.03] });
+  assert.equal(geo.segments.length, 4);
+  assert.deepEqual(geo.segments[0], [[17.0, 49.0], [17.005, 49.0], [17.01, 49.0]]);
+  assert.deepEqual(geo.segments[1], [[17.01, 49.0], [17.01, 49.005], [17.01, 49.01]]);
+  assert.deepEqual(geo.segments[2], [[17.01, 49.01], [17.02, 49.01]]);
+  assert.equal(geo.segments[3], null);
+  assert.deepEqual(geo.coords[4], [49.02, 17.03]);
+
+  // Vůz mezi B a C, aktuální zastávka B (index 1).
+  const r = splitTrip(geo, { lat: 49.003, lon: 17.0101 }, 1, trip);
+  assert.equal(r.passedLines.length, 1);
+  assert.deepEqual(r.passedLines[0][0], [17.0, 49.0]);
+  assert.ok(Math.abs(r.passedLines[0].at(-1)[1] - 49.003) < 1e-6);
+  assert.equal(r.upcomingLines.length, 1); // B–C a C–D navazují, D–E chybí (žádná rovná čára)
+  assert.deepEqual(r.upcomingLines[0].at(-1), [17.02, 49.01]);
+  assert.deepEqual(r.stops.map((s) => s.passed), [true, true, false, false, false]);
+  assert.equal(r.stops[0].name, 'A');
+  assert.equal(r.stops[2].time, '10:04');
+
+  // Bez známé zastávky se aktuální kus najde podle polohy vozu.
+  const r2 = splitTrip(geo, { lat: 49.01, lon: 17.015 }, -1, trip);
+  assert.deepEqual(r2.stops.map((s) => s.passed), [true, true, true, false, false]);
+});

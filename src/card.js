@@ -1,6 +1,6 @@
 // Karta s detaily vozu (při najetí myší) a spodní panel s jízdním řádem spoje (po klepnutí).
 import { FEATURES } from './dszo.js';
-import { TYPE_COLORS, TYPE_LABELS, delayLevel } from './colors.js';
+import { applyTypeColors, TYPE_LABELS, delayLevel } from './colors.js';
 import { currentTripIndex } from './route-match.js';
 
 const svg = (body) =>
@@ -43,9 +43,7 @@ function agoLabel(updated) {
 
 /** Detail vozu. */
 export function renderDetails(v) {
-  const color = (TYPE_COLORS[v.type] ?? TYPE_COLORS.bus).main;
-  const card = h('div', 'card');
-  card.style.setProperty('--line-color', color);
+  const card = applyTypeColors(h('div', 'card'), v.type);
 
   const head = h('div', 'card-head');
   const badge = h('div', 'card-line', v.line);
@@ -103,6 +101,13 @@ export function renderTrip(trip, v, { scroll = false } = {}) {
   });
   box.append(list);
   // Při otevření posuneme seznam na aktuální zastávku.
-  if (scroll) requestAnimationFrame(() => list.children[Math.max(0, current)]?.scrollIntoView({ block: 'center' }));
+  // Posouváme jen seznam, ne celý panel (scrollIntoView by posunul i jeho rodiče).
+  if (scroll)
+    requestAnimationFrame(() => {
+      const li = list.children[Math.max(0, current)];
+      const box = li?.closest('.sheet-trip');
+      if (!box) return;
+      box.scrollTop += li.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 2 + li.offsetHeight / 2;
+    });
   return box;
 }

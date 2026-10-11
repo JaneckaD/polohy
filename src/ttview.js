@@ -1,15 +1,20 @@
 // Záložka Jízdní řády: seznam linek → linka (směr, zastávky) → odjezdy ze zastávky.
-import { TYPE_COLORS, TYPE_LABELS } from './colors.js';
+import { applyTypeColors, TYPE_LABELS } from './colors.js';
 import { store, sortLines } from './store.js';
 import { nameSimilarity } from './names.js';
 
 const body = document.getElementById('tt-body');
 const title = document.getElementById('tt-title');
 const backBtn = document.getElementById('tt-back');
+const backLabel = document.getElementById('tt-back-label');
+const page = body.closest('.page');
+
+// Okrajový efekt: lišta nahoře dostane sklo, až pod ní začne jet obsah.
+body.addEventListener('scroll', () => page.classList.toggle('scrolled', body.scrollTop > 8), { passive: true });
 
 let indexPromise = null;
 const lineCache = new Map();
-const stack = []; // historie obrazovek: funkce, které obrazovku vykreslí
+const stack = []; // historie obrazovek: { screen, title }
 let onShowOnMap = () => {};
 
 export function loadIndex() {
@@ -54,28 +59,34 @@ const DAY_NAMES = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
 
 function lineBadge(ref, type, size = '') {
   const b = h('span', `line-badge ${size}`, ref);
-  b.style.background = (TYPE_COLORS[type] ?? TYPE_COLORS.bus).main;
+  applyTypeColors(b, type);
   return b;
 }
 
 function show(screen, push = true) {
-  if (push) stack.push(screen);
+  if (push) stack.push({ screen, title: '' });
+  const entry = stack.at(-1);
   backBtn.hidden = stack.length <= 1;
+  backLabel.textContent = stack.at(-2)?.title || 'Zpět';
+  page.classList.toggle('root', stack.length <= 1);
+  page.classList.remove('scrolled');
   body.scrollTop = 0;
-  screen();
+  entry.screen();
+  // Název nastaví obrazovka hned na začátku vykreslení, zapamatujeme ho pro tlačítko Zpět.
+  entry.title = title.textContent;
 }
 
 backBtn.addEventListener('click', () => {
   if (stack.length > 1) {
     stack.pop();
-    show(stack.at(-1), false);
+    show(null, false);
   }
 });
 
 // --- obrazovky ---------------------------------------------------------------------
 async function renderIndex() {
   title.textContent = 'Linky';
-  body.replaceChildren(h('div', 'muted pad', 'Načítám…'));
+  body.replaceChildren(h('h2', 'large-title', 'Linky'), h('div', 'muted pad', 'Načítám…'));
   const index = await loadIndex();
   if (!index.lines.length) {
     body.replaceChildren(h('div', 'empty', 'Jízdní řády se nepodařilo načíst. Zkus to prosím později.'));
@@ -85,6 +96,9 @@ async function renderIndex() {
   for (const v of store.vehicles) live.set(v.line, (live.get(v.line) ?? 0) + 1);
 
   const frag = document.createDocumentFragment();
+  frag.append(h('h2', 'large-title', 'Linky'));
+  const running = new Set(store.vehicles.map((v) => v.line)).size;
+  frag.append(h('div', 'large-sub', running ? `Právě jezdí ${running} linek, ${store.vehicles.length} vozů` : 'Jízdní řády MHD Zlín a Otrokovice'));
   for (const type of ['trolleybus', 'bus']) {
     const lines = index.lines.filter((l) => l.type === type);
     if (!lines.length) continue;
@@ -99,7 +113,7 @@ async function renderIndex() {
       const a = l.directions[0];
       text.append(h('div', 'line-item-route', a ? `${a.from} – ${a.headsign}` : ''));
       const n = live.get(l.ref) ?? 0;
-      text.append(h('div', 'line-item-meta', n ? `${n} ${n === 1 ? 'vůz' : n < 5 ? 'vozy' : 'vozů'} na trase` : 'teď nejede'));
+      text.append(h('div', `line-item-meta${n ? ' live' : ''}`, n ? `${n} ${n === 1 ? 'vůz' : n < 5 ? 'vozy' : 'vozů'} na trase` : 'teď nejede'));
       item.append(text, h('span', 'chevron', '›'));
       item.addEventListener('click', () => show(() => renderLine(l.ref)));
       list.append(item);
@@ -118,7 +132,6 @@ async function renderLine(ref, dirId) {
     return;
   }
   let dir = line.directions.find((d) => d.id === dirId) ?? line.directions[0];
-  const color = (TYPE_COLORS[line.type] ?? TYPE_COLORS.bus).main;
 
   const draw = () => {
     const frag = document.createDocumentFragment();
@@ -149,7 +162,7 @@ async function renderLine(ref, dirId) {
     frag.append(mapBtn);
 
     const list = h('ol', 'stop-list');
-    list.style.setProperty('--trip-color', color);
+    applyTypeColors(list, line.type);
     dir.stops.forEach((name, i) => {
       const li = h('li');
       const btn = h('button', 'stop-item');
@@ -196,13 +209,14 @@ function renderStop(line, dirId, stopIdx) {
 
   const draw = () => {
     const frag = document.createDocumentFragment();
-    const top = h('div', 'stop-top');
     const head = h('div', 'line-head');
     head.append(lineBadge(line.ref, line.type, 'big'));
     const ht = h('div');
     ht.append(h('div', 'line-head-type', `Linka ${line.ref}`), h('div', 'line-head-route', `směr ${dir.headsign}`));
     head.append(ht);
-    top.append(head);
+    frag.append(head);
+    // Výběr dne a nejbližší odjezd zůstávají při posouvání nahoře.
+    const top = h('div', 'stop-top');
     frag.append(top);
 
     // Výběr dne: dnes a dalších 6 dní.
@@ -250,10 +264,18 @@ function renderStop(line, dirId, stopIdx) {
         row.append(mins);
         table.append(row);
       }
-      if (next != null) top.append(h('div', 'next-dep', `Nejbližší odjezd ${fmt(next)} (za ${next - now} min)`));
+      if (next != null) {
+        const nd = h('div', 'next-dep');
+        nd.append(h('span', null, `Nejbližší odjezd za ${next - now} min`), h('strong', null, fmt(next)));
+        top.append(nd);
+      }
       frag.append(table);
       // Posuneme na nejbližší odjezd, hlavička s výběrem dne zůstává nahoře.
-      if (nextEl) requestAnimationFrame(() => (body.scrollTop = Math.max(0, nextEl.closest('.dep-row').offsetTop - top.offsetHeight - 60)));
+      if (nextEl)
+        requestAnimationFrame(() => {
+          const row = nextEl.closest('.dep-row').getBoundingClientRect().top;
+          body.scrollTop += Math.max(0, row - top.getBoundingClientRect().bottom - 50);
+        });
     }
     body.replaceChildren(frag);
   };
@@ -270,7 +292,7 @@ export function initTimetables({ showOnMap }) {
 /** Otevře jízdní řád linky (např. z detailu vozu). */
 export function openLine(ref, headsign) {
   stack.length = 0;
-  stack.push(renderIndex);
+  stack.push({ screen: renderIndex, title: 'Linky' });
   loadLine(ref).then((line) => {
     // Směr podle cílové zastávky vozu (názvy se mohou mírně lišit).
     const dir = headsign && line?.directions.length

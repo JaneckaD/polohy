@@ -133,3 +133,187 @@ export function attachTimes(stops, trip) {
     return t ? { ...s, time: t.time } : s;
   });
 }
+
+// --- Trasa podle zastávek konkrétního spoje ------------------------------------------
+// Spoj (spoj.php) říká přesné pořadí zastávek. Mezi každými dvěma po sobě jdoucími
+// zastávkami vezmeme kus předpočítané trasy po silnicích (nejdřív stejné linky, pak
+// jakékoli jiné), takže sedí i odbočky a zkrácené spoje a smyčky na konečných nic nepletou.
+
+function cumulative(line) {
+  const lat0 = line[0][1];
+  const cum = [0];
+  for (let i = 1; i < line.length; i++) {
+    const a = toXY(line[i - 1], lat0);
+    const b = toXY(line[i], lat0);
+    cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+  }
+  return cum;
+}
+
+/** Kus lomené čáry mezi vzdálenostmi a < b (v metrech od začátku). */
+export function sliceLine(line, cum, a, b) {
+  const at = (d) => {
+    let i = cum.findIndex((c) => c >= d);
+    if (i <= 0) return { i: Math.max(i, 0), p: line[Math.max(i, 0)] };
+    const t = (d - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+    return { i, p: [line[i - 1][0] + t * (line[i][0] - line[i - 1][0]), line[i - 1][1] + t * (line[i][1] - line[i - 1][1])] };
+  };
+  const s = at(a);
+  const e = at(b);
+  const out = [s.p];
+  for (let i = s.i; i < e.i; i++) if (cum[i] > a) out.push(line[i]);
+  out.push(e.p);
+  return out;
+}
+
+const routeCache = new WeakMap();
+
+/** Polohy zastávek trasy na její čáře, postupně od začátku (smyčky na konečných nepřeskočí). */
+function routeInfo(route) {
+  let info = routeCache.get(route);
+  if (info) return info;
+  const cum = cumulative(route.line);
+  const alongs = [];
+  let from = 0;
+  const lat0 = route.line[0][1];
+  for (const [, lat, lon] of route.stops) {
+    const p = toXY([lon, lat], lat0);
+    let best = null;
+    for (let i = from; i < route.line.length - 1; i++) {
+      const a = toXY(route.line[i], lat0);
+      const b = toXY(route.line[i + 1], lat0);
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy);
+      const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (len * len))) : 0;
+      const dist = Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+      const along = cum[i] + t * len;
+      // Mírně preferujeme bližší pokračování, aby zastávka nepadla na pozdější průjezd stejným místem.
+      const score = dist + 0.05 * (along - (alongs.at(-1) ?? 0));
+      if (!best || score < best.score) best = { score, along, seg: i };
+    }
+    alongs.push(best ? best.along : alongs.at(-1) ?? 0);
+    if (best) from = best.seg;
+  }
+  info = { cum, alongs, names: route.stops.map(([n]) => normalizeName(n)) };
+  routeCache.set(route, info);
+  return info;
+}
+
+function stopIndices(route, info, name) {
+  const norm = normalizeName(name);
+  const exact = [];
+  info.names.forEach((n, i) => n === norm && exact.push(i));
+  if (exact.length) return exact;
+  const similar = [];
+  route.stops.forEach(([n], i) => nameSimilarity(n, name) >= 0.75 && similar.push(i));
+  return similar;
+}
+
+/** Kus trasy mezi dvěma zastávkami spoje, nebo null. */
+function segmentOnRoute(route, a, b) {
+  const info = routeInfo(route);
+  const ia = stopIndices(route, info, a);
+  if (!ia.length) return null;
+  const ib = stopIndices(route, info, b);
+  for (const j of ia) {
+    for (const k of ib) {
+      if (k <= j || k - j > 3) continue;
+      const from = info.alongs[j];
+      const to = info.alongs[k];
+      if (!(to > from)) continue;
+      const coords = sliceLine(route.line, info.cum, from, to);
+      if (coords.length < 2) continue;
+      return { coords, from: route.stops[j], to: route.stops[k] };
+    }
+  }
+  return null;
+}
+
+/**
+ * Geometrie spoje: pro každou dvojici po sobě jdoucích zastávek kus trasy (nebo null, když chybí)
+ * a polohy zastávek. routes = trasy z routes.json, stopIndex = slovník poloh zastávek.
+ */
+export function tripGeometry(trip, routes, ref, stopIndex = {}) {
+  const names = trip.map((s) => stripPlatform(s.name));
+  const usable = routes.filter((r) => r.line?.length > 1 && r.stops?.length > 1);
+  const ordered = [...usable.filter((r) => r.ref === ref), ...usable.filter((r) => r.ref !== ref)];
+  const segments = [];
+  const coords = names.map(() => null);
+  for (let i = 0; i < names.length - 1; i++) {
+    let seg = null;
+    for (const route of ordered) {
+      seg = segmentOnRoute(route, names[i], names[i + 1]);
+      if (seg) break;
+    }
+    segments.push(seg?.coords ?? null);
+    if (seg) {
+      coords[i] ??= [seg.from[1], seg.from[2]];
+      coords[i + 1] = [seg.to[1], seg.to[2]];
+    }
+  }
+  // Zastávky, které žádný kus trasy nepokryl: poloha ze slovníku zastávek.
+  const keys = Object.keys(stopIndex);
+  names.forEach((name, i) => {
+    if (coords[i]) return;
+    let pos = stopIndex[normalizeName(name)];
+    if (!pos) {
+      let bestSim = 0.8;
+      for (const k of keys) {
+        const sim = nameSimilarity(k, name);
+        if (sim > bestSim) { bestSim = sim; pos = stopIndex[k]; }
+      }
+    }
+    if (pos) coords[i] = pos;
+  });
+  return { names, segments, coords };
+}
+
+/**
+ * Rozdělí geometrii spoje v místě vozu. currentIdx = index zastávky, u které vůz je nebo
+ * kterou naposledy projel (−1 = neznámý, pak podle polohy vozu).
+ * Vrací passedLines / upcomingLines (seznamy čar, mezery bez trasy zůstanou prázdné) a zastávky.
+ */
+export function splitTrip(geo, vehicle, currentIdx, trip = []) {
+  let cur = currentIdx;
+  let cut = null; // { seg, proj }
+  const near = (seg) => (seg ? projectOnLine(seg, vehicle.lon, vehicle.lat) : null);
+  if (cur >= 0 && cur < geo.segments.length) {
+    const p = near(geo.segments[cur]);
+    if (p && p.dist < 150) cut = { seg: cur, proj: p };
+  } else if (cur < 0) {
+    let best = null;
+    geo.segments.forEach((seg, i) => {
+      const p = near(seg);
+      if (p && p.dist < 150 && (!best || p.dist < best.proj.dist)) best = { seg: i, proj: p };
+    });
+    if (best) {
+      cut = best;
+      cur = best.seg;
+    }
+  }
+  const passedLines = [];
+  const upcomingLines = [];
+  const push = (list, line) => {
+    if (!line || line.length < 2) return;
+    const last = list.at(-1);
+    // Navazující kusy spojíme do jedné čáry, ať jsou spoje hladké.
+    if (last && last.at(-1)[0] === line[0][0] && last.at(-1)[1] === line[0][1]) last.push(...line.slice(1));
+    else list.push([...line]);
+  };
+  geo.segments.forEach((seg, i) => {
+    if (!seg) return;
+    if (cut && i === cut.seg) {
+      const { proj } = cut;
+      push(passedLines, [...seg.slice(0, proj.seg + 1), proj.point]);
+      push(upcomingLines, [proj.point, ...seg.slice(proj.seg + 1)]);
+    } else if (cur >= 0 && i < cur) push(passedLines, seg);
+    else push(upcomingLines, seg);
+  });
+  const stops = [];
+  geo.names.forEach((name, i) => {
+    const c = geo.coords[i];
+    if (!c) return;
+    stops.push({ name, lat: c[0], lon: c[1], passed: cur >= 0 && i <= cur, ...(trip[i]?.time ? { time: trip[i].time } : {}) });
+  });
+  return { passedLines, upcomingLines, stops };
+}

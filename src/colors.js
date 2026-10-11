@@ -1,8 +1,20 @@
-// Barvy podle typu vozidla: trolejbus červený (barva DSZO), autobus modrý.
+// Barvy podle typu vozidla: trolejbus žlutý, autobus modrý.
+// text = barva písma na barvě linky (na žluté tmavé, kontrast 14:1; na modré bílé, 5,3:1),
+// casing = okraj čáry na bílé mapě, passed = projetá část trasy (šedá).
 export const TYPE_COLORS = {
-  trolleybus: { main: '#d71920', dark: '#6e0b0f' },
-  bus: { main: '#1d5fd1', dark: '#0b2a63' },
+  trolleybus: { main: '#ffcc00', text: '#1c1c1e', casing: '#a07f00', passed: '#8e8e93', dark: '#8e8e93' },
+  bus: { main: '#0a66d8', text: '#ffffff', casing: '#ffffff', passed: '#8e8e93', dark: '#8e8e93' },
 };
+
+/** Nastaví prvku CSS proměnné barev typu: --line-color (výplň), --line-text (písmo na ní), --line-ink (čáry a ikony na bílé). */
+export function applyTypeColors(el, type) {
+  const c = TYPE_COLORS[type] ?? TYPE_COLORS.bus;
+  el.style.setProperty('--line-color', c.main);
+  el.style.setProperty('--line-text', c.text);
+  el.style.setProperty('--line-ink', type === 'trolleybus' ? '#b38900' : c.main);
+  el.dataset.type = type === 'trolleybus' ? 'trolleybus' : 'bus';
+  return el;
+}
 
 export const TYPE_LABELS = { trolleybus: 'Trolejbus', bus: 'Autobus' };
 

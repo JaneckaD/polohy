@@ -1,5 +1,5 @@
 // Filtr vozidel: typ (trolejbus/autobus), linky a jen zpožděné. Ukládá se do localStorage.
-import { TYPE_COLORS } from './colors.js';
+import { applyTypeColors } from './colors.js';
 import { store, filterActive, sortLines } from './store.js';
 import { vehicleType } from './dszo.js';
 
@@ -31,7 +31,7 @@ function renderLines() {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = `line-toggle${f.lines.includes(ref) ? ' on' : ''}`;
-    b.style.setProperty('--line-color', (TYPE_COLORS[type] ?? TYPE_COLORS.bus).main);
+    applyTypeColors(b, type);
     b.textContent = ref;
     b.addEventListener('click', () => {
       const lines = f.lines.includes(ref) ? f.lines.filter((x) => x !== ref) : [...f.lines, ref];
