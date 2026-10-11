@@ -1,0 +1,30 @@
+name: Probe train timetables
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          echo "=== gtfs-rehost tree"
+          curl -s https://api.github.com/repos/hoermalmeister/gtfs-rehost/git/trees/main?recursive=1 | python3 -c "import json,sys;[print(t['path'],t.get('size')) for t in json.load(sys.stdin).get('tree',[])]" | head -80
+          echo "=== CIS JR"
+          curl -s -m 30 -A "$UA" 'https://portal.cisjr.cz/pub/draha/celostatni/szdc/' | grep -o 'href="[^"]*"' | head -40
+          curl -s -m 30 -A "$UA" 'https://portal.cisjr.cz/pub/draha/celostatni/szdc/2026/' | sed 's/<[^>]*>/ /g' | grep -v '^\s*$' | head -60
+          echo "=== SZ map page"
+          curl -s -m 30 -A "$UA" 'https://mapy.spravazeleznic.cz/vlaky' -o page.html -w "%{http_code} %{size_download}\n"
+          grep -o 'src="[^"]*\.js[^"]*"' page.html | head -20
+          for js in $(grep -o 'src="[^"]*\.js[^"]*"' page.html | sed 's/src="//;s/"$//' | head -20); do
+            case "$js" in http*) u="$js";; /*) u="https://mapy.spravazeleznic.cz$js";; *) u="https://mapy.spravazeleznic.cz/$js";; esac
+            curl -s -m 30 -A "$UA" "$u" -o f.js
+            echo "--- $u $(wc -c < f.js)"
+            grep -o '.\{120\}OsVlaky.\{200\}' f.js | head -10
+            grep -o 'action[=:][^&"'"'"' ,)]*' f.js | sort -u | head -30
+          done
+          echo "=== try detail actions"
+          for a in getTrainDetail getDetail detail getRoute route getTrain trainDetail getInfo info; do
+            curl -s -m 20 -A "$UA" -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' "https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=$a&id=14244&tn=14244" -w " <- $a %{http_code}\n" | tail -c 400
+          done
