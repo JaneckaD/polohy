@@ -59,3 +59,12 @@ test('czech holidays include Easter', () => {
   assert.equal(runsOn('2026-04-06', ['X'], [], h), false);
   assert.equal(runsOn('2026-04-06', ['+'], [], h), true);
 });
+
+test('assembleLines řadí zastávky spojů z vozovny před první společnou zastávku', async () => {
+  const { assembleLines } = await import('../scripts/jdf-lib.mjs');
+  const names = ['A', 'B', 'C', 'D', 'X'];
+  const trip = (stops) => ({ stops, times: stops.map((_, i) => 600 + i), mask: '1' });
+  const result = new Map([['2', { ref: '2', type: 'bus', name: '', dirs: { A: [trip([0, 1, 2, 3]), trip([0, 1, 2, 3]), trip([4, 2, 3])], B: [] } }]]);
+  const [line] = assembleLines(result, names);
+  assert.deepEqual(line.directions[0].stops.map((i) => names[i]), ['A', 'B', 'X', 'C', 'D']);
+});

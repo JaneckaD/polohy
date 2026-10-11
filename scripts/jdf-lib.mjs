@@ -219,7 +219,10 @@ export function assembleLines(result, stopNames) {
         v.stops.forEach((s, i) => {
           if (order.includes(s)) return;
           const prev = v.stops.slice(0, i).reverse().find((x) => order.includes(x));
-          order.splice(prev == null ? 0 : order.indexOf(prev) + 1, 0, s);
+          if (prev != null) return order.splice(order.indexOf(prev) + 1, 0, s);
+          // Spoj začíná mimo hlavní trasu (např. z vozovny): zastávku dáme před první společnou.
+          const next = v.stops.slice(i + 1).find((x) => order.includes(x));
+          order.splice(next == null ? order.length : order.indexOf(next), 0, s);
         });
       }
       const masks = [];
