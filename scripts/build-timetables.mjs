@@ -7,7 +7,7 @@ import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
 import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
-import { locateStops, simplifyLine, stopCorrector, uTurns } from './routes-lib.mjs';
+import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
@@ -230,7 +230,7 @@ if (tt?.previous) {
   // Jízdní řády z minula: ponecháme i jejich trasy.
   routes.push(...previous.filter((r) => r.dir));
 }
-let routed = 0, cached = 0, missing = 0, shaped = 0;
+let routed = 0, cached = 0, missing = 0, shaped = 0, detoursRemoved = 0;
 for (const line of tt?.previous ? [] : tt?.lines ?? []) {
   for (const dir of line.directions) {
     const total = dir.variants.reduce((s, v) => s + v.count, 0);
@@ -256,7 +256,14 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
         geometry = await osrmRoute(points);
         if (geometry) { geometry = simplifyLine(geometry); routed++; }
       }
-      routes.push({ ref: line.ref, type: line.type, dir: dir.id, to: dir.headsign, stops: located, line: geometry ?? [], key });
+      // Kličky, kterými se vůz jen otáčí (zastávka chycená na špatné straně), z trasy vyřízneme.
+      let cleaned = geometry ?? [];
+      if (cleaned.length > 2) {
+        const before = cleaned.length;
+        cleaned = removeDetours(cleaned, located);
+        if (cleaned.length !== before) detoursRemoved++;
+      }
+      routes.push({ ref: line.ref, type: line.type, dir: dir.id, to: dir.headsign, stops: located, line: cleaned, key });
     }
   }
 }
@@ -273,7 +280,7 @@ console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů 
 const turning = (list) => list.filter((r) => r.dir && uTurns(r.line).length);
 const before = turning(previous);
 const after = turning(routes);
-console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez směru jízdy počítáno ${bearingFallbacks}×).`);
+console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez směru jízdy počítáno ${bearingFallbacks}×, kličky odstraněny u ${detoursRemoved} tras).`);
 const nearestStop = (r, [x, y]) => r.stops.reduce((best, s) => {
   const d = Math.hypot((s[1] - y) * 110574, (s[2] - x) * 72000);
   return d < best.d ? { d, name: s[0] } : best;

@@ -65,3 +65,16 @@ test('otočka do protisměru na trase se pozná', async () => {
   assert.equal(uTurns([[17.70, 49.2], [17.703, 49.2], [17.7033, 49.2002], [17.703, 49.2004], [17.7027, 49.2002], [17.703, 49.2], [17.706, 49.2]]).length, 0);
   assert.equal(uTurns([[17.70, 49.2], [17.704, 49.2], [17.702, 49.20005], [17.702, 49.205]]).length, 1);
 });
+
+test('klička jen kvůli otočení se z trasy odstraní, zajížďka na zastávku zůstane', async () => {
+  const { removeDetours } = await import('../scripts/routes-lib.mjs');
+  // Na východ, 300 m dál otočka zpět o 200 m po stejné silnici (o 5 m vedle) a odbočka na sever.
+  const line = [[17.70, 49.2], [17.704, 49.2], [17.70675, 49.20005], [17.704, 49.20005], [17.704, 49.205]];
+  const stops = [['A', 49.2, 17.70], ['B', 49.2, 17.704], ['C', 49.205, 17.704]];
+  const out = removeDetours(line, stops);
+  assert.ok(out.length < line.length, JSON.stringify(out));
+  assert.ok(!out.some(([x]) => x > 17.705));
+  // Stejná klička se zastávkou na konci zajížďky zůstane.
+  const kept = removeDetours(line, [...stops, ['D', 49.20005, 17.70675]]);
+  assert.deepEqual(kept, line);
+});

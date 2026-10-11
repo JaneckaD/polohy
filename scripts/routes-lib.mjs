@@ -281,3 +281,53 @@ export function locateStops(names, dictionary) {
     return pos ? [name, pos[0], pos[1]] : [name, null, null];
   });
 }
+
+/**
+ * Odstraní z trasy objížďky, kterými se vůz jen otáčí: trasa odbočí, vrátí se po stejné silnici
+ * (do 20 m) a cestou neobslouží žádnou zastávku. Takové kličky vznikají, když se zastávka chytí
+ * na špatnou stranu silnice. Smyčky se zastávkami a zajížďky na zastávku zůstanou.
+ * line = [[lon, lat]], stops = [[název, lat, lon]].
+ */
+export function removeDetours(line = [], stops = [], maxLen = 1500) {
+  let cur = line;
+  for (let round = 0; round < 50; round++) {
+    const cut = findDetour(cur, stops, maxLen);
+    if (!cut) return cur;
+    cur = [...cur.slice(0, cut.i + 1), cut.point, ...cur.slice(cut.j)];
+  }
+  return cur;
+}
+
+function findDetour(line, stops, maxLen) {
+  if (line.length < 3) return null;
+  const kx = 111320 * Math.cos((line[0][1] * Math.PI) / 180);
+  const xy = line.map(([lon, lat]) => [lon * kx, lat * 110574]);
+  const sxy = stops.filter((s) => s[1] != null).map((s) => [s[2] * kx, s[1] * 110574]);
+  const along = [0];
+  for (let i = 1; i < xy.length; i++) along.push(along[i - 1] + Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]));
+  const proj = (p, i) => {
+    const [a, b] = [xy[i], xy[i + 1]];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+    return { d: Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy), at: along[i] + t * Math.sqrt(len2), t };
+  };
+  for (let j = 2; j < xy.length; j++) {
+    for (let i = 0; i + 1 < j; i++) {
+      const p = proj(xy[j], i);
+      const len = along[j] - p.at;
+      if (p.d >= 20 || len < 60 || len > maxLen) continue;
+      // Obsluhuje klička zastávku? Zastávku u místa, kde se trasa vrací, nepočítáme.
+      const serves = sxy.some((s) => {
+        if (Math.hypot(s[0] - xy[j][0], s[1] - xy[j][1]) <= 30) return false;
+        for (let k = i + 1; k < j; k++) if (proj(s, k).d < 25) return true;
+        return false;
+      });
+      if (serves) continue;
+      const [a, b] = [line[i], line[i + 1]];
+      return { i, j, point: [a[0] + (b[0] - a[0]) * p.t, a[1] + (b[1] - a[1]) * p.t] };
+    }
+  }
+  return null;
+}
