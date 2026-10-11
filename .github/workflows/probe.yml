@@ -1,0 +1,22 @@
+name: Probe MPV
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          set +e
+          curl -s -m 30 -X POST 'https://mpvnet.cz/zlin/map/mapData' -H 'Origin: https://mpvnet.cz' -H 'Content-Type: application/json; charset=utf-8' \
+            -d '{"w":17.1,"s":48.86,"e":18.4,"n":49.54,"zoom":13,"showStops":false,"mapFilterId":null}' -o m.json
+          python3 - <<'PY'
+          import json,collections
+          d=json.load(open('m.json')); tr=d['transmitters']
+          print('keys', list(d.keys()), 'n', len(tr))
+          print(collections.Counter((t['cat'],t.get('cr')) for t in tr))
+          for t in [t for t in tr if t['cat']==2][:12]: print(json.dumps(t,ensure_ascii=False))
+          print(json.dumps([t for t in tr if t['cat']==3][:1],ensure_ascii=False))
+          print(len(json.dumps([t for t in tr if t['cat']==2])))
+          PY
