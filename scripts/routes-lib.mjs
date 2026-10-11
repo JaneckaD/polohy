@@ -153,7 +153,11 @@ const plainName = (n) => String(n).replace(/^Zlín,\s*/, '');
 
 /**
  * Opravuje polohy zastávek z jízdních řádů podle OpenStreetMap: nejbližší místo zastavení
- * (stop_position, jinak nástupiště) se stejným názvem do 120 m. Vrací funkci (název, lat, lon) → [lat, lon].
+ * (stop_position, jinak nástupiště) se stejným názvem do 120 m. Jízdní řády mají jednu polohu
+ * pro oba směry; když jsou v OSM nástupiště na obou stranách silnice, vybere podle polohy
+ * předchozí a další zastávky to vpravo ve směru jízdy (jinak by trasa vedla do protisměru
+ * a vůz by se tam musel otáčet).
+ * Vrací funkci (název, lat, lon, předchozí [lat, lon]?, další [lat, lon]?) → [lat, lon].
  */
 export function stopCorrector(platforms = []) {
   const cells = new Map();
@@ -164,27 +168,49 @@ export function stopCorrector(platforms = []) {
     cells.get(k).push(p);
   }
   const cache = new Map();
-  const stats = { checked: 0, moved: 0, sum: 0 };
-  const correct = (name, lat, lon) => {
+  const stats = { checked: 0, moved: 0, sum: 0, sided: 0 };
+  const correct = (name, lat, lon, prev = null, next = null) => {
     if (lat == null) return [lat, lon];
-    const key = `${name}|${lat}|${lon}`;
+    const a = prev?.[0] != null ? prev : [lat, lon];
+    const b = next?.[0] != null ? next : [lat, lon];
+    const key = `${name}|${lat}|${lon}|${a}|${b}`;
     if (cache.has(key)) return cache.get(key);
     const [ci, cj] = cell(lat, lon).split(',').map(Number);
-    let best = null;
+    const near = [];
     for (let di = -1; di <= 1; di++) {
       for (let dj = -1; dj <= 1; dj++) {
         for (const p of cells.get(`${ci + di},${cj + dj}`) ?? []) {
           const d = metres(lat, lon, p[1], p[2]);
-          if (d > 120 || nameSimilarity(plainName(p[0]), plainName(name)) < 0.75) continue;
-          // Místo zastavení na silnici má přednost (sedí na trase), pak to bližší.
-          const score = d + (p[3] === 's' ? 0 : 25);
-          if (!best || score < best.score) best = { score, d, p };
+          if (d <= 120 && nameSimilarity(plainName(p[0]), plainName(name)) >= 0.75) near.push({ p, d });
         }
       }
     }
+    // Strana silnice: vzdálenost nástupiště vlevo od směru jízdy (v metrech) vůči středu všech nástupišť.
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+    const dx = (b[1] - a[1]) * kx;
+    const dy = (b[0] - a[0]) * 110574;
+    const len = Math.hypot(dx, dy);
+    let sided = false;
+    if (near.length > 1 && len > 30) {
+      const cLat = near.reduce((s, x) => s + x.p[1], 0) / near.length;
+      const cLon = near.reduce((s, x) => s + x.p[2], 0) / near.length;
+      for (const x of near) {
+        const ox = (x.p[2] - cLon) * kx;
+        const oy = (x.p[1] - cLat) * 110574;
+        x.left = (dx * oy - dy * ox) / len;
+      }
+      sided = near.some((x) => x.left > 3) && near.some((x) => x.left < -3);
+    }
+    let best = null;
+    for (const x of near) {
+      // Místo zastavení na silnici má přednost (sedí na trase), pak to bližší; v protisměru ne.
+      const score = x.d + (x.p[3] === 's' ? 0 : 25) + (sided && x.left > 3 ? 200 : 0);
+      if (!best || score < best.score) best = { score, d: x.d, p: x.p };
+    }
     stats.checked++;
+    if (sided) stats.sided++;
     let out = [lat, lon];
-    if (best && best.d > 8) {
+    if (best && (best.d > 8 || sided)) {
       out = [best.p[1], best.p[2]];
       stats.moved++;
       stats.sum += best.d;
@@ -194,6 +220,23 @@ export function stopCorrector(platforms = []) {
   };
   correct.stats = stats;
   return correct;
+}
+
+/** Místa, kde se trasa otáčí do protisměru (úhel > 150° na krátkém úseku). Vrací [[lon, lat]]. */
+export function uTurns(line = []) {
+  const out = [];
+  const kx = 111320 * Math.cos(((line[0]?.[1] ?? 49) * Math.PI) / 180);
+  for (let i = 1; i < line.length - 1; i++) {
+    const ax = (line[i][0] - line[i - 1][0]) * kx;
+    const ay = (line[i][1] - line[i - 1][1]) * 110574;
+    const bx = (line[i + 1][0] - line[i][0]) * kx;
+    const by = (line[i + 1][1] - line[i][1]) * 110574;
+    const la = Math.hypot(ax, ay);
+    const lb = Math.hypot(bx, by);
+    if (!la || !lb || Math.min(la, lb) > 400) continue;
+    if ((ax * bx + ay * by) / (la * lb) < -0.87) out.push(line[i]);
+  }
+  return out;
 }
 
 /** Zjednodušená a zaokrouhlená lomená čára [[lon, lat]]. */

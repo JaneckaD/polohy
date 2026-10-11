@@ -18,6 +18,20 @@ export function applyTypeColors(el, type) {
   return el;
 }
 
+/** Barvy podle vozu: u vlaku barva dopravce, jinak podle typu. */
+export function applyVehicleColors(el, v) {
+  if (v?.type !== 'train') return applyTypeColors(el, v?.type);
+  const { color, text } = v.operator;
+  // Na bílém pozadí musí být čáry a ikony dost tmavé (žlutá RegioJetu ne).
+  const ink = color === '#f2c300' ? '#8a6d00' : color;
+  el.style.setProperty('--line-color', color);
+  el.style.setProperty('--line-text', text);
+  el.style.setProperty('--line-ink', ink);
+  el.style.setProperty('--line-stop', ink);
+  el.dataset.type = 'train';
+  return el;
+}
+
 export const TYPE_LABELS = { trolleybus: 'Trolejbus', bus: 'Autobus' };
 
 // Stejné hranice jako legenda na dszo.cz/online: 0–2, 2–4, 4–10 a víc než 10 minut.

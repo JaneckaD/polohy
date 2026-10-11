@@ -7,7 +7,7 @@ import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
 import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
-import { locateStops, simplifyLine, stopCorrector } from './routes-lib.mjs';
+import { locateStops, simplifyLine, stopCorrector, uTurns } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
@@ -158,12 +158,21 @@ if (!tt) {
 const osm = existsSync(ROUTES) ? JSON.parse(readFileSync(ROUTES, 'utf8')) : { routes: [], stops: {} };
 if (tt?.lines?.length && osm.platforms?.length) {
   const correct = stopCorrector(osm.platforms);
+  // Sousední zastávky určují směr jízdy, a tedy stranu silnice.
+  const along = (list, i) => [list[i - 1] ?? null, list[i + 1] ?? null];
   for (const line of tt.lines)
     for (const d of line.directions)
-      for (const v of d.variants) if (v.coords) v.coords = v.coords.map((c, i) => (c ? correct(v.stops[i], c[0], c[1]) : c));
-  for (const t of tt.rawTrips ?? []) t.stops = t.stops.map(([n, lat, lon]) => [n, ...correct(n, lat, lon)]);
-  const { checked, moved, sum } = correct.stats;
-  console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m).`);
+      for (const v of d.variants) {
+        if (!v.coords) continue;
+        const raw = v.coords;
+        v.coords = raw.map((c, i) => (c ? correct(v.stops[i], c[0], c[1], ...along(raw, i)) : c));
+      }
+  for (const t of tt.rawTrips ?? []) {
+    const raw = t.stops.map(([, lat, lon]) => [lat, lon]);
+    t.stops = t.stops.map(([n, lat, lon], i) => [n, ...correct(n, lat, lon, ...along(raw, i))]);
+  }
+  const { checked, moved, sum, sided } = correct.stats;
+  console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m), podle strany silnice ${sided}.`);
 }
 
 mkdirSync(TT_DIR, { recursive: true });
@@ -232,6 +241,12 @@ const stopDict = { ...osm.stops };
 for (const r of routes) for (const [name, lat, lon] of r.stops) stopDict[normalizeName(name)] ??= [lat, lon];
 writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: stopDict, platforms: osm.platforms ?? [] }));
 console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů ${shaped}, nově spočítané ${routed}, z cache ${cached}), bez poloh zastávek ${missing}, z OSM navíc ${osmFallback.length}.`);
+// Kontrola: kolik tras se někde otáčí do protisměru (dřív a teď).
+const turning = (list) => list.filter((r) => r.dir && uTurns(r.line).length);
+const before = turning(previous);
+const after = turning(routes);
+console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length}.`);
+for (const r of after.slice(0, 25)) console.log(`  linka ${r.ref} → ${r.to}: ${uTurns(r.line).map(([x, y]) => `${y},${x}`).join(' ')}`);
 const unlocated = new Set();
 for (const line of tt?.lines ?? []) for (const d of line.directions) for (const v of d.variants) if (!v.coords) for (const s of locateStops(v.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);
 if (unlocated.size) console.log(`Zastávky bez polohy v OSM (${unlocated.size}): ${[...unlocated].slice(0, 40).join('; ')}`);

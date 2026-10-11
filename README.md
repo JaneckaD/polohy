@@ -30,7 +30,9 @@ DSZO data obnovuje zhruba každých 15 s, aplikace je stahuje ve stejném interv
 GitHub Pages hostuje jen statické soubory. Server DSZO neposílá hlavičku `Access-Control-Allow-Origin`,
 takže prohlížeč nedovolí stránce na `github.io` jeho data přečíst. Mezi aplikací a DSZO proto stojí malá proxy
 [`proxy/worker.js`](proxy/worker.js) pro Cloudflare Workers (zdarma, 100 000 požadavků denně). Pouští jen
-tři veřejné adresy DSZO a na 10 s si odpověď drží v cache, takže server DSZO nezatěžuje.
+tři veřejné adresy DSZO a na 10 s si odpověď drží v cache, takže server DSZO nezatěžuje. Na adrese `/trains`
+vrací polohy osobních vlaků všech dopravců od Správy železnic (mapy.spravazeleznic.cz), jen z okolí
+Zlínského kraje; aplikace pak ukáže jen vlaky uvnitř kraje.
 
 Zvažované alternativy:
 - **GitHub Action, která data stahuje a ukládá do repozitáře:** obejde se bez dalšího účtu, ale cron na GitHubu

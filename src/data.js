@@ -1,4 +1,5 @@
 import { parseVehiclesPage, parseTable, mergeVehicles, parseTrip } from './dszo.js';
+import { fetchTrains } from './trains.js';
 
 // DSZO obnovuje data zhruba každých 15 s.
 export const REFRESH_MS = 15000;
@@ -40,4 +41,10 @@ export async function fetchTrip(v) {
   } catch {
     return [];
   }
+}
+
+/** Vlaky uvnitř kraje (region = hranice kraje z region.json). */
+export function fetchRegionTrains(region) {
+  if (!PROXY) return Promise.resolve([]);
+  return fetchTrains(PROXY, region);
 }

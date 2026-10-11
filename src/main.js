@@ -4,11 +4,12 @@ import { Map, Marker, AttributionControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
-import { fetchVehicles, fetchTrip, proxyConfigured, REFRESH_MS } from './data.js';
+import { fetchVehicles, fetchTrip, fetchRegionTrains, proxyConfigured, REFRESH_MS } from './data.js';
 import { renderDetails, renderTrip } from './card.js';
-import { applyTypeColors } from './colors.js';
+import { applyVehicleColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
-import { drawRegion } from './region.js';
+import { drawRegion, loadRegion } from './region.js';
+import { TRAIN_REFRESH_MS } from './trains.js';
 import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
@@ -192,7 +193,7 @@ async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
   if (!v) return deselect();
-  applyTypeColors(sheetEl, v.type);
+  applyVehicleColors(sheetEl, v);
   sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v));
   const tripEl = sheetEl.querySelector('.sheet-trip');
   const keep = tripEl.scrollTop;
@@ -209,7 +210,8 @@ async function updateSelected(first = false) {
   );
   if (!first) tripEl.scrollTop = keep;
   const token = selected.token;
-  const route = await computeRoute(v, selected.trip ?? []);
+  // Vlaky: trasu ani jízdní řád nemáme, jen kde je a kam jede.
+  const route = v.type === 'train' ? null : await computeRoute(v, selected.trip ?? []);
   if (!selected || selected.token !== token) return;
   if (route) drawRoute(map, route, v.type);
   else clearRoute(map);
@@ -278,7 +280,7 @@ async function select(v) {
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = await fetchTrip(v);
+  const trip = v.type === 'train' ? [] : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   updateSelected(true);
@@ -302,19 +304,25 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && deselect());
 const vehicles = new VehicleLayer(map, { onHover: showHover, onLeave: hideHover, onSelect: select });
 let routes = [];
 let timer = null;
+let trainTimer = null;
 
 let lastUpdate = null;
 function render() {
   const mine = journeyVehicleIds();
-  const shown = mine ? store.vehicles.filter((v) => mine.has(v.id)) : store.vehicles.filter((v) => matchesFilter(v, store.filter));
-  const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...store.vehicles.filter((v) => v.id === selected.id)] : shown;
+  const all = [...store.vehicles, ...store.trains];
+  const shown = mine ? all.filter((v) => mine.has(v.id)) : all.filter((v) => matchesFilter(v, store.filter));
+  const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...all.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
   updateJourneyBar();
   updateSelected();
   drawRegion(map);
   if (lastUpdate) {
     const total = store.vehicles.length;
-    setStatus(shown.length === total ? `${total} vozů · ${lastUpdate}` : `${shown.length} z ${total} vozů · ${lastUpdate}`);
+    const buses = shown.filter((v) => v.type !== 'train').length;
+    const trains = shown.length - buses;
+    const parts = [buses === total ? `${total} vozů` : `${buses} z ${total} vozů`];
+    if (trains) parts.push(`${trains} ${trains === 1 ? 'vlak' : trains < 5 ? 'vlaky' : 'vlaků'}`);
+    setStatus(`${parts.join(' · ')} · ${lastUpdate}`);
   }
 }
 
@@ -326,6 +334,15 @@ async function refresh() {
   } catch (err) {
     console.error(err);
     setStatus(navigator.onLine ? 'Data DSZO se nepodařilo načíst' : 'Bez připojení', true);
+  }
+}
+
+async function refreshTrains() {
+  try {
+    store.setTrains(await fetchRegionTrains(await loadRegion()));
+  } catch (err) {
+    // Vlaky jsou doplněk: bez nich mapa MHD funguje dál (např. starší proxy bez /trains).
+    console.warn('Vlaky se nepodařilo načíst:', err.message);
   }
 }
 
@@ -347,12 +364,16 @@ function start() {
   }
   if (timer) return;
   refresh();
+  refreshTrains();
   timer = setInterval(refresh, REFRESH_MS);
+  trainTimer = setInterval(refreshTrains, TRAIN_REFRESH_MS);
 }
 
 function stop() {
   clearInterval(timer);
+  clearInterval(trainTimer);
   timer = null;
+  trainTimer = null;
 }
 
 // Když je aplikace na pozadí, data nestahujeme.

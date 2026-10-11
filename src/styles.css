@@ -1183,6 +1183,37 @@ input:focus-visible {
   color: var(--line-text);
 }
 
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chip-toggle {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: none;
+  background: var(--fill-2);
+  color: var(--label);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px var(--chip-color, var(--label-2));
+}
+
+.chip-toggle.on {
+  background: var(--chip-color, var(--label));
+  color: var(--chip-text, #ffffff);
+}
+
+.filter-empty {
+  font-size: 15px;
+  color: var(--label-2);
+  padding: 0 4px;
+}
+
 /* --- Jízdní řády (seznamy ve skupinách) ----------------------------------------- */
 .page {
   position: absolute;
@@ -2228,4 +2259,62 @@ input:focus-visible {
     margin: 0 calc(-1 * max(16px, calc(50% - 340px)));
     padding: 0 max(16px, calc(50% - 340px)) 8px;
   }
+}
+
+/* Vlaky: obdélník v barvě dopravce, vlevo druh vlaku (barva podle druhu), vpravo číslo. */
+.vehicle[data-type='train'] {
+  width: auto;
+  height: 24px;
+}
+
+.vehicle[data-type='train'] .vehicle-dot {
+  position: relative;
+  inset: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 7px 0 2px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.train-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vehicle[data-type='train'] .vehicle-arrow {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: calc(2 * var(--arrow-r, 36px));
+  height: calc(2 * var(--arrow-r, 36px));
+  margin: calc(-1 * var(--arrow-r, 36px)) 0 0 calc(-1 * var(--arrow-r, 36px));
+}
+
+.vehicle[data-type='train'] .vehicle-arrow::before {
+  border-bottom-color: var(--vehicle-color);
+}
+
+.card-line.train {
+  gap: 6px;
+  padding: 0 12px 0 6px;
+  border-radius: 12px;
+  font-size: 19px;
+}
+
+.card-line.train .train-kind {
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font-size: 15px;
 }

@@ -1,4 +1,5 @@
 import { Marker } from 'maplibre-gl';
+import { TRAIN_KINDS } from './trains.js';
 
 // Vrstva vozidel: kolečko s číslem linky a malou šipkou ve směru jízdy.
 // Směr bereme z dat (heading), a když chybí, dopočítáme ho z posledních dvou poloh vozu.
@@ -26,12 +27,34 @@ function bearingDegrees(a, b) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-function createElement(vehicle) {
+function createElement() {
   const el = document.createElement('div');
   el.className = 'vehicle';
   el.innerHTML = '<div class="vehicle-arrow"></div><div class="vehicle-dot"></div>';
-  el.querySelector('.vehicle-dot').textContent = vehicle.line;
   return el;
+}
+
+// Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku druh (barva podle druhu) a číslo
+// na barvě dopravce.
+function setLabel(el, v) {
+  const key = v.type === 'train' ? `${v.code}|${v.number}|${v.operator?.short}` : v.line;
+  if (el.dataset.label === key) return;
+  el.dataset.label = key;
+  const dot = el.querySelector('.vehicle-dot');
+  if (v.type !== 'train') {
+    dot.textContent = v.line;
+    return;
+  }
+  const kind = document.createElement('span');
+  kind.className = 'train-kind';
+  kind.textContent = v.code;
+  kind.style.background = TRAIN_KINDS[v.kind]?.color ?? '#6c6c70';
+  const num = document.createElement('span');
+  num.className = 'train-num';
+  num.textContent = v.number;
+  dot.replaceChildren(kind, num);
+  el.style.setProperty('--vehicle-color', v.operator?.color ?? '#636366');
+  el.style.setProperty('--vehicle-text', v.operator?.text ?? '#ffffff');
 }
 
 export class VehicleLayer {
@@ -55,14 +78,12 @@ export class VehicleLayer {
       let item = this.items.get(v.id);
 
       if (!item) {
-        const el = createElement(v);
+        const el = createElement();
         const marker = new Marker({ element: el }).setLngLat([v.lon, v.lat]).addTo(this.map);
         item = { marker, el, vehicle: v, pos: { lat: v.lat, lon: v.lon }, bearing: null };
         this.bindEvents(item);
         this.items.set(v.id, item);
       } else {
-        const dot = item.el.querySelector('.vehicle-dot');
-        if (dot.textContent !== v.line) dot.textContent = v.line;
         if (distanceMeters(item.pos, v) >= MIN_MOVE_METERS) {
           item.bearing = bearingDegrees(item.pos, v);
         }
@@ -72,6 +93,7 @@ export class VehicleLayer {
       const bearing = Number.isFinite(v.bearing) ? v.bearing : item.bearing;
       item.vehicle = { ...v, bearing };
       item.el.dataset.type = v.type;
+      setLabel(item.el, v);
       this.setBearing(item, bearing);
     }
 
@@ -116,6 +138,15 @@ export class VehicleLayer {
     } else {
       arrow.style.display = '';
       arrow.style.transform = `rotate(${bearing}deg)`;
+      if (item.el.dataset.type === 'train') {
+        // Vlak je obdélník: šipka obíhá těsně kolem jeho okraje.
+        const dot = item.el.querySelector('.vehicle-dot');
+        const w = dot.offsetWidth || 60;
+        const h = dot.offsetHeight || 24;
+        const rad = (bearing * Math.PI) / 180;
+        const r = Math.round(Math.abs(Math.sin(rad)) * (w / 2) + Math.abs(Math.cos(rad)) * (h / 2) + 9);
+        arrow.style.setProperty('--arrow-r', `${r}px`);
+      }
     }
   }
 

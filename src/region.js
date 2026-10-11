@@ -9,6 +9,25 @@ const fetchJson = (url) =>
     .catch(() => null);
 
 let regionPromise = null;
+
+/** Hranice kraje (GeoJSON Feature), načtená jednou. */
+export function loadRegion() {
+  regionPromise ??= fetchJson('./region.json');
+  return regionPromise;
+}
+
+/** Leží bod [lon, lat] uvnitř kraje? */
+export function regionContains(region, lon, lat) {
+  const ring = region?.geometry?.coordinates?.[0];
+  if (!ring) return true;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
 let railsPromise = null;
 
 // Plocha s otvorem: obrys kraje musí být opačně orientovaný než vnější obdélník.
@@ -115,9 +134,8 @@ export function drawRegion(map) {
     before,
   );
 
-  regionPromise ??= fetchJson('./region.json');
   railsPromise ??= fetchJson('./rails.json');
-  regionPromise.then((region) => {
+  loadRegion().then((region) => {
     if (region?.geometry) map.getSource('region-mask')?.setData(maskFeature(region));
   });
   railsPromise.then((rails) => {

@@ -20,8 +20,9 @@ function save(key, value) {
 const listeners = new Set();
 
 export const store = {
-  filter: { type: 'all', lines: [], ...load('mhd.filter', {}), delayed: false },
+  filter: { type: 'all', lines: [], trainKinds: [], operators: [], ...load('mhd.filter', {}), delayed: false },
   vehicles: [],
+  trains: [],
 
   setFilter(patch) {
     this.filter = { ...this.filter, ...patch };
@@ -32,6 +33,11 @@ export const store = {
   setVehicles(list) {
     this.vehicles = list;
     save('mhd.vehicles', { at: Date.now(), list });
+    this.emit();
+  },
+
+  setTrains(list) {
+    this.trains = list;
     this.emit();
   },
 
@@ -52,12 +58,22 @@ export const store = {
 };
 
 export function filterActive(f) {
-  return f.type !== 'all' || f.lines.length > 0;
+  return f.type !== 'all' || f.lines.length > 0 || f.trainKinds?.length > 0 || f.operators?.length > 0;
 }
 
 export function matchesFilter(v, f) {
+  if (v.type === 'train') {
+    // Vybrané linky MHD: vlaky schováme, ať je vidět jen to, co hledám.
+    if (f.type !== 'all' && f.type !== 'train') return false;
+    if (f.type !== 'train' && f.lines.length) return false;
+    if (f.trainKinds?.length && !f.trainKinds.includes(v.kind)) return false;
+    if (f.operators?.length && !f.operators.includes(v.operator.short)) return false;
+    return true;
+  }
+  if (f.type === 'train') return false;
   if (f.type !== 'all' && v.type !== f.type) return false;
   if (f.lines.length && !f.lines.includes(v.line)) return false;
+  // Filtr druhů vlaků nebo dopravců bez výběru linek: MHD necháme.
   return true;
 }
 

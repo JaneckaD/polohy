@@ -28,7 +28,7 @@
               <div id="status" class="brand-status" role="status">Načítám…</div>
             </div>
           </div>
-          <button id="filter-open" class="round-btn glass" type="button" aria-label="Filtr vozidel">
+          <button id="filter-open" class="round-btn glass" type="button" aria-label="Filtr vozidel a vlaků">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M7 12h10M10 17h4"/></svg>
             <span id="filter-badge" class="badge" hidden></span>
           </button>
@@ -87,7 +87,14 @@
             <button type="button" data-type="all">Vše</button>
             <button type="button" data-type="trolleybus">Trolejbusy</button>
             <button type="button" data-type="bus">Autobusy</button>
+            <button type="button" data-type="train">Vlaky</button>
           </div>
+        </div>
+        <div class="filter-section" id="filter-trains">
+          <div class="filter-label">Druh vlaku · nic nevybráno = všechny</div>
+          <div id="filter-kinds" class="chip-row"></div>
+          <div class="filter-label">Dopravce</div>
+          <div id="filter-operators" class="chip-row"></div>
         </div>
         <div class="filter-section">
           <div class="filter-label">Linky · nic nevybráno = všechny</div>
