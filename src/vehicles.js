@@ -57,6 +57,9 @@ function setLabel(el, v) {
   el.style.setProperty('--vehicle-text', v.operator?.text ?? '#ffffff');
 }
 
+const STACK_GRID = 0.0004; // ~40 m
+const STACK_STEP_PX = 28;
+
 export class VehicleLayer {
   /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
   constructor(map, handlers = {}) {
@@ -103,7 +106,25 @@ export class VehicleLayer {
         this.items.delete(id);
       }
     }
+    this.stackTrains(vehicles);
     this.applySelection();
+  }
+
+  // Vlaky stojící ve stejné stanici mají stejnou polohu: značky se seřadí pod sebe, ať jdou všechny vidět.
+  stackTrains(vehicles) {
+    const groups = new Map();
+    for (const v of vehicles) {
+      if (v.type !== 'train') continue;
+      const key = `${Math.round(v.lat / STACK_GRID)}:${Math.round(v.lon / STACK_GRID)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(v.id);
+    }
+    for (const ids of groups.values()) {
+      ids.sort();
+      ids.forEach((id, i) => {
+        this.items.get(id)?.marker.setOffset([0, Math.round((i - (ids.length - 1) / 2) * STACK_STEP_PX)]);
+      });
+    }
   }
 
   bindEvents(item) {
