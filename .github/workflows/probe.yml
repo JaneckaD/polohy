@@ -1,0 +1,16 @@
+name: Probe rails
+on:
+  push:
+    paths: ['.github/workflows/probe.yml', '.github/probe/**']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          curl -s -m 60 'https://janeckad.github.io/polohy/rails.json' -o rails.json -w "rails %{http_code}\n"
+          timeout 120 node .github/probe/rails.mjs rails.json
