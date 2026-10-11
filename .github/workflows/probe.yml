@@ -1,0 +1,19 @@
+name: Probe JDF
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          set +e
+          curl -s -m 30 https://portal.cisjr.cz/pub/ | grep -io 'href="[^"]*"' | head -20
+          curl -s -m 30 https://portal.cisjr.cz/pub/jdf/ | grep -io 'href="[^"]*"' | head -30
+          curl -s -m 30 https://portal.cisjr.cz/pub/jdf/ -o l.html; f=$(grep -io 'href="[^"]*\.zip"' l.html | head -1 | sed 's/href="//I;s/"//')
+          echo "ZIP $f"; curl -sI -m 30 "https://portal.cisjr.cz$f" | grep -i length
+          curl -s -m 300 "https://portal.cisjr.cz$f" -o j.zip -w "dl %{http_code} %{size_download}\n"
+          unzip -l j.zip | head -8; unzip -l j.zip | tail -2
+          mkdir x; cd x; unzip -q ../j.zip; ls | head; find . -name '*.zip' | head -3; find . -name '*.zip' | wc -l
+          z=$(find . -name '*.zip' | head -1); mkdir y; (cd y; unzip -q "../$z"; ls; for f in Linky.txt Dopravci.txt; do echo "== $f"; head -3 $f | iconv -f cp1250 -t utf-8; done)
