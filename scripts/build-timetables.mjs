@@ -11,6 +11,7 @@ import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from 
 import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
+import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
 import { cityStopName } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
@@ -249,6 +250,23 @@ mkdirSync(TT_DIR, { recursive: true });
 if (tt) {
   // Data pro vyhledávání spojení a seznam linek (filtr).
   const planner = tt.rawTrips ? buildPlannerFromTrips(tt) : buildPlannerData(tt);
+  // Výbava vlaků z celostátních jízdních řádů SŽ.
+  const numbers = new Set(planner.patterns.filter((p) => p.y === 'v').map((p) => p.n));
+  if (numbers.size) {
+    try {
+      const year = timetableYear();
+      let res;
+      for (const y of [year, year - 1, year + 1]) {
+        res = await fetch(CZPTT_URL(y), { headers: UA });
+        if (res.ok) break;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      planner.equip = railEquipment(new Uint8Array(await res.arrayBuffer()), numbers);
+      console.log(`Výbava vlaků: ${Object.keys(planner.equip).length} z ${numbers.size} vlaků.`);
+    } catch (err) {
+      console.warn(`Výbavu vlaků se nepodařilo načíst: ${err.message}`);
+    }
+  }
   writeFileSync(new URL('planner.json', TT_DIR), JSON.stringify(planner));
   writeFileSync(new URL('index.json', TT_DIR), JSON.stringify({ startDate: tt.startDate, days: tt.days, lines: tt.lines.map((l) => ({ ref: l.ref, type: l.type })) }));
   console.log(`Vyhledávání spojení: ${planner.stops.length} zastávek, ${planner.patterns.length} variant, ${planner.trips.length} spojů.`);

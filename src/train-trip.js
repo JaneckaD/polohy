@@ -45,6 +45,7 @@ export function trainTrip(P, number, date, now) {
     };
   });
   stops.line = trip.pattern.l ?? null; // linka, např. S11 nebo R18 Slovácký expres
+  stops.equip = P.equip?.[String(number)] ?? null; // kódy výbavy z jízdního řádu SŽ
   return stops;
 }
 

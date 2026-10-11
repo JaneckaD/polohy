@@ -46,7 +46,7 @@ export function preparePlanner(data) {
   }
   const walkMin = new Map();
   walks.forEach((list, a) => list.forEach((w) => walkMin.set(a * stops.length + w.to, w)));
-  return { startDate: data.startDate, days: data.days, stops, trips, walks, walkMin, connCache: new Map() };
+  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, connCache: new Map() };
 }
 
 const dayIndex = (start, date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);

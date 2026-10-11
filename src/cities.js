@@ -50,7 +50,8 @@ export function parseCityBus(t) {
     rawStop: f[3] || null,
     rawHeadsign: f[9] || null,
     tripNo: f[2] || null,
-    lowFloor: f[10] === '1',
+    // Nízkopodlažnost: 1 ano, 0 ne, jinak neznámá.
+    lowFloor: f[10] === '1' ? true : f[10] === '0' ? false : null,
     features: f[10] === '1' ? ['lowlevel'] : [],
     plate: plate || null,
     delay,

@@ -16,6 +16,16 @@ const ICONS = {
   blind: svg('<path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>'),
   camera: svg('<rect x="3" y="7" width="13" height="10" rx="1.5"/><path d="m16 11 5-3v8l-5-3"/>'),
   usb: svg('<path d="M12 3v13"/><path d="M9 6l3-3 3 3"/><path d="M12 16a3 3 0 1 0 0 .01"/><path d="M12 12 7 9V7M12 10l5-3V5"/>'),
+  power: svg('<path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0V8z"/><path d="M12 17v4"/>'),
+  bike: svg('<circle cx="5.5" cy="16" r="3.5"/><circle cx="18.5" cy="16" r="3.5"/><path d="M5.5 16 9 9h7l2.5 7M9 9l3.5 7H5.5M12.5 16 16 9M8 6h3"/>'),
+  food: svg('<path d="M4 9h12v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c-.8 1 .8 2 0 3M12 3.5c-.8 1 .8 2 0 3"/><path d="M3 21h14"/>'),
+  quiet: svg('<path d="M4 10v4h3l5 4V6L7 10H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>'),
+  kids: svg('<circle cx="12" cy="5" r="2.2"/><path d="M8 10.5 12 9l4 1.5M12 9v6M9 21l3-6 3 6"/>'),
+  first: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9.5 13 8v9"/>'),
+  ticket: svg('<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4V8z"/><path d="M14 6v12" stroke-dasharray="2 2"/>'),
+  ladies: svg('<circle cx="12" cy="8" r="4.5"/><path d="M12 12.5V21M9 18h6"/>'),
+  bed: svg('<path d="M3 6v14M3 16h18v4M21 16v-3a3 3 0 0 0-3-3h-7v6"/><circle cx="7" cy="12.5" r="1.8"/>'),
+  wc: svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m6 9 1.3 6L9 10.5 10.7 15 12 9M18 10a2.4 2.4 0 1 0 0 4"/>'),
   trolleybus: svg('<rect x="4" y="7" width="16" height="11" rx="2"/><path d="M4 12h16M9 7 7 2M15 7l2-5"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
   bus: svg('<rect x="4" y="4" width="16" height="14" rx="2"/><path d="M4 11h16M8 4v7M16 4v7"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
   train: svg('<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14M9 21l1.5-4M15 21l-1.5-4"/><circle cx="9" cy="13.5" r="1" fill="currentColor"/><circle cx="15" cy="13.5" r="1" fill="currentColor"/>'),
@@ -44,6 +54,47 @@ function agoLabel(updated) {
   return `před ${Math.round(s / 60)} min`;
 }
 
+/** Řádek s výbavou vozu: dlaždice [ikona, popisek, má/nemá] ve stejném vzhledu jako u DSZO. */
+function featureRow(items) {
+  const feats = h('div', 'card-features');
+  for (const [icon, label, has] of items) {
+    const f = h('span', `feature${has ? ' on' : ''}`);
+    f.title = has ? label : `${label}: ne`;
+    f.innerHTML = ICONS[icon];
+    f.append(h('span', 'feature-label', label));
+    feats.append(f);
+  }
+  return feats;
+}
+
+/**
+ * Výbava vlaku podle centrálních poznámek jízdního řádu SŽ (kódy viz scripts/rail-equip.mjs).
+ * Wi-Fi, zásuvky, bezbariérovost a kola ukážeme vždy (i když chybí), ostatní jen když vlak má.
+ */
+export function trainFeatures(codes) {
+  if (!codes) return [];
+  const has = (...c) => c.some((x) => codes.includes(x));
+  const items = [
+    ['wifi', 'Wi-Fi', has(40)],
+    ['power', 'Zásuvky 230 V', has(30)],
+    has(34) && !has(17) ? ['lowlevel', 'Vozík po objednání', true] : ['lowlevel', 'Bezbariérový', has(17)],
+    ['bike', has(29) ? 'Kola s místenkou' : 'Jízdní kola', has(22, 28, 29) && !has(36)],
+  ];
+  if (has(18)) items.push(['food', 'Restaurační vůz', true]);
+  else if (has(25)) items.push(['food', 'Bistro', true]);
+  else if (has(24)) items.push(['food', 'Občerstvení', true]);
+  if (has(10)) items.push(['first', '1. třída', true]);
+  if (has(39)) items.push(['quiet', 'Tichý oddíl', true]);
+  if (has(33)) items.push(['kids', 'Oddíl pro děti', true]);
+  if (has(38)) items.push(['ladies', 'Dámský oddíl', true]);
+  if (has(20)) items.push(['ticket', 'Povinná místenka', true]);
+  else if (has(19)) items.push(['ticket', 'Místenky', true]);
+  if (has(13)) items.push(['bed', 'Lůžkový vůz', true]);
+  else if (has(14)) items.push(['bed', 'Lehátkový vůz', true]);
+  if (has(46)) items.push(['wc', 'WC', false]);
+  return items;
+}
+
 /** Detail vlaku: druh, dopravce, odkud a kam, zpoždění, kde právě je. */
 function renderTrainDetails(v, trip) {
   const card = applyVehicleColors(h('div', 'card'), v);
@@ -67,6 +118,8 @@ function renderTrainDetails(v, trip) {
   pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
   card.append(pills);
 
+  const feats = trainFeatures(trip?.equip);
+  if (feats.length) card.append(featureRow(feats));
   return card;
 }
 
@@ -95,18 +148,12 @@ export function renderDetails(v, trip = null) {
   // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
   if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));
 
-  // U MHD jiných měst výbavu vozu neznáme (jen nízkopodlažnost), řádek s výbavou vynecháme.
-  if (v.city) return card;
-  const feats = h('div', 'card-features');
-  for (const [key, label] of Object.entries(FEATURES)) {
-    const has = v.features?.includes(key);
-    const f = h('span', `feature${has ? ' on' : ''}`);
-    f.title = has ? label : `${label}: ne`;
-    f.innerHTML = ICONS[key];
-    f.append(h('span', 'feature-label', label));
-    feats.append(f);
+  // U MHD jiných měst víme jen, jestli je vůz nízkopodlažní.
+  if (v.city) {
+    if (v.lowFloor != null) card.append(featureRow([['lowlevel', 'Bezbariérový', v.lowFloor]]));
+    return card;
   }
-  card.append(feats);
+  card.append(featureRow(Object.entries(FEATURES).map(([key, label]) => [key, label, !!v.features?.includes(key)])));
   return card;
 }
 
