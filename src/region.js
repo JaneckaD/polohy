@@ -60,7 +60,13 @@ export function drawRegion(map) {
   }
   map.addSource('rails', { type: 'geojson', data: empty });
   map.addSource('region-mask', { type: 'geojson', data: empty });
-  if (!map.hasImage('hatch')) map.addImage('hatch', hatchImage(), { pixelRatio: 2 });
+  let hatch = map.hasImage('hatch');
+  try {
+    if (!hatch) map.addImage('hatch', hatchImage(), { pixelRatio: 2 });
+    hatch = true;
+  } catch {
+    // Bez šrafy aspoň šedá plocha; koleje se nakreslí tak jako tak.
+  }
   const before = beforeId(map);
   // Koleje: tmavá čára s bílými čárkami za sebou, ať jsou vidět i z dálky.
   map.addLayer(
@@ -91,7 +97,7 @@ export function drawRegion(map) {
     before,
   );
   map.addLayer(
-    { id: 'region-mask', type: 'fill', source: 'region-mask', paint: { 'fill-pattern': 'hatch' } },
+    { id: 'region-mask', type: 'fill', source: 'region-mask', paint: hatch ? { 'fill-pattern': 'hatch' } : { 'fill-color': '#e8e8ec', 'fill-opacity': 0.7 } },
     before,
   );
   map.addLayer(

@@ -20,6 +20,8 @@ relation["type"="route"]["route"="train"](area.kraj)->.r;
   way["railway"="rail"][!"service"]["usage"!~"^(industrial|military|test|freight)$"]["railway:traffic_mode"!="freight"]["passenger"!="no"](area.kraj);
 );
 out geom;
+node["railway"~"^(station|halt)$"]["name"](area.kraj);
+out;
 `;
 
 const OUT = new URL('../public/rails.json', import.meta.url);
@@ -41,19 +43,7 @@ writeFileSync(OUT, JSON.stringify({ generated: new Date().toISOString(), lines: 
 const points = rails.lines.reduce((n, l) => n + l.length, 0);
 console.log(`Tratě s osobní dopravou: ${rails.ways} úseků → ${rails.lines.length} čar, ${points} bodů.`);
 
-// Kontrola: stanice, kudy jezdí osobní vlaky, by měly ležet u některé z tratí.
-const CHECK = {
-  'Otrokovice': [49.2096, 17.5306],
-  'Zlín střed': [49.2252, 17.6709],
-  'Vizovice': [49.2196, 17.8530],
-  'Kroměříž': [49.2966, 17.4040],
-  'Uherské Hradiště': [49.0699, 17.4630],
-  'Uherský Brod': [49.0294, 17.6459],
-  'Luhačovice': [49.1036, 17.7550],
-  'Bojkovice': [49.0390, 17.8070],
-  'Vsetín': [49.3374, 17.9937],
-  'Valašské Meziříčí': [49.4706, 17.9670],
-};
+// Kontrola: osobní stanice a zastávky z OSM by měly ležet u některé z nakreslených tratí.
 const metres = (a, b) => Math.hypot((a[0] - b[0]) * 110574, (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180));
 const near = (pt) => {
   let best = Infinity;
@@ -61,9 +51,12 @@ const near = (pt) => {
     for (let i = 1; i < line.length; i++) {
       const a = [line[i - 1][1], line[i - 1][0]];
       const b = [line[i][1], line[i][0]];
-      for (let t = 0; t <= 1; t += 0.1) best = Math.min(best, metres(pt, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]));
+      const steps = Math.max(1, Math.ceil(metres(a, b) / 20));
+      for (let t = 0; t <= steps; t++) best = Math.min(best, metres(pt, [a[0] + ((b[0] - a[0]) * t) / steps, a[1] + ((b[1] - a[1]) * t) / steps]));
     }
   }
   return Math.round(best);
 };
-console.log(`Kontrola tratí (vzdálenost stanice od koleje): ${Object.entries(CHECK).map(([n, p]) => `${n} ${near(p)} m`).join(', ')}`);
+const stations = data.elements.filter((e) => e.type === 'node' && e.tags?.name);
+const far = stations.map((s) => [s.tags.name, near([s.lat, s.lon])]).filter(([, d]) => d > 100);
+console.log(`Kontrola tratí: ${stations.length} stanic a zastávek, daleko od nakreslené koleje ${far.length}${far.length ? `: ${far.map(([n, d]) => `${n} ${d} m`).join(', ')}` : ''}`);
