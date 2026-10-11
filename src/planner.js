@@ -41,7 +41,9 @@ export function preparePlanner(data) {
       walks[b.i].push({ to: a.i, min, m: Math.round(m * DETOUR) });
     }
   }
-  return { startDate: data.startDate, days: data.days, stops, trips, walks, connCache: new Map() };
+  const walkMin = new Map();
+  walks.forEach((list, a) => list.forEach((w) => walkMin.set(a * stops.length + w.to, w)));
+  return { startDate: data.startDate, days: data.days, stops, trips, walks, walkMin, connCache: new Map() };
 }
 
 const dayIndex = (start, date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
@@ -154,7 +156,81 @@ export function earliestJourney(P, { origins, target, date, time, penalty = 0 })
       s = h.enter.from;
     }
   }
-  return finishJourney(legs);
+  return finishJourney(improveTransfers(P, legs));
+}
+
+/**
+ * Nejrychlejší hledání vystoupí z prvního vozu co nejpozději a přestoupí „na těsno“.
+ * Pro každý přestup proto zkusíme všechna místa, kde jde z prvního vozu vystoupit a do druhého
+ * (stejného spoje) nastoupit, a vybereme to s nejkratší chůzí a dostatečnou rezervou –
+ * raději dřív vystoupit a počkat. Příjezd do cíle se nemění.
+ */
+function improveTransfers(P, legs) {
+  const n = P.stops.length;
+  const rides = legs.filter((l) => l.type === 'ride');
+  if (rides.length < 2) return legs;
+  // Původní pěší přesuny mezi jízdami (když lepší místo přestupu nenajdeme, zůstanou).
+  legs.forEach((l, i) => {
+    if (l.type === 'ride' && legs[i - 1]?.type === 'walk' && i > 1) l.walkBefore = { min: legs[i - 1].min, m: legs[i - 1].m };
+  });
+  // Nejlepší místo přestupu z jízdy a na jízdu b, nebo null, když na sebe nenavazují.
+  const bestLink = (a, b) => {
+    const as = a.trip.pattern.s;
+    const bs = b.trip.pattern.s;
+    let best = null;
+    for (let k = a.fromK + 1; k < as.length; k++) {
+      const arr = a.trip.times[k] - a.shift;
+      for (let m = 0; m < b.toK; m++) {
+        const dep = b.trip.times[m] - b.shift;
+        if (dep < arr) continue;
+        const sa = as[k];
+        const sb = bs[m];
+        const w = sa === sb ? null : P.walkMin.get(sa * n + sb);
+        if (sa !== sb && !w) continue;
+        const walk = w ? w.min : 0;
+        const slack = dep - arr - walk;
+        if (slack < (walk ? 0 : MIN_CHANGE_MIN)) continue;
+        // Chůze je nejdražší, těsný přestup (pod 3 min) penalizujeme, delší rezerva je drobné plus.
+        const score = walk + (slack < 3 ? (3 - slack) * 3 : 0) - Math.min(slack, 15) * 0.1;
+        if (!best || score < best.score) best = { score, k, m, w, arr, dep };
+      }
+    }
+    return best;
+  };
+  // Zbytečné „přeskoky“ (jedna zastávka jiným vozem jen kvůli dřívějšímu přestupu) vynecháme,
+  // když jde z předchozí jízdy přestoupit rovnou na následující.
+  for (let i = 1; i < rides.length - 1; i++) {
+    if (bestLink(rides[i - 1], rides[i + 1])) {
+      rides.splice(i, 1);
+      i--;
+    }
+  }
+  for (let r = 0; r < rides.length - 1; r++) {
+    const a = rides[r];
+    const b = rides[r + 1];
+    const best = bestLink(a, b);
+    if (!best) continue;
+    a.toK = best.k;
+    a.to = a.trip.pattern.s[best.k];
+    a.arr = best.arr;
+    b.fromK = best.m;
+    b.from = b.trip.pattern.s[best.m];
+    b.dep = best.dep;
+    b.walkBefore = best.w ? { min: best.w.min, m: best.w.m } : null;
+  }
+  // Úseky znovu poskládáme: pěší přesun mezi jízdami jen tam, kde se mění zastávka.
+  const out = [];
+  if (legs[0].type === 'walk') out.push(legs[0]);
+  rides.forEach((ride, i) => {
+    if (i > 0 && ride.walkBefore) out.push({ type: 'walk', from: rides[i - 1].to, to: ride.from, min: ride.walkBefore.min, m: ride.walkBefore.m });
+    delete ride.walkBefore;
+    out.push(ride);
+  });
+  if (legs.at(-1).type === 'walk') {
+    const last = legs.at(-1);
+    out.push({ ...last, from: rides.at(-1).to });
+  }
+  return out;
 }
 
 function finishJourney(legs) {
@@ -204,7 +280,10 @@ export function searchJourneys(P, { origins, target, date, time, count = 5 }) {
     found.push(j);
   };
   let t = time;
-  for (let i = 0; i < count * 3; i++) {
+  let result = [];
+  // Hledání je rychlé, takže klidně víckrát: při řídkých spojích se k dalšímu příjezdu
+  // dostaneme až přes několik dřívějších odjezdů, které všechny čekají na stejný spoj.
+  for (let i = 0; i < 60; i++) {
     const fast = earliestJourney(P, { origins, target, date, time: t });
     if (!fast) break;
     add(fast);
@@ -212,30 +291,32 @@ export function searchJourneys(P, { origins, target, date, time, count = 5 }) {
     if (fast.transfers) add(earliestJourney(P, { origins, target, date, time: t, penalty: 10 }));
     // Další hledání od odjezdu prvního vozu + 1 min (dřív odejít nemá smysl).
     t = fast.firstRideDep - (fast.legs[0].type === 'walk' ? fast.legs[0].min : 0) + 1;
-    if (found.filter((j) => !dominated(j, found)).length >= count) break;
+    result = bestOf(found);
+    if (result.length >= count && found.at(-1).arr > result[count - 1].arr) break;
   }
+  return result.slice(0, count);
+}
+
+function bestOf(found) {
   const good = found.filter((j) => !dominated(j, found));
   // Výrazně horší spojení (pomalé, s víc přestupy) nemá cenu nabízet.
   const cost = (j) => j.duration + 5 * j.transfers + 3 * j.walkTransfers;
   const best = Math.min(...good.map(cost));
-  return good
-    .filter((j) => cost(j) <= best * 1.4 + 8)
-    .sort((a, b) => a.dep - b.dep || a.arr - b.arr)
-    .slice(0, count);
+  return good.filter((j) => cost(j) <= best * 1.4 + 8).sort((a, b) => a.dep - b.dep || a.arr - b.arr);
 }
 
 // Spojení je zbytečné, když jiné odjíždí později (nebo stejně), přijede dřív (nebo stejně)
-// a nemá víc přestupů ani pěších přestupů – a aspoň v jednom je lepší.
+// a nedá víc námahy (přestupy, chůze) – a aspoň v jednom je lepší.
+// Námaha: přestup jako 5 minut, k tomu všechny minuty chůze.
+const effort = (j) => 5 * j.transfers + j.legs.reduce((a, l) => a + (l.type === 'walk' ? l.min : 0), 0);
+
 function dominated(j, all) {
-  return all.some(
-    (k) =>
-      k !== j &&
-      k.dep >= j.dep &&
-      k.arr <= j.arr &&
-      k.transfers <= j.transfers &&
-      k.walkTransfers <= j.walkTransfers &&
-      (k.dep > j.dep || k.arr < j.arr || k.transfers < j.transfers || k.walkTransfers < j.walkTransfers),
-  );
+  const ej = effort(j);
+  return all.some((k) => {
+    if (k === j || k.dep < j.dep || k.arr > j.arr) return false;
+    const ek = effort(k);
+    return ek <= ej && (k.dep > j.dep || k.arr < j.arr || ek < ej);
+  });
 }
 
 /** Zastávky podle textu (bez diakritiky, slova od začátku). */

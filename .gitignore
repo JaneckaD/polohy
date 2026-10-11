@@ -4,3 +4,4 @@ dist/
 .env.local
 public/routes.json
 public/tt/
+public/rails.json
