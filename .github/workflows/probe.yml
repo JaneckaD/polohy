@@ -1,38 +1,22 @@
 name: Probe MHD vehicles
 on:
   push:
-    paths: ['.github/workflows/probe.yml']
+    paths: ['.github/workflows/probe.yml', '.github/probe/**']
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: |
           set +e
-          curl -s -m 30 -X POST 'https://mpvnet.cz/zlin/map/mapData' -H 'Origin: https://mpvnet.cz' -H 'Content-Type: application/json; charset=utf-8' \
-            -d '{"w":17.1,"s":48.86,"e":18.4,"n":49.54,"zoom":13,"showStops":false,"mapFilterId":null}' -o m.json -w "%{http_code} %{size_download}\n"
-          curl -s -m 30 'https://dszo-proxy.djanecka6.workers.dev/mhd' -o proxy.json -w "proxy %{http_code} %{size_download}\n"
-          head -c 600 proxy.json; echo
-          curl -s -m 30 'https://dszo-proxy.djanecka6.workers.dev/trains' -o trains.json -w "trains %{http_code} %{size_download}\n"
-          curl -s -m 60 'https://janeckad.github.io/polohy/tt/planner.json' -o planner.json -w "planner %{http_code} %{size_download}\n"
-          python3 - <<'PY'
-          import json,collections
-          d=json.load(open('m.json'))
-          tr=d['transmitters']
-          print('count',len(tr))
-          print(collections.Counter((t['cat'],t['cr']) for t in tr).most_common(60))
-          def near(t,lat,lon,r): return abs(t['x']-lat)<r and abs(t['y']-lon)<r*1.5
-          for name,lat,lon in [('KROMERIZ',49.298,17.393),('VALMEZ',49.472,17.971)]:
-            print('=====',name)
-            for t in tr:
-              if near(t,lat,lon,0.04): print(t['cat'],t['cr'],t['cn'][:170],t['ico'],t['x'],t['y'],t['tm'],t['ds'])
-          print('licence prefixes', collections.Counter(str(t['cn'])[:3] for t in tr).most_common(80))
-          p=json.load(open('planner.json'))
-          nums={}
-          for pat in p['patterns']:
-            if pat.get('y')=='v': nums.setdefault(pat['n'],[]).append(pat)
-          t=json.load(open('trains.json'))['trains']
-          print('live trains',len(t))
-          for x in t:
-            tn=str(x.get('tn'))
-            print('MATCH' if tn in nums else 'MISSING', x.get('tt'), tn, x.get('fn'),'->',x.get('ln'),'|',x.get('cna'),'|',x.get('d'))
-          PY
+          for i in 1 2 3 4; do
+            code=$(curl -s -m 30 'https://dszo-proxy.djanecka6.workers.dev/trains' -o trains.json -w "%{http_code}")
+            echo "trains $code $(wc -c < trains.json)"; [ "$code" = 200 ] && break; sleep 10
+          done
+          [ "$code" = 200 ] || { head -c 300 trains.json; curl -s -m 30 -o sz.json -w "SZ direct %{http_code} %{size_download}\n" -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load'; }
+          curl -s -m 60 'https://janeckad.github.io/polohy/tt/planner.json' -o planner.json -w "planner %{http_code}\n"
+          curl -s -m 60 'https://janeckad.github.io/polohy/rails.json' -o rails.json -w "rails %{http_code}\n"
+          node .github/probe/trains.mjs trains.json planner.json rails.json public/region.json
