@@ -18,6 +18,8 @@ if [ ! -f osrm/region.osrm.mldgr ]; then
   docker run --rm -v "$PWD/osrm:/data" "$IMAGE" osrm-partition /data/region.osrm
   docker run --rm -v "$PWD/osrm:/data" "$IMAGE" osrm-customize /data/region.osrm
   rm osrm/region.osm.pbf
+  # Soubory z kontejneru patří rootovi; actions/cache je jinak neuloží.
+  sudo chown -R "$(id -u):$(id -g)" osrm
 fi
 docker run -d --name osrm -p 5000:5000 -v "$PWD/osrm:/data" "$IMAGE" \
   osrm-routed --algorithm mld --max-matching-size 500 --max-viaroute-size 500 /data/region.osrm
