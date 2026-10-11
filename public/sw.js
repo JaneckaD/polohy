@@ -3,7 +3,7 @@
 //  - soubory aplikace: nejdřív síť, při výpadku uložená verze (aby se aspoň otevřela s hláškou)
 //  - jízdní řády, trasy, tratě a hranice kraje (tt/*, routes.json, rails.json, region.json): hned z uložených dat a na pozadí se obnoví
 //  - mapové dlaždice a písma OpenFreeMap: z uložených dat, jinak ze sítě (omezený počet)
-const VERSION = 'v6';
+const VERSION = 'v7';
 const APP = `mhd-app-${VERSION}`;
 const DATA = `mhd-data-${VERSION}`;
 const TILES = `mhd-tiles-${VERSION}`;
@@ -26,7 +26,14 @@ self.addEventListener('activate', (event) => {
 
 async function networkFirst(request) {
   try {
-    const res = await fetch(request);
+    // GitHub Pages posílá HTML s max-age=600: bez ověření by prohlížeč 10 minut vracel starou stránku
+    // (se starými skripty) i po nasazení nové verze. Soubory v assets/ mají v názvu otisk, ty ověřovat netřeba.
+    const fresh = new URL(request.url).pathname.includes('/assets/')
+      ? request
+      : request.mode === 'navigate'
+        ? new Request(request.url, { cache: 'no-cache', credentials: 'same-origin' })
+        : new Request(request, { cache: 'no-cache' });
+    const res = await fetch(fresh);
     if (res.ok) (await caches.open(APP)).put(request, res.clone());
     return res;
   } catch {

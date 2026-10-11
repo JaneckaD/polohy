@@ -441,6 +441,9 @@ document.getElementById('reload').addEventListener('click', async (e) => {
     await reg?.update();
     const keys = (await globalThis.caches?.keys()) ?? [];
     await Promise.all(keys.filter((k) => !k.includes('tiles')).map((k) => caches.delete(k)));
+    // Stránku stáhneme znovu mimo mezipaměť prohlížeče (GitHub Pages ji jinak 10 minut drží),
+    // aby se po obnovení načetly nové skripty.
+    await Promise.all(['./', './index.html'].map((u) => fetch(u, { cache: 'reload' }).catch(() => null)));
   } catch (err) {
     console.warn('Obnovení aplikace:', err.message);
   }
