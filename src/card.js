@@ -44,7 +44,7 @@ function agoLabel(updated) {
 }
 
 /** Detail vlaku: druh, dopravce, odkud a kam, zpoždění, kde právě je. */
-function renderTrainDetails(v) {
+function renderTrainDetails(v, trip) {
   const card = applyVehicleColors(h('div', 'card'), v);
   const kind = TRAIN_KINDS[v.kind];
 
@@ -64,15 +64,29 @@ function renderTrainDetails(v) {
 
   const pills = h('div', 'card-pills');
   pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
-  if (v.operator.short !== v.operator.name) pills.append(h('span', 'card-ago', v.operator.name));
   card.append(pills);
-  if (v.from) card.append(h('div', 'card-now', `Ze stanice ${v.from}`));
+
+  // Přehled: odkud kam, linka, kde naposledy projel a kdy bude v příští zastávce.
+  const facts = h('dl', 'card-facts');
+  const fact = (label, value) => {
+    if (!value) return;
+    facts.append(h('dt', null, label), h('dd', null, value));
+  };
+  const delayMin = v.delay > 0 ? Math.round(v.delay / 60) : 0;
+  const expected = (t) => (t && delayMin ? `${t} → ${hhmm(toMinutes(t) + delayMin)}` : t);
+  fact('Trasa', v.from && v.headsign ? `${v.from} → ${v.headsign}` : v.headsign);
+  fact('Linka', trip?.line);
+  if (v.stop) fact('Naposledy projel', `${v.stop}${v.stopReal ? ` v ${v.stopReal}` : ''}${v.stopPlanned && v.stopReal && v.stopPlanned !== v.stopReal ? ` (podle plánu ${v.stopPlanned})` : ''}`);
+  if (v.next) fact('Příští zastávka', `${v.next}${v.nextArr ? `, příjezd ${expected(v.nextArr)}` : ''}`);
+  if (trip?.length) fact('Zastávek celkem', String(trip.length));
+  fact('Dopravce', v.operator.name);
+  card.append(facts);
   return card;
 }
 
-/** Detail vozu. */
-export function renderDetails(v) {
-  if (v.type === 'train') return renderTrainDetails(v);
+/** Detail vozu (u vlaku s jízdním řádem trip, pokud ho známe). */
+export function renderDetails(v, trip = null) {
+  if (v.type === 'train') return renderTrainDetails(v, trip);
   const card = applyTypeColors(h('div', 'card'), v.type);
 
   const head = h('div', 'card-head');
@@ -114,6 +128,7 @@ const nowMinutes = () => {
     .map(Number);
   return hh * 60 + mm;
 };
+const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, '0')}:${String(((m % 60) + 60) % 60).padStart(2, '0')}`;
 const toMinutes = (t) => {
   const [hh, mm] = t.split(':').map(Number);
   return hh * 60 + mm;
@@ -155,8 +170,10 @@ function renderTrainTrip(v) {
   return box;
 }
 
-export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogglePassed, atStop = true } = {}) {
-  if (v.type === 'train') return renderTrainTrip(v);
+export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogglePassed, atStop = true, current: knownCurrent } = {}) {
+  const train = v.type === 'train';
+  // Vlak bez jízdního řádu (např. data ještě nejsou): jen odkud, kudy a kam.
+  if (train && trip && !trip.length) return renderTrainTrip(v);
   const box = h('div', 'trip');
   if (!trip) {
     box.append(h('div', 'trip-empty', 'Načítám zastávky spoje…'));
@@ -166,7 +183,8 @@ export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogg
     box.append(h('div', 'trip-empty', 'Zastávky spoje nejsou k dispozici.'));
     return box;
   }
-  const current = currentTripIndex(trip, v.stop);
+  const current = knownCurrent ?? currentTripIndex(trip, v.stop);
+  const puckText = train ? v.code : v.line;
   const delayMin = v.delay > 0 ? Math.round(v.delay / 60) : 0;
   const now = nowMinutes();
   const list = h('ol', 'timeline');
@@ -186,28 +204,34 @@ export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogg
     if (i < current && !showPassed) return;
     const cls = i < current || (between && i === current) ? 'passed' : i === current ? 'current' : i === current + 1 ? 'next' : 'upcoming';
     const li = h('li', `tl-stop ${cls}${i === trip.length - 1 ? ' terminus' : ''}${between && i === current ? ' last-passed' : ''}`);
-    if (i === current && !between) li.append(h('span', 'tl-puck', v.line));
+    if (i === current && !between) li.append(h('span', 'tl-puck', puckText));
     else li.append(h('span', 'tl-dot'));
     const text = h('div', 'tl-text');
     text.append(h('span', 'tl-name', s.name));
-    if (i === current && !between) text.append(h('span', 'tl-sub', 'vůz je v zastávce'));
+    if (i === current && !between) text.append(h('span', 'tl-sub', train ? 'vlak stojí ve stanici' : 'vůz je v zastávce'));
     else if (i === current + 1) text.append(h('span', 'tl-sub', 'příští zastávka'));
-    else if (i === trip.length - 1) text.append(h('span', 'tl-sub', 'konečná'));
+    else if (i === trip.length - 1) text.append(h('span', 'tl-sub', train ? 'cílová stanice' : 'konečná'));
     li.append(text);
     const right = h('div', 'tl-right');
-    right.append(h('span', 'tl-time', s.time));
+    // Vlak: do stanice přijíždí (arr), odjíždí později (time).
+    const shown = train && i > current && s.arr ? s.arr : s.time;
+    if (i > current && delayMin > 0) {
+      // Se zpožděním: plánovaný čas přeškrtnutý, vedle očekávaný.
+      const row = h('span', 'tl-time');
+      row.append(h('s', 'tl-planned', shown), ' ', h('b', 'tl-real', hhmm(toMinutes(shown) + delayMin)));
+      right.append(row);
+    } else right.append(h('span', 'tl-time', shown));
     if (i > current) {
-      const left = toMinutes(s.time) + delayMin - now;
+      const left = toMinutes(shown) + delayMin - now;
       if (left >= 0 && left < 120) right.append(h('span', 'tl-eta', left === 0 ? 'teď' : `za ${left} min`));
     }
     li.append(right);
     list.append(li);
     if (between && i === current) {
+      // Mezi zastávkami jen značka vozu, bez textu.
       const mid = h('li', 'tl-between current');
-      mid.append(h('span', 'tl-puck', v.line));
-      const t = h('div', 'tl-text');
-      t.append(h('span', 'tl-name', 'Na cestě'), h('span', 'tl-sub', `jede z ${s.name} na ${trip[i + 1].name}`));
-      mid.append(t, h('div'));
+      mid.setAttribute('aria-label', `mezi ${s.name} a ${trip[i + 1].name}`);
+      mid.append(h('span', 'tl-puck', puckText));
       list.append(mid);
     }
   });

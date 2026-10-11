@@ -18,12 +18,20 @@ export function applyTypeColors(el, type) {
   return el;
 }
 
+// Na bílém pozadí musí být čáry a ikony dost tmavé (žlutá RegioJetu ne).
+const inkOf = (color) => (color === '#f2c300' ? '#8a6d00' : color);
+
+/** Barvy trasy vlaku na mapě (podle dopravce), ve stejném tvaru jako TYPE_COLORS. */
+export function trainColors(operator) {
+  const ink = inkOf(operator?.color ?? '#636366');
+  return { main: ink, text: operator?.text ?? '#ffffff', casing: '#ffffff', passed: '#8e8e93', dark: '#8e8e93', stop: ink, stopPassed: '#636366' };
+}
+
 /** Barvy podle vozu: u vlaku barva dopravce, jinak podle typu. */
 export function applyVehicleColors(el, v) {
   if (v?.type !== 'train') return applyTypeColors(el, v?.type);
   const { color, text } = v.operator;
-  // Na bílém pozadí musí být čáry a ikony dost tmavé (žlutá RegioJetu ne).
-  const ink = color === '#f2c300' ? '#8a6d00' : color;
+  const ink = inkOf(color);
   el.style.setProperty('--line-color', color);
   el.style.setProperty('--line-text', text);
   el.style.setProperty('--line-ink', ink);

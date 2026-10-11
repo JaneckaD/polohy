@@ -11,6 +11,12 @@ export function matchJourneyVehicles(journey, P, vehicles, now) {
       const pat = leg.trip.pattern;
       // Navazující pokračování stejné linky jede stejným vozem až do konce.
       let best = null;
+      // Vlak: číslo vlaku je za den jedinečné.
+      if (pat.y === 'v') {
+        const train = vehicles.find((v) => v.type === 'train' && v.number === pat.n && !used.has(v.id));
+        if (train) used.add(train.id);
+        return train?.id ?? null;
+      }
       for (const v of vehicles) {
         if (used.has(v.id) || String(v.line) !== String(pat.r) || !v.stop) continue;
         if (v.headsign && nameSimilarity(v.headsign, P.stops[pat.s.at(-1)].name) < 0.5 && nameSimilarity(v.headsign, pat.h) < 0.5) continue;

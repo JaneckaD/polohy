@@ -134,12 +134,21 @@ export function buildPlannerFromTrips(tt) {
     const key = `${t.ref}|${seq.join(',')}`;
     if (!patternIdx.has(key)) {
       patternIdx.set(key, patterns.length);
-      patterns.push({ r: t.ref, y: t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq });
+      const pattern = { r: t.ref, y: t.type === 'train' ? 'v' : t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq };
+      // Vlak: číslo, druh a dopravce.
+      if (t.type === 'train') Object.assign(pattern, { n: t.number, k: t.code, o: t.operator, ...(t.line ? { l: t.line } : {}) });
+      patterns.push(pattern);
     }
-    trips.push([patternIdx.get(key), maskIdx.get(t.mask), t.times[0], ...t.times.slice(1).map((x, i) => x - t.times[i])]);
+    const entry = [patternIdx.get(key), maskIdx.get(t.mask), t.times[0], ...t.times.slice(1).map((x, i) => x - t.times[i])];
+    // Vlaky stojí ve stanicích déle: kolik minut před odjezdem přijíždí (jen když někde stojí).
+    const dwell = t.arr?.map((a, i) => Math.max(0, t.times[i] - a));
+    if (dwell?.some((d) => d > 0)) entry.dwell = dwell;
+    trips.push(entry);
   }
   // Stejné spoje seřadíme podle odjezdu, ať jsou data stabilní.
   trips.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  const dwell = {};
+  trips.forEach((t, i) => t.dwell && (dwell[i] = t.dwell));
   const round = (x) => Math.round(x * 1e5) / 1e5;
   return {
     startDate: tt.startDate,
@@ -153,6 +162,7 @@ export function buildPlannerFromTrips(tt) {
     masks,
     patterns,
     trips,
+    dwell,
     skipped,
   };
 }

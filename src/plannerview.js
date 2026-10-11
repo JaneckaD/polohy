@@ -1,5 +1,6 @@
 // Záložka Spojení: odkud, kam, den a čas → nejbližší spojení s přestupy (i pěšími) → detail spojení.
-import { applyTypeColors } from './colors.js';
+import { applyTypeColors, applyVehicleColors } from './colors.js';
+import { TRAIN_KINDS, trainKind, trainOperator } from './trains.js';
 import { preparePlanner, searchJourneys, findStops, nearbyStops, rideStops } from './planner.js';
 
 const body = document.getElementById('pl-body');
@@ -50,9 +51,23 @@ const fmt = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padS
 const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n > 1 && n < 5 ? few : many}`;
 const durationText = (min) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`);
 
-function lineBadge(ref, type) {
-  return applyTypeColors(h('span', 'line-badge', ref), type === 't' || type === 'trolleybus' ? 'trolleybus' : 'bus');
+// Vlak ve vyhledávání: druh, číslo a dopravce (barvy jako značka vlaku na mapě).
+const trainOf = (pat) => ({ type: 'train', code: pat.k, number: pat.n, kind: trainKind(pat.k), operator: trainOperator(pat.o) });
+
+function lineBadge(pat) {
+  if (pat.y === 'v') {
+    const t = trainOf(pat);
+    const badge = applyVehicleColors(h('span', 'line-badge train-badge'), t);
+    const k = h('span', 'train-kind', t.code);
+    k.style.background = TRAIN_KINDS[t.kind]?.color ?? '#6c6c70';
+    badge.append(k, h('span', null, t.number));
+    return badge;
+  }
+  return applyTypeColors(h('span', 'line-badge', pat.r), pat.y === 't' ? 'trolleybus' : 'bus');
 }
+
+const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
+const rideKind = (pat) => (pat.y === 'v' ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}` : pat.y === 't' ? 'Trolejbus' : 'Autobus');
 
 // --- stav formuláře (pamatuje se mezi návštěvami) -----------------------------------
 const MY_LOCATION = { name: 'Moje poloha', here: true };
@@ -330,7 +345,7 @@ function legRows(j, P) {
     }
     if (l.stay) {
       const row = h('div', 'rleg rleg-stay');
-      row.append(h('span', 'rleg-icon'), h('span', 'rleg-text', `pokračuje dál jako ${l.trip.pattern.r}, zůstaň ve voze`));
+      row.append(h('span', 'rleg-icon'), h('span', 'rleg-text', `pokračuje dál jako ${l.trip.pattern.r}, zůstaň ${l.trip.pattern.y === 'v' ? 've vlaku' : 've voze'}`));
       el.append(row);
       return;
     }
@@ -338,7 +353,7 @@ function legRows(j, P) {
     let end = l;
     for (let k = i + 1; k < j.legs.length && j.legs[k].stay; k++) end = j.legs[k];
     const row = h('div', 'rleg');
-    row.append(lineBadge(l.trip.pattern.r, l.trip.pattern.y));
+    row.append(lineBadge(l.trip.pattern));
     const text = h('span', 'rleg-text');
     text.append(h('b', 'rleg-time', fmt(l.dep)), ` ${P.stops[l.from].name} `, h('span', 'rleg-arrow', '→'), ` ${P.stops[end.to].name}`);
     row.append(text);
@@ -428,11 +443,11 @@ function renderDetail(j, P, date) {
     else if (prev?.type === 'walk' && l.dep - prev.arr > 0 && i > 1) legsEl.append(h('div', 'leg-change', `Čekání ${l.dep - prev.arr} min`));
 
     const stops = rideStops(P, l);
-    const card = applyTypeColors(h('div', 'leg-ride'), l.trip.pattern.y === 't' ? 'trolleybus' : 'bus');
+    const card = colorRide(h('div', 'leg-ride'), l.trip.pattern);
     const lh = h('div', 'leg-head');
-    lh.append(lineBadge(l.trip.pattern.r, l.trip.pattern.y));
+    lh.append(lineBadge(l.trip.pattern));
     const lt = h('div');
-    lt.append(h('div', 'leg-dir', `směr ${l.trip.pattern.h}`), h('div', 'muted small', `${l.trip.pattern.y === 't' ? 'Trolejbus' : 'Autobus'} · ${durationText(l.arr - l.dep)}`));
+    lt.append(h('div', 'leg-dir', `směr ${l.trip.pattern.h}`), h('div', 'muted small', `${rideKind(l.trip.pattern)} · ${durationText(l.arr - l.dep)}`));
     lh.append(lt);
     card.append(lh);
     const ol = h('ol', 'leg-stops');

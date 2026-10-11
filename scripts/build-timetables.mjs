@@ -9,6 +9,9 @@ import { buildFromGtfs } from './gtfs-lib.mjs';
 import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
 import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
+import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
+import { RailNetwork } from '../src/railroute.js';
+import { regionContains } from '../src/region.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
 const ROUTES = new URL('../public/routes.json', import.meta.url);
@@ -200,6 +203,34 @@ if (tt?.lines?.length && osm.platforms?.length) {
   }
   const { checked, moved, sum, sided } = correct.stats;
   console.log(`Polohy zastávek podle OSM: opraveno ${moved} z ${checked} nástupišť (průměrně o ${moved ? Math.round(sum / moved) : 0} m), podle strany silnice ${sided}.`);
+}
+
+// Vlaky přes kraj (až po opravě poloh zastávek: ta platí jen pro autobusová nástupiště).
+if (tt?.rawTrips) {
+  try {
+    const url = process.env.RAIL_GTFS_URL ?? RAIL_GTFS_URL;
+    const res = await fetch(url, { headers: UA });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
+    const trains = railTrips(bytes, { startDate: tt.startDate, days: tt.days, region, log: (m) => console.log(m) });
+    tt.rawTrips.push(...trains);
+    // Kontrola: jde mezi sousedními stanicemi v kraji najít cestu po kolejích (kreslení trasy vlaku)?
+    const railsFile = new URL('../public/rails.json', import.meta.url);
+    if (existsSync(railsFile)) {
+      const net = new RailNetwork(JSON.parse(readFileSync(railsFile, 'utf8')).lines);
+      const pairs = new Map();
+      for (const t of trains)
+        for (let i = 1; i < t.stops.length; i++) {
+          const [a, b] = [t.stops[i - 1], t.stops[i]];
+          if (regionContains(region, a[2], a[1]) && regionContains(region, b[2], b[1])) pairs.set(`${a[0]} → ${b[0]}`, [a, b]);
+        }
+      const missing = [...pairs].filter(([, [a, b]]) => !net.path([a[1], a[2]], [b[1], b[2]])).map(([k]) => k);
+      console.log(`Trasy vlaků po kolejích: ${pairs.size - missing.length} z ${pairs.size} úseků v kraji${missing.length ? `, chybí: ${missing.slice(0, 30).join('; ')}` : ''}.`);
+    }
+  } catch (err) {
+    console.warn(`Jízdní řády vlaků se nepodařilo zpracovat: ${err.stack}`);
+  }
 }
 
 mkdirSync(TT_DIR, { recursive: true });

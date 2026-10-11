@@ -1,6 +1,16 @@
 // Vykreslení trasy vybraného vozu: projetá část šedá, zbývající v barvě linky, zastávky s časy.
-import { TYPE_COLORS } from './colors.js';
+import { TYPE_COLORS, trainColors } from './colors.js';
+import { trainOperator } from './trains.js';
 import { findRoute, splitRoute, attachTimes, tripGeometry, splitTrip, currentTripIndex } from './route-match.js';
+import { RailNetwork, railGeometry } from './railroute.js';
+import { loadRails } from './region.js';
+
+let railNetPromise = null;
+/** Síť tratí pro trasy vlaků (z rails.json), postavená jednou. */
+function railNetwork() {
+  railNetPromise ??= loadRails().then((r) => (r?.lines?.length ? new RailNetwork(r.lines) : null));
+  return railNetPromise;
+}
 
 const SRC_LINE = 'route-line';
 const SRC_STOPS = 'route-stops';
@@ -155,7 +165,7 @@ async function roadBetween(a, b) {
     const line = json?.code === 'Ok' ? json.routes[0].geometry.coordinates : null;
     // Objížďka víc než dvakrát delší než vzdušná čára je skoro jistě špatně (zastávka na druhé straně ulice).
     const direct = Math.hypot((a[1] - b[1]) * 72000, (a[0] - b[0]) * 111000);
-    const ok = line && json.routes[0].distance < Math.max(2.2 * direct, direct + 300) ? line : null;
+    const ok = line && json.routes[0].distance < Math.max(3 * direct, direct + 600) ? line : null;
     osrmCache.set(key, ok);
     try {
       localStorage.setItem('mhd.osrm', JSON.stringify(Object.fromEntries([...osrmCache].slice(-300))));
@@ -170,20 +180,25 @@ async function roadBetween(a, b) {
 
 const geoCache = new Map(); // klíč spoje -> Promise<geometrie>
 
-async function geometryFor(trip, ref) {
-  const key = `${ref}|${trip.map((s) => s.name).join('|')}`;
+async function geometryFor(trip, ref, train = false) {
+  const key = `${train ? 'v' : ''}${ref}|${trip.map((s) => s.name).join('|')}`;
   if (!geoCache.has(key)) {
     geoCache.set(
       key,
       (async () => {
+        // Vlak: po kolejích mezi stanicemi (mimo kraj koleje nemáme, tam čára není).
+        if (train) return railGeometry(await railNetwork(), trip);
         const data = await loadRoutes();
         const geo = tripGeometry(trip, data.routes, ref, data.stops);
-        // Nejvýš pár chybějících kusů dopočítáme, zbytek zůstane bez čáry (rovné čáry nekreslíme).
-        let budget = 6;
-        for (let i = 0; i < geo.segments.length && budget > 0; i++) {
-          if (geo.segments[i] || !geo.coords[i] || !geo.coords[i + 1]) continue;
-          budget--;
-          geo.segments[i] = await roadBetween(geo.coords[i], geo.coords[i + 1]);
+        // Chybějící kusy (varianty spojů, které předpočítané trasy linek nepokrývají) dopočítáme
+        // po silnici všechny, po čtyřech najednou, aby trasa nebyla přerušená. Rovné čáry nekreslíme.
+        const missing = geo.segments.map((seg, i) => i).filter((i) => !geo.segments[i] && geo.coords[i] && geo.coords[i + 1]);
+        for (let k = 0; k < missing.length; k += 4) {
+          await Promise.all(
+            missing.slice(k, k + 4).map(async (i) => {
+              geo.segments[i] = await roadBetween(geo.coords[i], geo.coords[i + 1]);
+            }),
+          );
         }
         return geo;
       })(),
@@ -194,13 +209,15 @@ async function geometryFor(trip, ref) {
 }
 
 /** Spočítá trasu vozu. Vrací null, když ji nejde určit. */
-export async function computeRoute(vehicle, trip) {
+export async function computeRoute(vehicle, trip, current) {
+  const train = vehicle.type === 'train';
   if (trip?.length > 1) {
-    const geo = await geometryFor(trip, vehicle.line);
+    const geo = await geometryFor(trip, vehicle.line, train);
     if (geo.segments.some(Boolean)) {
-      return splitTrip(geo, { lat: vehicle.rawLat ?? vehicle.lat, lon: vehicle.rawLon ?? vehicle.lon }, currentTripIndex(trip, vehicle.stop), trip);
+      return splitTrip(geo, { lat: vehicle.rawLat ?? vehicle.lat, lon: vehicle.rawLon ?? vehicle.lon }, current ?? currentTripIndex(trip, vehicle.stop), trip);
     }
   }
+  if (train) return null;
   // Než dorazí jízdní řád spoje (nebo když ho nemáme): trasa linky podle polohy a směru vozu.
   const data = await loadRoutes();
   const match = findRoute(data.routes, vehicle, trip);
@@ -209,10 +226,10 @@ export async function computeRoute(vehicle, trip) {
   return { passedLines: [split.passedLine], upcomingLines: [split.upcomingLine], stops: attachTimes(split.stops, trip) };
 }
 
-export function drawRoute(map, route, type) {
+export function drawRoute(map, route, type, colors = null) {
   if (!map.isStyleLoaded()) return; // podklad mapy ještě není (nebo se nenačetl), trasu nakreslíme při další obnově
   ensureLayers(map);
-  const { main, passed, casing, stop, stopPassed } = TYPE_COLORS[type] ?? TYPE_COLORS.bus;
+  const { main, passed, casing, stop, stopPassed } = colors ?? TYPE_COLORS[type] ?? TYPE_COLORS.bus;
   const lines = [];
   for (const l of route.passedLines) if (l.length > 1) lines.push(lineFeature(l, passed, true, '#ffffff'));
   for (const l of route.upcomingLines) if (l.length > 1) lines.push({ ...lineFeature(l, main, false, casing), properties: { color: main, passed: false, casing, arrow: type === 'trolleybus' ? '#1c1c1e' : '#ffffff' } });
@@ -321,21 +338,24 @@ export async function drawJourney(map, journey, P) {
       }
       continue;
     }
-    const type = leg.trip.pattern.y === 't' ? 'trolleybus' : 'bus';
-    const { main, casing } = TYPE_COLORS[type];
+    const pat = leg.trip.pattern;
+    const type = pat.y === 'v' ? 'train' : pat.y === 't' ? 'trolleybus' : 'bus';
+    const colors = type === 'train' ? trainColors(trainOperator(pat.o)) : TYPE_COLORS[type];
+    const { main, casing } = colors;
     const stops = [];
     for (let k = leg.fromK; k <= leg.toK; k++) {
-      const s = P.stops[leg.trip.pattern.s[k]];
-      stops.push({ name: s.name, lat: s.lat, lon: s.lon, time: hhmm(leg.trip.times[k] - leg.shift) });
+      const s = P.stops[pat.s[k]];
+      const times = k === leg.toK ? leg.trip.arr : leg.trip.times;
+      stops.push({ name: s.name, lat: s.lat, lon: s.lon, time: hhmm(times[k] - leg.shift) });
     }
-    const geo = await geometryFor(stops, leg.trip.pattern.r);
+    const geo = await geometryFor(stops, pat.r, type === 'train');
     for (const seg of geo.segments) {
       if (seg?.length > 1) {
         features.push({ type: 'Feature', properties: { kind: 'ride', color: main, casing: type === 'trolleybus' ? casing : '#ffffff' }, geometry: { type: 'LineString', coordinates: seg } });
         pts.push(...seg);
       }
     }
-    const stroke = (TYPE_COLORS[type] ?? TYPE_COLORS.bus).stop;
+    const stroke = colors.stop;
     stops.forEach((s, i) => point(s, { main: i === 0 || i === stops.length - 1, stroke, time: s.time }));
   }
   map.getSource(SRC_JOURNEY).setData({ type: 'FeatureCollection', features });

@@ -6,7 +6,7 @@ import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
 import { fetchVehicles, fetchTrip, fetchRegionTrains, proxyConfigured, REFRESH_MS } from './data.js';
 import { renderDetails, renderTrip } from './card.js';
-import { applyVehicleColors } from './colors.js';
+import { applyVehicleColors, trainColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
 import { drawRegion, loadRegion } from './region.js';
 import { TRAIN_REFRESH_MS } from './trains.js';
@@ -14,7 +14,8 @@ import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
 import { initFilter, setKnownLines } from './filter.js';
-import { initPlanner } from './plannerview.js';
+import { initPlanner, loadPlanner } from './plannerview.js';
+import { trainTrip, trainPosition } from './train-trip.js';
 import { initInstall } from './install.js';
 
 // MapLibre 6 si worker hledá vedle sebe, po sestavení Vitem ho musíme předat ručně.
@@ -83,7 +84,7 @@ function journeyVehicleIds() {
   const { journey, P, date } = journeyFocus;
   const now = pragueNow();
   // Vozy hledáme jen pro dnešní spojení, které už brzy jede nebo právě jede.
-  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, store.vehicles, now.min) : [];
+  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.trains], now.min) : [];
   journeyFocus.ids = ids;
   return new Set(ids.filter(Boolean));
 }
@@ -189,19 +190,29 @@ function hideHover() {
 const sheetEl = document.getElementById('sheet');
 let selected = null; // { id, trip, token }
 
+/** Všechny zastávky vlaku z jízdních řádů (data vyhledávání spojení); [] když vlak nenajdeme. */
+async function fetchTrainTrip(v) {
+  const P = await loadPlanner();
+  const { date, min } = pragueNow();
+  return trainTrip(P, v.number, date, min) ?? [];
+}
+
 async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
   if (!v) return deselect();
   applyVehicleColors(sheetEl, v);
-  sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v));
+  sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v, selected.trip));
   const tripEl = sheetEl.querySelector('.sheet-trip');
   const keep = tripEl.scrollTop;
+  // Vlak: kde je vůči zastávkám, podle posledního projetého bodu a jízdního řádu.
+  const pos = v.type === 'train' && selected.trip?.length ? trainPosition(selected.trip, v, pragueNow().min) : null;
   tripEl.replaceChildren(
     renderTrip(selected.trip, v, {
       scroll: first,
       showPassed: selected.showPassed,
-      atStop: selected.atStop ?? true,
+      current: pos?.current,
+      atStop: pos ? pos.atStop : (selected.atStop ?? true),
       onTogglePassed: () => {
         selected.showPassed = !selected.showPassed;
         updateSelected();
@@ -210,11 +221,11 @@ async function updateSelected(first = false) {
   );
   if (!first) tripEl.scrollTop = keep;
   const token = selected.token;
-  // Vlaky: trasu ani jízdní řád nemáme, jen kde je a kam jede.
-  const route = v.type === 'train' ? null : await computeRoute(v, selected.trip ?? []);
+  const route = await computeRoute(v, selected.trip ?? [], pos?.current);
   if (!selected || selected.token !== token) return;
-  if (route) drawRoute(map, route, v.type);
+  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.operator) : null);
   else clearRoute(map);
+  if (pos) return; // u vlaku poloha vůči zastávkám už je známá
   // Poloha vůči zastávkám je známá až z trasy: když vůz už odjel ze zastávky, překreslíme seznam.
   const atStop = route?.atStop ?? true;
   if (atStop !== (selected.atStop ?? true)) {
@@ -280,7 +291,7 @@ async function select(v) {
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = v.type === 'train' ? [] : await fetchTrip(v);
+  const trip = v.type === 'train' ? await fetchTrainTrip(v) : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   updateSelected(true);

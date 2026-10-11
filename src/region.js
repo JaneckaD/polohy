@@ -30,6 +30,12 @@ export function regionContains(region, lon, lat) {
 }
 let railsPromise = null;
 
+/** Tratě s osobní dopravou (rails.json), načtené jednou. */
+export function loadRails() {
+  railsPromise ??= fetchJson('./rails.json');
+  return railsPromise;
+}
+
 // Plocha s otvorem: obrys kraje musí být opačně orientovaný než vnější obdélník.
 const signedArea = (ring) => ring.reduce((a, [x, y], i) => {
   const [nx, ny] = ring[(i + 1) % ring.length];
@@ -134,7 +140,7 @@ export function drawRegion(map) {
     before,
   );
 
-  railsPromise ??= fetchJson('./rails.json');
+  loadRails();
   loadRegion().then((region) => {
     if (region?.geometry) map.getSource('region-mask')?.setData(maskFeature(region));
   });

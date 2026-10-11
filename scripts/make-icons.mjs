@@ -1,4 +1,4 @@
-// Vygeneruje PNG ikony aplikace (bez závislostí): červené kolečko se šipkou na bílém pozadí.
+// Vygeneruje PNG ikony aplikace (bez závislostí): tmavě modré kolečko se šipkou na bílém pozadí.
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 
@@ -43,7 +43,7 @@ function png(size, pixel) {
   ]);
 }
 
-const RED = [215, 25, 32, 255];
+const RED = [11, 42, 91, 255]; // tmavě modrá #0b2a5b
 const WHITE = [255, 255, 255, 255];
 
 function inTriangle(px, py, [ax, ay], [bx, by], [cx, cy]) {

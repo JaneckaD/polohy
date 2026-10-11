@@ -26,7 +26,10 @@ export function preparePlanner(data) {
   const trips = data.trips.map(([p, m, t0, ...deltas], id) => {
     const times = [t0];
     for (const d of deltas) times.push(times.at(-1) + d);
-    return { id, pattern: data.patterns[p], mask: data.masks[m], times };
+    // Příjezdy: vlaky ve stanici stojí, jinde je příjezd = odjezd.
+    const dwell = data.dwell?.[id];
+    const arr = dwell ? times.map((t, i) => t - (dwell[i] ?? 0)) : times;
+    return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr };
   });
   // Pěší přestupy: dvojice různých zastávek do 10 minut chůze.
   const walks = stops.map(() => []);
@@ -57,7 +60,7 @@ export function connectionsFor(P, date) {
     const s = trip.pattern.s;
     for (let k = 0; k < s.length - 1; k++) {
       const dep = trip.times[k] - shift;
-      const arr = trip.times[k + 1] - shift;
+      const arr = trip.arr[k + 1] - shift;
       if (arr < 0) continue;
       conns.push({ dep, arr, from: s[k], to: s[k + 1], trip: trip.id, k, shift });
     }
@@ -180,7 +183,7 @@ function improveTransfers(P, legs) {
     const bs = b.trip.pattern.s;
     let best = null;
     for (let k = a.fromK + 1; k < as.length; k++) {
-      const arr = a.trip.times[k] - a.shift;
+      const arr = a.trip.arr[k] - a.shift;
       for (let m = 0; m < b.toK; m++) {
         const dep = b.trip.times[m] - b.shift;
         if (dep < arr) continue;
@@ -293,13 +296,17 @@ export function searchJourneys(P, { origins, target, date, time, count = 5 }) {
       // Varianty: s méně přestupy (přestup „stojí“ 10 min navíc), bez přecházení mezi zastávkami
       // a jinými spoji (bez každého ze spojů nejrychlejší varianty).
       add(earliestJourney(P, { ...q, penalty: 10 }));
+      // Co nejjednodušší cesta (třeba jedním vlakem nebo jednou linkou), i když je o něco delší.
+      add(earliestJourney(P, { ...q, penalty: 30 }));
       if (fast.walkTransfers) add(earliestJourney(P, { ...q, walkTransfers: false }));
       for (const l of fast.legs) if (l.type === 'ride') add(earliestJourney(P, { ...q, avoid: new Set([l.trip.id]) }));
     }
     // Další hledání od odjezdu prvního vozu + 1 min (dřív odejít nemá smysl).
     t = fast.firstRideDep - (fast.legs[0].type === 'walk' ? fast.legs[0].min : 0) + 1;
     result = bestOf(found);
-    if (result.length >= count && found.at(-1).arr > result[count - 1].arr) break;
+    // Dál už nemá smysl hledat, když nové spojení přijede později než všechna nabízená
+    // (pozdější hledání je už nemůže nahradit, ani jednodušším spojením o 10 min později).
+    if (result.length >= count && found.at(-1).arr > Math.max(...result.slice(0, count).map((j) => j.arr)) + 10) break;
   }
   return result.slice(0, count);
 }
@@ -320,12 +327,20 @@ const effort = (j) => 5 * j.transfers + j.legs.reduce((a, l) => a + (l.type === 
 function dominated(j, all) {
   const ej = effort(j);
   return all.some((k) => {
-    if (k === j || k.arr > j.arr) return false;
+    if (k === j) return false;
     const ek = effort(k);
+    // Jednodušší spojení (méně přestupů, třeba přímý vlak místo kombinace s MHD), které odjíždí
+    // nejvýš o 10 minut dřív a přijede nejvýš o 10 minut později, zbytečné přestupování nahradí.
+    if (k.transfers < j.transfers && ek < ej && k.dep >= j.dep - 10 && k.arr <= j.arr + 10) return true;
+    if (k.arr > j.arr) return false;
     if (ek > ej) return false;
+    // Stejné časy i námaha (jen jiný vlak nebo vůz uprostřed): stačí jedno z nich.
+    if (k.dep === j.dep && k.arr === j.arr && ek === ej && k.transfers === j.transfers) return all.indexOf(k) < all.indexOf(j);
     if (k.dep >= j.dep) return k.dep > j.dep || k.arr < j.arr || ek < ej;
-    // Vyjít o chvilku dřív a být tam mnohem dřív (nebo s menší námahou) je lepší volba.
-    return k.dep >= j.dep - 3 && (k.arr <= j.arr - 5 || ek < ej);
+    // Vyjít o chvilku dřív a být tam mnohem dřív (nebo s menší námahou) je lepší volba;
+    // čím víc času se ušetří, tím dřív se vyplatí vyjít (třetina ušetřeného času, aspoň 3 min).
+    const saved = j.arr - k.arr;
+    return k.dep >= j.dep - Math.max(3, saved / 3) && (saved >= 5 || ek < ej);
   });
 }
 
@@ -360,7 +375,9 @@ export function rideStops(P, leg) {
   const out = [];
   for (let k = leg.fromK; k <= leg.toK; k++) {
     const s = P.stops[leg.trip.pattern.s[k]];
-    out.push({ name: s.name, lat: s.lat, lon: s.lon, time: leg.trip.times[k] - leg.shift });
+    // U poslední zastávky úseku čas příjezdu, jinak odjezdu.
+    const times = k === leg.toK ? leg.trip.arr : leg.trip.times;
+    out.push({ name: s.name, lat: s.lat, lon: s.lon, time: times[k] - leg.shift });
   }
   return out;
 }

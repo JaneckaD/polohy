@@ -1,7 +1,7 @@
 {
-  "name": "MHD Zlín live",
-  "short_name": "MHD live",
-  "description": "Živé polohy autobusů a trolejbusů DSZO na mapě kolem tebe.",
+  "name": "Polohy – MHD a vlaky ve Zlínském kraji",
+  "short_name": "Polohy",
+  "description": "Živé polohy MHD a vlaků ve Zlínském kraji, vyhledávání spojení.",
   "lang": "cs",
   "start_url": "./",
   "scope": "./",
