@@ -3,6 +3,7 @@
 // Čisté funkce bez DOM, aby šly testovat v Node.
 
 import { normalizeName } from './names.js';
+import { isCarrier } from './cities.js';
 
 export const MAX_WALK_MIN = 10;
 const WALK_M_PER_MIN = 75; // asi 4,5 km/h
@@ -46,7 +47,44 @@ export function preparePlanner(data) {
   }
   const walkMin = new Map();
   walks.forEach((list, a) => list.forEach((w) => walkMin.set(a * stops.length + w.to, w)));
-  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, connCache: new Map() };
+  // Co na zastávce staví: vlak, MHD (DSZO a MHD měst) nebo regionální autobus.
+  for (const p of data.patterns) {
+    const kind = p.y === 'v' ? 'train' : p.c && isCarrier(p.c) ? 'bus' : 'mhd';
+    for (const si of p.s) (stops[si].kinds ??= new Set()).add(kind);
+  }
+  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, towns: buildTowns(stops), connCache: new Map() };
+}
+
+/**
+ * Obce a města se všemi svými zastávkami (pro hledání spojení „do Kroměříže“, ať se jede kamkoli ve městě).
+ * Obec je část názvu před čárkou; zastávky MHD Zlín se píšou bez „Zlín,“ a nádraží jen názvem stanice
+ * („Zlín střed“, „Otrokovice“), ty přiřadíme podle začátku názvu. Bere se jen obec s víc zastávkami.
+ */
+function buildTowns(stops) {
+  const towns = new Map();
+  const add = (name, s) => {
+    if (!towns.has(name)) towns.set(name, { name, norm: normalizeName(name), stops: [] });
+    towns.get(name).stops.push(s.i);
+  };
+  const plain = [];
+  for (const s of stops) {
+    const comma = s.name.indexOf(',');
+    if (comma > 0) add(s.name.slice(0, comma).trim(), s);
+    else plain.push(s);
+  }
+  // Zastávka jen názvem obce („Tupesy“) patří k obci. Zastávky MHD Zlín (a regionálních linek ve Zlíně,
+  // např. „aut.nádr.“) jsou bez „Zlín,“. Nádraží pak podle začátku názvu („Zlín střed“, „Kroměříž-Oskol“).
+  const nearZlin = (s) => s.lat != null && distanceMeters(s.lat, s.lon, 49.2265, 17.6679) < 4000;
+  const stations = [];
+  for (const s of plain) {
+    if (towns.has(s.name)) add(s.name, s);
+    else if (s.kinds?.has('train')) stations.push(s);
+    else if (s.kinds?.has('mhd') || nearZlin(s)) add('Zlín', s);
+  }
+  const names = [...towns.keys()].sort((a, b) => b.length - a.length);
+  for (const s of stations) add(names.find((t) => s.name.startsWith(`${t} `) || s.name.startsWith(`${t}-`)) ?? s.name, s);
+  for (const [name, t] of towns) if (t.stops.length < 2) towns.delete(name);
+  return towns;
 }
 
 const dayIndex = (start, date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
@@ -78,7 +116,7 @@ export function connectionsFor(P, date) {
 
 /**
  * Jedno nejrychlejší spojení. origins = [{ stop, walk }] (walk = minuty chůze k zastávce, 0 pro zvolenou zastávku),
- * target = index cílové zastávky, time = minuty od půlnoci. Vrací seznam úseků nebo null.
+ * target = index cílové zastávky (nebo pole indexů, např. celé město), time = minuty od půlnoci. Vrací seznam úseků nebo null.
  */
 export function earliestJourney(P, { origins, target, date, time, penalty = 0, walkTransfers = true, avoid = null }) {
   const conns = connectionsFor(P, date);
@@ -87,6 +125,18 @@ export function earliestJourney(P, { origins, target, date, time, penalty = 0, w
   const ready = new Array(n).fill(Infinity); // kdy tam můžu nastoupit do jiného vozu
   const how = new Array(n).fill(null);
   const tripEnter = new Map();
+  // Cíl: jedna zastávka, nebo víc (celé město) – pak platí ta, kam se dá dojet nejdřív.
+  const targets = Array.isArray(target) ? target : [target];
+  const isTarget = new Uint8Array(n);
+  for (const t of targets) isTarget[t] = 1;
+  let best = Infinity;
+  let goal = targets[0];
+  const reached = (s) => {
+    if (isTarget[s] && arrival[s] < best) {
+      best = arrival[s];
+      goal = s;
+    }
+  };
 
   // penalty = minuty navíc za každý přestup: hledání pak dává přednost spojení s méně přestupy.
   const reachByWalk = (from, t, viaWalks, extra = 0) => {
@@ -96,6 +146,8 @@ export function earliestJourney(P, { origins, target, date, time, penalty = 0, w
         arrival[w.to] = at;
         ready[w.to] = at;
         how[w.to] = { type: 'walk', from, min: w.min, m: w.m };
+        // Do cíle jen pěšky (bez jízdy) to není spojení.
+        if (how[from]?.type === 'ride') reached(w.to);
       }
     }
   };
@@ -120,7 +172,7 @@ export function earliestJourney(P, { origins, target, date, time, penalty = 0, w
   }
   for (let i = lo; i < conns.length; i++) {
     const c = conns[i];
-    if (c.dep > arrival[target]) break;
+    if (c.dep > best) break;
     if (avoid?.has(c.trip)) continue;
     const key = `${c.trip}|${c.shift}`;
     const inTrip = tripEnter.has(key);
@@ -130,13 +182,14 @@ export function earliestJourney(P, { origins, target, date, time, penalty = 0, w
       arrival[c.to] = c.arr;
       ready[c.to] = Math.min(ready[c.to], c.arr + MIN_CHANGE_MIN + penalty);
       how[c.to] = { type: 'ride', enter: tripEnter.get(key), exit: c };
+      reached(c.to);
       if (walkTransfers) reachByWalk(c.to, c.arr, P.walks[c.to], penalty);
     }
   }
-  if (!Number.isFinite(arrival[target])) return null;
+  if (!Number.isFinite(best)) return null;
 
   const legs = [];
-  let s = target;
+  let s = goal;
   for (let guard = 0; guard < 50; guard++) {
     const h = how[s];
     if (!h || h.type === 'start') break;
@@ -356,6 +409,19 @@ export function findStops(P, query, limit = 8) {
     scored.push([score, s]);
   }
   return scored.sort((a, b) => a[0] - b[0]).slice(0, limit).map(([, s]) => s);
+}
+
+/** Obce podle textu (jako findStops). */
+export function findTowns(P, query, limit = 3) {
+  const q = normalizeName(query).split(' ').filter(Boolean);
+  if (!q.length || !P.towns) return [];
+  const scored = [];
+  for (const t of P.towns.values()) {
+    const words = t.norm.split(' ');
+    if (!q.every((w) => words.some((x) => x.startsWith(w)))) continue;
+    scored.push([(t.norm.startsWith(q.join(' ')) ? 0 : 1) + t.norm.length / 100, t]);
+  }
+  return scored.sort((a, b) => a[0] - b[0]).slice(0, limit).map(([, t]) => t);
 }
 
 /** Zastávky do 10 minut chůze od místa (pro „Moje poloha“). */

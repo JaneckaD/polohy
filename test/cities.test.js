@@ -30,6 +30,29 @@ test('vůz MHD Valašského Meziříčí z mapy IDZK', () => {
   assert.equal(parseCityBus({ ...record, cn: '800123|5|1' }), null, 'jiné linky ne');
 });
 
+test('regionální autobus vybraného dopravce z mapy IDZK', () => {
+  const t = { cn: '802371|371|202|Tupesy|-19|Velehrad,náměstí|0|1317|Buchlovice,náměstí|Uherské Hradiště,aut.nádr.|1|7Z50806', x: 49.1, y: 17.39, ico: 'a_60.png', ds: '$p-0~min.~19~s', cr: 'ČSAD BUS UH' };
+  const v = parseCityBus(t);
+  assert.equal(v.city, 'csad');
+  assert.equal(v.line, '371');
+  assert.equal(v.tripNo, '202');
+  assert.equal(v.id, 'csad-7Z50806');
+  assert.equal(v.delay, -19);
+  assert.equal(v.headsign, 'Uherské Hradiště, aut.nádr.');
+  assert.equal(parseCityBus({ ...t, cr: 'ARRIVA, pr. Zlín' }).city, 'arriva');
+  assert.equal(parseCityBus({ ...t, cr: 'Z-Group bus, pr. Kroměříž' }).city, 'zgroup');
+  assert.equal(parseCityBus({ ...t, cr: 'Transdev Morava, pr. Vsetín' }), null, 'ostatní dopravce zatím ne');
+});
+
+test('dopravce regionální linky podle route_id GTFS IDZK', async () => {
+  const { carrierOfRoute } = await import('../src/cities.js');
+  assert.equal(carrierOfRoute('BUS_MHD:802180_263_2019-12-15'), 'csad');
+  assert.equal(carrierOfRoute('BUS_MHD:771155_312_2021-03-07'), 'zgroup');
+  assert.equal(carrierOfRoute('BUS_MHD:773165_88_2022-12-11'), 'arriva');
+  assert.equal(carrierOfRoute('BUS_MHD:947101_1425_2021-01-01'), 'tdm');
+  assert.equal(carrierOfRoute('BUS_MHD:999999_5_2021-01-01'), 'reg');
+});
+
 test('spoj vozu MHD jiného města podle linky, cíle a poslední zastávky', () => {
   const mask = '1'.repeat(5);
   const stops = [

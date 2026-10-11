@@ -1,5 +1,6 @@
 import { Marker } from 'maplibre-gl';
 import { TRAIN_KINDS } from './trains.js';
+import { NETWORKS } from './cities.js';
 
 // Vrstva vozidel: kolečko s číslem linky a malou šipkou ve směru jízdy.
 // Směr bereme z dat (heading), a když chybí, dopočítáme ho z posledních dvou poloh vozu.
@@ -42,7 +43,20 @@ function setLabel(el, v) {
   el.dataset.label = key;
   const dot = el.querySelector('.vehicle-dot');
   dot.textContent = key;
-  if (v.type !== 'train') return;
+  // Trojmístná čísla regionálních linek se do kolečka vejdou jen menším písmem.
+  el.classList.toggle('long-label', String(key ?? '').length >= 3);
+  if (v.type !== 'train') {
+    // MHD jiného města a regionální autobusy: barva města nebo dopravce.
+    const net = NETWORKS[v.city];
+    if (net) {
+      el.style.setProperty('--vehicle-color', net.main);
+      el.style.setProperty('--vehicle-text', net.text);
+    } else {
+      el.style.removeProperty('--vehicle-color');
+      el.style.removeProperty('--vehicle-text');
+    }
+    return;
+  }
   el.title = `${v.code} ${v.number} · ${v.operator?.short ?? ''}`;
   el.style.setProperty('--vehicle-color', TRAIN_KINDS[v.kind]?.color ?? '#6c6c70');
   el.style.setProperty('--vehicle-text', '#ffffff');

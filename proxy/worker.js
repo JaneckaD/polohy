@@ -2,7 +2,7 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje.
-// /mhd: polohy vozů MHD dalších měst kraje z mapy IDZK (mpvnet.cz), jen vybrané městské linky.
+// /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz).
 
 const UPSTREAM = 'https://www.dszo.cz';
 const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php', '/online/spoj.php']);
@@ -43,6 +43,8 @@ const MPV_URL = 'https://mpvnet.cz/zlin/map/mapData';
 const MPV_BODY = JSON.stringify({ w: 17.1, s: 48.86, e: 18.4, n: 49.54, zoom: 13, showStops: false, mapFilterId: null });
 // Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = MHD Valašské Meziříčí.
 const CITY_LICENCES = ['775', '946'];
+// Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
+const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA/i;
 
 async function cityBuses() {
   const upstream = await fetch(MPV_URL, {
@@ -53,8 +55,9 @@ async function cityBuses() {
   if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
   const data = await upstream.json();
   const vehicles = (data.transmitters ?? [])
-    .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)))
-    .map(({ cn, x, y, ico, ds, tm }) => ({ cn, x, y, ico, ds, tm }));
+    .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)) || (t.cat === 2 && CARRIERS.test(t.cr ?? '')))
+    // Z kódu stačí prvních 12 polí (linka, spoj, zastávky, cíl, nízkopodlažnost, SPZ), zbytek jsou nuly.
+    .map(({ cn, x, y, ico, ds, tm, cr }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, tm, cr }));
   return new Response(JSON.stringify({ vehicles }), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });

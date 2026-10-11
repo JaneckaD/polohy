@@ -3,7 +3,7 @@ import { FEATURES } from './dszo.js';
 import { applyVehicleColors, TYPE_LABELS, delayLevel } from './colors.js';
 import { currentTripIndex } from './route-match.js';
 import { TRAIN_KINDS } from './trains.js';
-import { CITIES } from './cities.js';
+import { networkLabel } from './cities.js';
 
 const svg = (body) =>
   `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -135,7 +135,7 @@ export function renderDetails(v, trip = null) {
   const type = h('div', 'card-type');
   type.innerHTML = ICONS[v.type] ?? '';
   const label = TYPE_LABELS[v.type] ?? 'Vůz';
-  type.append(v.city ? ` ${label} · MHD ${CITIES[v.city].name}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
+  type.append(v.city ? ` ${label} · ${networkLabel(v.city)}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
   title.append(type);
   head.append(badge, title);
   card.append(head);
@@ -148,7 +148,7 @@ export function renderDetails(v, trip = null) {
   // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
   if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));
 
-  // U MHD jiných měst víme jen, jestli je vůz nízkopodlažní.
+  // U MHD jiných měst a regionálních autobusů víme jen, jestli je vůz nízkopodlažní.
   if (v.city) {
     if (v.lowFloor != null) card.append(featureRow([['lowlevel', 'Bezbariérový', v.lowFloor]]));
     return card;

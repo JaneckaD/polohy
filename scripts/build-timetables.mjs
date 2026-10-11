@@ -12,12 +12,14 @@ import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
-import { cityStopName } from '../src/cities.js';
+import { cityStopName, CITIES, CARRIERS } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
 const ROUTES = new URL('../public/routes.json', import.meta.url);
+// Trasy regionálních autobusů (dopravci, jejichž vozy ukazujeme na mapě): zvlášť, aplikace je načte, až je potřebuje.
+const BUS_ROUTES = new URL('../public/routes-bus.json', import.meta.url);
 const TT_DIR = new URL('../public/tt/', import.meta.url);
 const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -284,7 +286,8 @@ if (tt) {
 
 // --- 2. Trasy po silnicích podle zastávek ------------------------------------
 const previous = (await previousDeploy('routes.json'))?.routes ?? [];
-const cache = new Map(previous.filter((r) => r.key && r.line?.length > 1).map((r) => [r.key, r.line]));
+const previousBus = (await previousDeploy('routes-bus.json'))?.routes ?? [];
+const cache = new Map([...previous, ...previousBus].filter((r) => r.key && r.line?.length > 1).map((r) => [r.key, r.line]));
 
 const routes = [];
 if (tt?.previous) {
@@ -329,13 +332,19 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
   }
 }
 
-// MHD dalších měst: trasa po silnicích pro varianty spojů (jako u DSZO), aby ji aplikace nemusela
-// skládat po kouscích přes veřejný OSRM. Kratší varianty, které delší už pokrývají, přeskočíme.
+// MHD dalších měst a regionální autobusy dopravců, jejichž vozy ukazujeme: trasa po silnicích pro varianty
+// spojů (jako u DSZO), aby ji aplikace nemusela skládat po kouscích přes veřejný OSRM. Kratší varianty,
+// které delší už pokrývají, přeskočíme. Nově počítané trasy mají časový limit, zbytek dopočítá další běh
+// (hotové trasy se berou z minulého nasazení).
 let cityRouted = 0;
+const busRoutes = [];
 if (!tt?.previous) {
+  const routedNetwork = (c) => c in CITIES || !!CARRIERS[c]?.live;
+  const deadline = Date.now() + 25 * 60 * 1000;
+  let postponed = 0;
   const variants = new Map();
   for (const t of tt?.rawTrips ?? []) {
-    if (!t.city) continue;
+    if (!t.city || !routedNetwork(t.city)) continue;
     const key = `${t.city}:${t.ref}|${t.stops.map((s) => s[0]).join('|')}`;
     if (!variants.has(key)) variants.set(key, t);
   }
@@ -351,6 +360,7 @@ if (!tt?.previous) {
     let geometry = cache.get(key);
     if (geometry) cached++;
     else {
+      if (Date.now() > deadline) { postponed++; continue; }
       geometry = await osrmRoute(points);
       if (!geometry) continue;
       geometry = simplifyLine(geometry);
@@ -359,10 +369,13 @@ if (!tt?.previous) {
     for (const p of pairs) coveredPairs.add(p);
     const line = geometry.length > 2 ? removeDetours(geometry, located) : geometry;
     const stops = located.map(([n, lat, lon]) => [cityStopName(t.city, n), lat, lon]);
-    routes.push({ ref, type: 'bus', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line, key });
+    (t.city in CITIES ? routes : busRoutes).push({ ref, type: 'bus', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line, key });
   }
-  console.log(`Trasy MHD dalších měst: ${routes.filter((r) => r.city).length} variant (nově spočítané ${cityRouted}).`);
+  console.log(`Trasy MHD dalších měst: ${routes.filter((r) => r.city).length} variant, regionálních autobusů: ${busRoutes.length} variant (nově spočítané ${cityRouted}, odloženo na příště ${postponed}).`);
+} else {
+  busRoutes.push(...previousBus);
 }
+writeFileSync(BUS_ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: busRoutes }));
 
 // Linky, které v jízdních řádech chybí, necháme z OpenStreetMap.
 const covered = new Set(routes.filter((r) => r.line.length > 1).map((r) => r.ref));

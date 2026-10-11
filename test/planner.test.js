@@ -84,3 +84,26 @@ test('vozy spojení: linka, směr a poloha podle jízdního řádu', async () =>
   assert.equal(ids[1], null);
   assert.deepEqual(matchJourneyVehicles(j, P, vehicles, 700), [null, null]);
 });
+
+test('cíl celé město: první dosažená ze zastávek města', () => {
+  const j = earliestJourney(P, { origins: [{ stop: stop('A'), walk: 0 }], target: [stop('D'), stop('C')], date: '2026-10-11', time: 590 });
+  assert.equal(P.stops[j.legs.at(-1).to].name, 'C');
+  assert.equal(j.arr, 606);
+  assert.equal(j.transfers, 0);
+});
+
+test('obce a druhy dopravy na zastávkách', async () => {
+  const { findTowns } = await import('../src/planner.js');
+  const t2 = {
+    ...tt,
+    lines: [
+      line('1', 'bus', ['Kroměříž, Hulínská', 'Kroměříž, náměstí', 'Bílany'], [[49.3, 17.39], [49.3, 17.4], [49.31, 17.41]], [600]),
+      line('2', 'bus', ['Kroměříž', 'Kroměříž, náměstí'], [[49.29, 17.38], [49.3, 17.4]], [610]),
+    ],
+  };
+  const Q = preparePlanner(buildPlannerData(t2));
+  const town = findTowns(Q, 'krom')[0];
+  assert.equal(town.name, 'Kroměříž');
+  assert.deepEqual(town.stops.map((i) => Q.stops[i].name).sort(), ['Kroměříž', 'Kroměříž, Hulínská', 'Kroměříž, náměstí']);
+  assert.ok(Q.stops[0].kinds.has('mhd'));
+});

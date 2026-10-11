@@ -1,6 +1,8 @@
-// MHD dalších měst kraje (Kroměříž, Valašské Meziříčí) z GTFS Integrované dopravy Zlínského kraje,
-// pro vyhledávání spojení a pro jízdní řád vozu na mapě. Linky poznáme podle čísla licence v route_id.
-import { readGtfsFiles } from './gtfs-lib.mjs';
+// MHD dalších měst kraje (Kroměříž, Valašské Meziříčí) a regionální autobusy z GTFS Integrované dopravy
+// Zlínského kraje, pro vyhledávání spojení a pro jízdní řád vozu na mapě. MHD měst poznáme podle čísla
+// licence v route_id, dopravce regionální linky podle čísla dopravce v route_id. Linky DSZO jsou jinde.
+import { readGtfsFiles, displayStopName } from './gtfs-lib.mjs';
+import { carrierOfRoute } from '../src/cities.js';
 
 export const CITY_ROUTES = { km: 'BUS_MHD:775', vm: 'BUS_MHD:946' };
 
@@ -11,8 +13,17 @@ const toMinutes = (t) => {
 
 const cityOf = (routeId) => Object.keys(CITY_ROUTES).find((c) => routeId.startsWith(CITY_ROUTES[c])) ?? null;
 
-/** Spoje městské MHD jako rawTrips pro buildPlannerFromTrips: { ref, type: 'bus', city, mask, times, stops }. */
+/**
+ * Spoje MHD měst a regionálních autobusů jako rawTrips pro buildPlannerFromTrips:
+ * { ref, type: 'bus', city (město nebo dopravce), number, mask, times, stops }.
+ */
 export function cityTrips(zipBytes, { startDate, days, log = () => {} }) {
+  const dszo = new Set();
+  // Síť spoje: MHD města, jinak dopravce regionální linky (linky DSZO a vlaky ne).
+  const networkOf = (route) => {
+    if (!route || dszo.has(route.agency_id) || !route.route_id.startsWith('BUS')) return null;
+    return cityOf(route.route_id) ?? carrierOfRoute(route.route_id);
+  };
   const routes = new Map();
   const trips = new Map();
   const stops = new Map();
@@ -22,8 +33,11 @@ export function cityTrips(zipBytes, { startDate, days, log = () => {} }) {
     return services.get(id);
   };
   readGtfsFiles(zipBytes, {
-    'routes.txt': (r) => cityOf(r.route_id) && routes.set(r.route_id, r),
-    'trips.txt': (r) => cityOf(r.route_id) && trips.set(r.trip_id, r),
+    'agency.txt': (r) => /dszo|dopravní společnost zlín/i.test(r.agency_name) && dszo.add(r.agency_id),
+  });
+  readGtfsFiles(zipBytes, {
+    'routes.txt': (r) => networkOf(r) && routes.set(r.route_id, r),
+    'trips.txt': (r) => routes.has(r.route_id) && trips.set(r.trip_id, r),
     'stops.txt': (r) => stops.set(r.stop_id, r),
     'calendar.txt': (r) => {
       const s = service(r.service_id);
@@ -76,21 +90,24 @@ export function cityTrips(zipBytes, { startDate, days, log = () => {} }) {
     const dep = list.map((r) => toMinutes(r.departure_time) ?? toMinutes(r.arrival_time));
     if (dep.some((t) => t == null)) continue;
     for (let i = 1; i < dep.length; i++) while (dep[i] < dep[i - 1]) dep[i] += 1440;
+    const city = networkOf(route);
+    // Regionální linky staví i na zastávkách MHD Zlín: stejné názvy jako u DSZO (bez „Zlín,“), ať jde přestoupit.
+    const nameOf = city in CITY_ROUTES ? (n) => n : displayStopName;
     out.push({
       ref: route.route_short_name.trim(),
       type: 'bus',
-      city: cityOf(trip.route_id),
+      city,
       number: (trip.trip_short_name ?? '').trim() || null,
       mask,
       times: dep,
       stops: list.map((r) => {
         const s = stops.get(r.stop_id);
-        return [s?.stop_name ?? r.stop_id, s ? Number(s.stop_lat) : null, s ? Number(s.stop_lon) : null];
+        return [nameOf(s?.stop_name ?? r.stop_id), s ? Number(s.stop_lat) : null, s ? Number(s.stop_lon) : null];
       }),
     });
   }
   const count = {};
   for (const t of out) count[t.city] = (count[t.city] ?? 0) + 1;
-  log(`MHD dalších měst: ${Object.entries(count).map(([c, n]) => `${c} ${n} spojů`).join(', ') || 'žádné spoje'}`);
+  log(`MHD dalších měst a regionální autobusy: ${Object.entries(count).map(([c, n]) => `${c} ${n} spojů`).join(', ') || 'žádné spoje'}`);
   return out;
 }

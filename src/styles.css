@@ -1740,7 +1740,7 @@ input:focus-visible {
 }
 
 .suggest-item + .suggest-item {
-  box-shadow: inset 44px 0.5px 0 var(--cell), inset 0 0.5px 0 var(--separator);
+  box-shadow: inset 56px 0.5px 0 var(--cell), inset 0 0.5px 0 var(--separator);
 }
 
 .suggest-item:active {
@@ -1748,24 +1748,58 @@ input:focus-visible {
 }
 
 .suggest-icon {
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
   flex: none;
-  border-radius: 50%;
-  border: 2px solid var(--label-3);
-  box-sizing: border-box;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #fff;
+  background: var(--label-3);
+}
+
+/* Barva podle toho, co na zastávce jezdí: vlak, MHD, regionální autobus; celé město. */
+.suggest-icon.train {
+  background: #d12d2d;
+}
+
+.suggest-icon.mhd {
+  background: #0a66d8;
+}
+
+.suggest-icon.bus {
+  background: #e07b00;
+}
+
+.suggest-icon.town {
+  background: #0e2d6a;
 }
 
 .suggest-icon.loc {
-  border: none;
+  background: none;
   color: var(--tint);
 }
 
-.suggest-icon.recent {
-  border-style: dashed;
+.suggest-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.suggest-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggest-sub {
+  font-size: 13px;
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .plan-when {
@@ -2343,10 +2377,8 @@ input:focus-visible {
 }
 
 /* MHD dalších měst: barva města (Kroměříž oranžová, Valašské Meziříčí zelenomodrá) */
-.vehicle[data-type='bus'][data-city='km'] {
-  --vehicle-color: #e8590c;
-}
-
-.vehicle[data-type='bus'][data-city='vm'] {
-  --vehicle-color: #00897b;
+/* Trojmístná čísla regionálních linek: menší písmo, ať se vejdou do kolečka. */
+.vehicle.long-label .vehicle-dot {
+  font-size: 10.5px;
+  letter-spacing: -0.04em;
 }

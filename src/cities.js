@@ -1,5 +1,5 @@
-// MHD dalších měst kraje: polohy vozů z mapy IDZK (přes proxy /mhd), jízdní řády z GTFS IDZK.
-// Každé město má vlastní barvu, aby bylo na mapě poznat, že jde o jinou MHD než ve Zlíně.
+// MHD dalších měst kraje a regionální autobusy: polohy vozů z mapy IDZK (přes proxy /mhd), jízdní řády z GTFS IDZK.
+// Každé město i dopravce má vlastní barvu, aby bylo na mapě poznat, čí vůz to je.
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
 
@@ -7,6 +7,34 @@ export const CITIES = {
   km: { name: 'Kroměříž', licence: '775', main: '#e8590c', text: '#ffffff', stop: '#a33d06' },
   vm: { name: 'Valašské Meziříčí', licence: '946', main: '#00897b', text: '#ffffff', stop: '#005f56' },
 };
+
+/**
+ * Dopravci regionálních autobusů IDZK. code = číslo dopravce v route_id GTFS IDZK („BUS_MHD:802180_263_…“),
+ * live = jak se dopravce jmenuje na mapě IDZK (jen u těch, jejichž vozy na mapě ukazujeme).
+ */
+export const CARRIERS = {
+  csad: { name: 'ČSAD BUS Uherské Hradiště', short: 'ČSAD BUS UH', code: '263', live: /ČSAD BUS U/i, main: '#c62828', text: '#ffffff', stop: '#8e1b1b' },
+  zgroup: { name: 'Z-Group bus', short: 'Z-Group', code: '312', live: /Z-Group/i, main: '#558b2f', text: '#ffffff', stop: '#33691e' },
+  arriva: { name: 'ARRIVA autobusy', short: 'Arriva', code: '88', live: /ARRIVA/i, main: '#7b1fa2', text: '#ffffff', stop: '#4a148c' },
+  tdm: { name: 'Transdev Morava', short: 'Transdev', code: '1425', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  tds: { name: 'Transdev Slezsko', short: 'Transdev', code: '267', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  reg: { name: 'IDZK', short: 'IDZK', code: null, main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+};
+
+/** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */
+export const NETWORKS = { ...CITIES, ...CARRIERS };
+export const isCarrier = (key) => key in CARRIERS;
+
+/** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“. */
+export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : CARRIERS[key]?.short ?? '');
+
+/** Dopravce podle route_id z GTFS IDZK (null u MHD měst a linek DSZO). */
+export function carrierOfRoute(routeId) {
+  const code = /^BUS[^:]*:\d+_(\d+)_/.exec(routeId ?? '')?.[1];
+  return Object.keys(CARRIERS).find((k) => CARRIERS[k].code === code) ?? 'reg';
+}
 
 const cityOfLicence = (cn) => Object.keys(CITIES).find((c) => cn.startsWith(CITIES[c].licence)) ?? null;
 
@@ -20,7 +48,7 @@ export function cityStopName(city, name) {
 
 /** Zpoždění z textu mapy IDZK: „$z1~min.~34~s“ = 94 s zpoždění, „$p…“ = náskok. */
 export function parseDelay(ds) {
-  const m = /\$([zp])(\d+)~min\.~(\d+)~s/.exec(ds ?? '');
+  const m = /\$([zp])-?(\d+)~min\.~(\d+)~s/.exec(ds ?? '');
   if (!m) return null;
   const s = Number(m[2]) * 60 + Number(m[3]);
   return m[1] === 'p' ? -s : s;
@@ -29,16 +57,18 @@ export function parseDelay(ds) {
 /** Záznam z proxy → vůz pro mapu (stejný tvar jako vozy DSZO), nebo null. */
 export function parseCityBus(t) {
   const f = String(t.cn ?? '').split('|');
-  const city = cityOfLicence(f[0] ?? '');
+  // MHD města podle licence linky, regionální autobus podle dopravce (jen dopravci, které ukazujeme).
+  const city = cityOfLicence(f[0] ?? '') ?? (t.cr ? Object.keys(CARRIERS).find((k) => CARRIERS[k].live?.test(t.cr)) : null) ?? null;
   if (!city || !Number.isFinite(t.x) || !Number.isFinite(t.y)) return null;
   const angle = /a_(\d+)\.png/.exec(t.ico ?? '');
   const delay = parseDelay(t.ds);
   const plate = (f[11] ?? '').trim();
   return {
-    id: `${city}-${plate || f[2]}`,
+    id: `${city}-${plate || `${f[0]}-${f[2]}`}`,
     type: 'bus',
     city,
     line: f[1],
+    licence: f[0] || null,
     lat: t.x,
     lon: t.y,
     bearing: angle ? Number(angle[1]) : null,

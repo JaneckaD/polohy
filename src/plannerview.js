@@ -1,8 +1,8 @@
 // Záložka Spojení: odkud, kam, den a čas → nejbližší spojení s přestupy (i pěšími) → detail spojení.
 import { applyTypeColors, applyVehicleColors } from './colors.js';
 import { TRAIN_KINDS, trainKind, trainOperator } from './trains.js';
-import { CITIES } from './cities.js';
-import { preparePlanner, searchJourneys, findStops, nearbyStops, rideStops } from './planner.js';
+import { networkLabel } from './cities.js';
+import { preparePlanner, searchJourneys, findStops, findTowns, nearbyStops, rideStops } from './planner.js';
 
 const body = document.getElementById('pl-body');
 const title = document.getElementById('pl-title');
@@ -70,10 +70,35 @@ function lineBadge(pat) {
 // MHD jiného města (Kroměříž, Valašské Meziříčí) má barvu města.
 const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : pat.c ? applyVehicleColors(el, { city: pat.c }) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
 const rideKind = (pat) =>
-  pat.y === 'v' ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}` : pat.c ? `Autobus · MHD ${CITIES[pat.c]?.name ?? ''}` : pat.y === 't' ? 'Trolejbus' : 'Autobus';
+  pat.y === 'v' ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}` : pat.c ? `Autobus · ${networkLabel(pat.c)}` : pat.y === 't' ? 'Trolejbus' : 'Autobus';
 
 // --- stav formuláře (pamatuje se mezi návštěvami) -----------------------------------
 const MY_LOCATION = { name: 'Moje poloha', here: true };
+
+// Našeptávač: co na zastávce jezdí (ikona a barva podle nejdůležitějšího), nebo celé město.
+const ICON_TRAIN = svg('<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-1.5-4M15 20l1.5-4M9.5 13h.01M14.5 13h.01"/>', 16);
+const ICON_MHD = svg('<path d="m9 5-2-3M15 5l2-3"/><rect x="5" y="5" width="14" height="13" rx="3"/><path d="M5 12h14M8 21v-3M16 21v-3"/>', 16);
+const ICON_BUS = svg('<rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M7 21v-3M17 21v-3M8 14.5h.01M16 14.5h.01"/>', 16);
+const ICON_TOWN = svg('<path d="M3 21h18M5 21V9l6-4v16M11 21V11h8v10M8 11v.01M8 15v.01M15 15v.01M15 18v.01"/>', 16);
+const ICON_RECENT = svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 16);
+const STOP_KINDS = [
+  ['train', 'Vlak', ICON_TRAIN],
+  ['mhd', 'MHD', ICON_MHD],
+  ['bus', 'Regionální autobus', ICON_BUS],
+];
+
+/** Popis volby v našeptávači: { kind (třída barvy), icon, sub }. */
+function optionLook(o, P) {
+  if (o.here) return { kind: 'loc', icon: ICON_LOC, sub: null };
+  if (o.town) {
+    const n = P?.towns?.get(o.name)?.stops.length ?? 0;
+    return { kind: 'town', icon: ICON_TOWN, sub: `${n >= 8 ? 'Celé město' : 'Celá obec'}${n ? ` · ${plural(n, 'zastávka', 'zastávky', 'zastávek')}` : ''}` };
+  }
+  const kinds = P?.stops.find((s) => s.name === o.name)?.kinds ?? new Set();
+  const list = STOP_KINDS.filter(([k]) => kinds.has(k));
+  const [kind, , icon] = list[0] ?? ['bus', '', ICON_BUS];
+  return { kind, icon: o.recent ? ICON_RECENT : icon, sub: list.map(([, label]) => label).join(' · ') || null };
+}
 
 function loadState() {
   try {
@@ -213,22 +238,36 @@ function renderSearch() {
     if (active !== which) return;
     suggest.replaceChildren();
     const options = [];
-    if (which === 'from' && !input.value.trim()) options.push(MY_LOCATION);
-    if (P) for (const s of findStops(P, input.value)) options.push({ name: s.name });
-    if (!input.value.trim()) for (const r of state.recent) if (r.from !== 'Moje poloha') options.push({ name: which === 'from' ? r.from : r.to, recent: true });
+    const q = input.value.trim();
+    if (which === 'from' && !q) options.push(MY_LOCATION);
+    if (P && q) {
+      for (const t of findTowns(P, q, 2)) options.push({ name: t.name, town: true });
+      for (const s of findStops(P, q)) options.push({ name: s.name });
+    }
+    if (!q) {
+      for (const r of state.recent) {
+        if (r.from === 'Moje poloha' && which === 'from') continue;
+        options.push(which === 'from' ? { name: r.from, town: !!r.fromTown, recent: true } : { name: r.to, town: !!r.toTown, recent: true });
+      }
+    }
     const seen = new Set();
     for (const o of options) {
-      if (seen.has(o.name)) continue;
-      seen.add(o.name);
+      const key = `${o.town ? 'town' : 'stop'}:${o.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const look = optionLook(o, P);
       const b = h('button', 'suggest-item');
       b.type = 'button';
-      if (o.here) b.innerHTML = `<span class="suggest-icon loc">${ICON_LOC}</span>`;
-      else b.append(h('span', `suggest-icon${o.recent ? ' recent' : ''}`));
-      b.append(h('span', null, o.name));
+      const icon = h('span', `suggest-icon ${look.kind}`);
+      icon.innerHTML = look.icon;
+      const text = h('span', 'suggest-text');
+      text.append(h('span', 'suggest-name', o.name));
+      if (look.sub) text.append(h('span', 'suggest-sub', o.recent ? `Nedávno hledané · ${look.sub}` : look.sub));
+      b.append(icon, text);
       // pointerdown, aby výběr proběhl dřív, než pole ztratí focus
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        pick(which, o.here ? MY_LOCATION : { name: o.name });
+        pick(which, o.here ? MY_LOCATION : o.town ? { name: o.name, town: true } : { name: o.name });
         input.blur();
       });
       suggest.append(b);
@@ -292,8 +331,26 @@ async function origins(P) {
     if (!near.length) return { error: 'Do 10 minut chůze od tebe není žádná zastávka MHD.' };
     return { list: near };
   }
+  // Celé město: odjezd z kterékoli jeho zastávky.
+  if (state.from?.town) {
+    const town = P.towns?.get(state.from.name);
+    if (town) return { list: town.stops.map((i) => ({ stop: i, walk: 0 })) };
+  }
   const s = P.stops.find((x) => x.name === state.from?.name);
   return s ? { list: [{ stop: s.i, walk: 0 }] } : { error: 'Vyber zastávku, odkud jedeš.' };
+}
+
+/** Cíl hledání: index zastávky, nebo všechny zastávky města (kromě těch, odkud se jede). */
+function targetOf(P, origin) {
+  if (state.to?.town) {
+    const town = P.towns?.get(state.to.name);
+    if (town) {
+      const from = new Set(origin.map((o) => o.stop));
+      const list = town.stops.filter((i) => !from.has(i));
+      return list.length ? list : null;
+    }
+  }
+  return P.stops.find((x) => x.name === state.to?.name)?.i ?? null;
 }
 
 async function search(results, more = false) {
@@ -312,21 +369,21 @@ async function search(results, more = false) {
     results.replaceChildren(h('div', 'empty', o.error));
     return;
   }
-  const target = P.stops.find((x) => x.name === state.to.name);
-  if (!target) {
-    results.replaceChildren(h('div', 'empty', 'Vyber zastávku, kam jedeš.'));
+  const target = targetOf(P, o.list);
+  if (target == null) {
+    results.replaceChildren(h('div', 'empty', state.to.town ? 'Už jsi v cílovém městě.' : 'Vyber zastávku, kam jedeš.'));
     return;
   }
   const date = state.date ?? pragueDate();
   let time = state.time ?? nowMinutes();
   let list = more && state.results ? state.results.list : [];
   if (more && list.length) time = list.at(-1).dep + 1;
-  const found = searchJourneys(P, { origins: o.list, target: target.i, date, time, count: 5 });
+  const found = searchJourneys(P, { origins: o.list, target, date, time, count: 5 });
   list = more ? [...list, ...found.filter((j) => !list.some((x) => x.dep === j.dep && x.arr === j.arr))] : found;
   state.results = { list, date, P, done: !found.length };
   if (!more) {
-    const rec = { from: state.from.name, to: state.to.name };
-    state.recent = [rec, ...state.recent.filter((r) => r.from !== rec.from || r.to !== rec.to)].slice(0, 5);
+    const rec = { from: state.from.name, to: state.to.name, fromTown: !!state.from.town, toTown: !!state.to.town };
+    state.recent = [rec, ...state.recent.filter((r) => r.from !== rec.from || r.to !== rec.to || !!r.fromTown !== rec.fromTown || !!r.toTown !== rec.toTown)].slice(0, 5);
     persist();
   }
   drawResults(results, state.results);
