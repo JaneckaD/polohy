@@ -55,8 +55,26 @@ async function download() {
   return null;
 }
 
+// Když Overpass nejde, necháme trasy z posledního nasazení, aby nezmizely.
+async function previousDeploy() {
+  if (!process.env.PAGES_URL) return null;
+  try {
+    const res = await fetch(new URL('routes.json', process.env.PAGES_URL));
+    const json = res.ok ? await res.json() : null;
+    return json?.routes?.length ? json : null;
+  } catch {
+    return null;
+  }
+}
+
 const data = await download();
 if (!data) {
+  const previous = await previousDeploy();
+  if (previous) {
+    console.warn(`Overpass nejde, používám trasy z posledního nasazení (${previous.routes.length} variant).`);
+    writeFileSync(OUT, JSON.stringify(previous));
+    process.exit(0);
+  }
   // Bez tras aplikace funguje dál, jen po klepnutí na vůz neukáže trasu.
   console.warn('Trasy se nepodařilo stáhnout, ukládám prázdný soubor.');
   writeFileSync(OUT, JSON.stringify({ generated: new Date().toISOString(), routes: [], stops: {} }));
