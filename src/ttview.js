@@ -1,6 +1,7 @@
 // Záložka Jízdní řády: seznam linek → linka (směr, zastávky) → odjezdy ze zastávky.
 import { TYPE_COLORS, TYPE_LABELS } from './colors.js';
 import { store, sortLines } from './store.js';
+import { nameSimilarity } from './names.js';
 
 const body = document.getElementById('tt-body');
 const title = document.getElementById('tt-title');
@@ -271,7 +272,10 @@ export function openLine(ref, headsign) {
   stack.length = 0;
   stack.push(renderIndex);
   loadLine(ref).then((line) => {
-    const dir = line?.directions.find((d) => d.headsign === headsign) ?? line?.directions[0];
+    // Směr podle cílové zastávky vozu (názvy se mohou mírně lišit).
+    const dir = headsign && line?.directions.length
+      ? line.directions.reduce((best, d) => (nameSimilarity(d.headsign, headsign) > nameSimilarity(best.headsign, headsign) ? d : best))
+      : line?.directions[0];
     show(() => renderLine(ref, dir?.id));
   });
 }

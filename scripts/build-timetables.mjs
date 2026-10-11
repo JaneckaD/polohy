@@ -5,13 +5,20 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
+import { buildFromGtfs } from './gtfs-lib.mjs';
 import { locateStops, simplifyLine } from './routes-lib.mjs';
+import { normalizeName } from '../src/names.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
 const ROUTES = new URL('../public/routes.json', import.meta.url);
 const TT_DIR = new URL('../public/tt/', import.meta.url);
 const OSRM = 'https://router.project-osrm.org/route/v1/driving/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Strojově čitelné jízdní řády: balík DSZO obsahuje jen PDF, proto GTFS Integrované dopravy Zlínského kraje
+// (přebalené pro projekt Transitous) a záložně celostátní data CIS JŘ převedená do GTFS (data.jr.ggu.cz).
+const GTFS_URLS = (process.env.GTFS_URLS ?? 'https://hoermalmeister.github.io/gtfs-rehost/idzk/id-zk-all.zip https://data.jr.ggu.cz/results/latest/JDF_merged_GTFS.zip')
+  .split(/\s+/)
+  .filter(Boolean);
 
 function pragueToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Prague' }).format(new Date());
@@ -65,6 +72,18 @@ async function osrmRoute(points) {
   return line;
 }
 
+// Linky s indexy zastávek převede na názvy (každý zdroj má vlastní seznam názvů).
+function withStopNames(part) {
+  return part.lines.map((line) => ({
+    ...line,
+    directions: line.directions.map((d) => ({
+      ...d,
+      stops: d.stops.map((i) => part.stopNames[i]),
+      variants: d.variants.map((v) => ({ ...v, stops: v.stops.map((i) => part.stopNames[i]) })),
+    })),
+  }));
+}
+
 // --- 1. Jízdní řády ------------------------------------------------------------
 const zipUrl = await findZipUrl();
 let tt = null;
@@ -100,21 +119,8 @@ if (zipUrl) {
       console.log('Ukázka Linky.txt:', JSON.stringify(first?.['linky.txt']?.[0]));
       console.log('Ukázka Zastavky.txt:', JSON.stringify(first?.['zastavky.txt']?.slice(0, 2)));
       console.log('Ukázka Zasspoje.txt:', JSON.stringify(first?.['zasspoje.txt']?.[0]));
-      // Spojení: každá část má vlastní seznam názvů zastávek, linky převedeme na názvy.
       const lines = new Map();
-      for (const part of parts) {
-        for (const line of part.lines) {
-          const withNames = {
-            ...line,
-            directions: line.directions.map((d) => ({
-              ...d,
-              stops: d.stops.map((i) => part.stopNames[i]),
-              variants: d.variants.map((v) => ({ ...v, stops: v.stops.map((i) => part.stopNames[i]) })),
-            })),
-          };
-          if (!lines.has(line.ref)) lines.set(line.ref, withNames);
-        }
-      }
+      for (const part of parts) for (const line of withStopNames(part)) if (!lines.has(line.ref)) lines.set(line.ref, line);
       tt = { startDate, days: parts[0].days, lines: [...lines.values()] };
       console.log(`Jízdní řády: ${tt.lines.length} linek (${tt.lines.map((l) => l.ref).join(', ')})`);
     }
@@ -126,6 +132,28 @@ if (zipUrl) {
 }
 
 if (!tt) {
+  for (const url of GTFS_URLS) {
+    try {
+      console.log(`Zkouším GTFS: ${url}`);
+      const res = await fetch(url, { headers: UA });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      console.log(`GTFS staženo: ${(bytes.length / 1e6).toFixed(1)} MB`);
+      const startDate = pragueToday();
+      const part = buildFromGtfs(bytes, { startDate, log: (m) => console.log(m) });
+      if (part.lines.length) {
+        tt = { startDate, days: part.days, lines: withStopNames(part), source: url };
+        break;
+      }
+      console.warn('V GTFS nejsou linky DSZO.');
+    } catch (err) {
+      console.warn(`GTFS ${url} se nepodařilo zpracovat: ${err.stack}`);
+    }
+  }
+  if (tt) console.log(`Jízdní řády z GTFS: ${tt.lines.length} linek (${tt.lines.map((l) => l.ref).join(', ')})`);
+}
+
+if (!tt) {
   // Bez nových dat ponecháme jízdní řády z posledního nasazení.
   const index = await previousDeploy('tt/index.json');
   if (index?.lines?.length) {
@@ -134,7 +162,7 @@ if (!tt) {
       const full = await previousDeploy(`tt/${l.ref}.json`);
       if (full) lines.push(full);
     }
-    tt = { startDate: index.startDate, days: index.days, lines };
+    tt = { startDate: index.startDate, days: index.days, lines, previous: true };
     console.warn(`Používám jízdní řády z posledního nasazení (${lines.length} linek).`);
   }
 }
@@ -142,7 +170,9 @@ if (!tt) {
 mkdirSync(TT_DIR, { recursive: true });
 if (tt) {
   for (const line of tt.lines) {
-    writeFileSync(new URL(`${line.ref}.json`, TT_DIR), JSON.stringify({ ...line, startDate: tt.startDate, days: tt.days }));
+    // Polohy a tvary tras patří do routes.json, jízdní řád je nepotřebuje.
+    const slim = { ...line, directions: line.directions.map((d) => ({ ...d, variants: d.variants.map(({ stops, count }) => ({ stops, count })) })) };
+    writeFileSync(new URL(`${line.ref}.json`, TT_DIR), JSON.stringify({ ...slim, startDate: tt.startDate, days: tt.days }));
   }
   writeFileSync(
     new URL('index.json', TT_DIR),
@@ -162,16 +192,27 @@ const previous = (await previousDeploy('routes.json'))?.routes ?? [];
 const cache = new Map(previous.filter((r) => r.key && r.line?.length > 1).map((r) => [r.key, r.line]));
 
 const routes = [];
-let routed = 0, cached = 0, missing = 0;
-for (const line of tt?.lines ?? []) {
+if (tt?.previous) {
+  // Jízdní řády z minula: ponecháme i jejich trasy.
+  routes.push(...previous.filter((r) => r.dir));
+}
+let routed = 0, cached = 0, missing = 0, shaped = 0;
+for (const line of tt?.previous ? [] : tt?.lines ?? []) {
   for (const dir of line.directions) {
     const total = dir.variants.reduce((s, v) => s + v.count, 0);
     // Varianty, kterými jezdí aspoň 10 % spojů směru (nejvýš 3).
     const variants = dir.variants.filter((v, i) => i === 0 || v.count >= total * 0.1).slice(0, 3);
     for (const v of variants) {
-      const stops = locateStops(v.stops, osm.stops);
+      // Polohy zastávek z GTFS, jinak dohledané podle názvu v OpenStreetMap.
+      const stops = v.coords ? v.stops.map((name, i) => [name, v.coords[i]?.[0] ?? null, v.coords[i]?.[1] ?? null]) : locateStops(v.stops, osm.stops);
       const located = stops.filter((s) => s[1] != null);
       if (located.length < 2) { missing++; continue; }
+      if (v.shape?.length > 1) {
+        // Tvar trasy přímo z jízdních řádů: přesně tudy vůz jede.
+        routes.push({ ref: line.ref, type: line.type, dir: dir.id, to: dir.headsign, stops: located, line: simplifyLine(v.shape) });
+        shaped++;
+        continue;
+      }
       const points = located.map((s) => [s[2], s[1]]);
       const key = points.map((p) => p.join(',')).join(';');
       let geometry = cache.get(key);
@@ -188,8 +229,11 @@ for (const line of tt?.lines ?? []) {
 // Linky, které v jízdních řádech chybí, necháme z OpenStreetMap.
 const covered = new Set(routes.filter((r) => r.line.length > 1).map((r) => r.ref));
 const osmFallback = osm.routes.filter((r) => !covered.has(r.ref));
-writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: osm.stops }));
-console.log(`Trasy podle zastávek: ${routes.length} (nově spočítané ${routed}, z cache ${cached}), bez poloh zastávek ${missing}, z OSM navíc ${osmFallback.length}.`);
+// Slovník poloh zastávek (pro trasu podle jízdního řádu vozu): OSM doplněné o zastávky z jízdních řádů.
+const stopDict = { ...osm.stops };
+for (const r of routes) for (const [name, lat, lon] of r.stops) stopDict[normalizeName(name)] ??= [lat, lon];
+writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: stopDict }));
+console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů ${shaped}, nově spočítané ${routed}, z cache ${cached}), bez poloh zastávek ${missing}, z OSM navíc ${osmFallback.length}.`);
 const unlocated = new Set();
-for (const line of tt?.lines ?? []) for (const d of line.directions) for (const s of locateStops(d.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);
+for (const line of tt?.lines ?? []) for (const d of line.directions) for (const v of d.variants) if (!v.coords) for (const s of locateStops(v.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);
 if (unlocated.size) console.log(`Zastávky bez polohy v OSM (${unlocated.size}): ${[...unlocated].slice(0, 40).join('; ')}`);

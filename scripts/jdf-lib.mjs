@@ -187,6 +187,15 @@ export function buildTimetables(jdf, { startDate, days = 120 } = {}) {
     entry.dirs[dir].push({ number: trip.number, stops: trip.stops.map((s) => idx(s.stop)), times: trip.stops.map((s) => s.time), mask });
   }
 
+  const out = assembleLines(result, stopNames);
+  return { startDate, days, stopNames, lines: out };
+}
+
+/**
+ * Z naplánovaných spojů linek sestaví směry. result: Map ref -> { ref, type, name, dirs: { A: [spoj], B: [spoj] } },
+ * spoj = { stops: [index zastávky], times: [minuty], mask, shape?, coords? }.
+ */
+export function assembleLines(result, stopNames) {
   const out = [];
   for (const entry of result.values()) {
     const directions = [];
@@ -196,8 +205,9 @@ export function buildTimetables(jdf, { startDate, days = 120 } = {}) {
       const patterns = new Map();
       for (const t of list) {
         const key = t.stops.join(',');
-        const p = patterns.get(key) ?? { stops: t.stops, count: 0 };
+        const p = patterns.get(key) ?? { stops: t.stops, count: 0, shapes: new Map(), coords: t.coords };
         p.count++;
+        if (t.shape) p.shapes.set(t.shape, (p.shapes.get(t.shape) ?? 0) + 1);
         patterns.set(key, p);
       }
       const variants = [...patterns.values()].sort((a, b) => b.count - a.count);
@@ -227,10 +237,20 @@ export function buildTimetables(jdf, { startDate, days = 120 } = {}) {
           return { d: maskIdx(t.mask), t: times };
         })
         .sort((a, b) => (a.t.find((x) => x != null) ?? 0) - (b.t.find((x) => x != null) ?? 0));
-      directions.push({ id: dir, headsign, stops: order, variants: variants.map((v) => ({ stops: v.stops, count: v.count })), masks, trips });
+      directions.push({
+        id: dir,
+        headsign,
+        stops: order,
+        variants: variants.map((v) => {
+          const shape = [...v.shapes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+          return { stops: v.stops, count: v.count, ...(shape ? { shape } : {}), ...(v.coords ? { coords: v.coords } : {}) };
+        }),
+        masks,
+        trips,
+      });
     }
     out.push({ ref: entry.ref, type: entry.type, name: entry.name, directions });
   }
   out.sort((a, b) => Number(a.ref) - Number(b.ref) || a.ref.localeCompare(b.ref));
-  return { startDate, days, stopNames, lines: out };
+  return out;
 }
