@@ -1,0 +1,29 @@
+{
+  "name": "mhd-zlin-live",
+  "version": "1.0.0",
+  "description": "PWA s živou polohou MHD DSZO (Zlín, Otrokovice) na minimalistické mapě",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "icons": "node scripts/make-icons.mjs",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JaneckaD/polohy.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JaneckaD/polohy/issues"
+  },
+  "homepage": "https://github.com/JaneckaD/polohy#readme",
+  "dependencies": {
+    "maplibre-gl": "^6.13.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.4"
+  },
+  "private": true,
+  "type": "module"
+}
