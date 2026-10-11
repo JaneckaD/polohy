@@ -14,6 +14,16 @@
   <body>
     <div id="map"></div>
     <div id="status" class="status">Načítám…</div>
+    <div class="legend">
+      <span><i class="legend-dot trolleybus"></i>trolejbus</span>
+      <span><i class="legend-dot bus"></i>autobus</span>
+    </div>
+    <div id="hover-card" class="hover-card" hidden></div>
+    <div id="sheet" class="sheet" hidden>
+      <button class="sheet-close" type="button" aria-label="Zavřít">×</button>
+      <div class="sheet-details"></div>
+      <div class="sheet-trip"></div>
+    </div>
     <div class="controls">
       <button id="locate" type="button" title="Moje poloha" aria-label="Moje poloha">◎</button>
     </div>

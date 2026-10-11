@@ -1,4 +1,4 @@
-import { parseVehiclesPage, parseTable, mergeVehicles } from './dszo.js';
+import { parseVehiclesPage, parseTable, mergeVehicles, parseTrip } from './dszo.js';
 
 // DSZO obnovuje data zhruba každých 15 s.
 export const REFRESH_MS = 15000;
@@ -24,4 +24,20 @@ export async function fetchVehicles() {
     getText('/online/tabs2.php').catch(() => ''),
   ]);
   return mergeVehicles(parseVehiclesPage(page), parseTable(table));
+}
+
+/** Jízdní řád spoje, ve kterém vůz právě jede. Při chybě vrací prázdný seznam. */
+export async function fetchTrip(v) {
+  if (!PROXY) return [];
+  const params = new URLSearchParams({
+    vuz: v.id,
+    zast: v.stationId ?? '',
+    zpozdeni: String(v.delay ?? 0),
+    nizkopodlazni: v.lowFloor ? '1' : '0',
+  });
+  try {
+    return parseTrip(await getText(`/online/spoj.php?${params}`));
+  } catch {
+    return [];
+  }
 }

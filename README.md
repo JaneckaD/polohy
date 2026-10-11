@@ -1,8 +1,10 @@
 # MHD Zlín live
 
 PWA, která ukazuje živou polohu autobusů a trolejbusů DSZO (Zlín, Otrokovice) na bílé mapě kolem tebe.
-Vozidla jsou červená kolečka s číslem linky a malou šipkou ve směru jízdy. Po klepnutí na vozidlo se ukáže
-směr (konečná), zastávka a zpoždění.
+Vozidla jsou kolečka s číslem linky a malou šipkou ve směru jízdy, trolejbusy červené, autobusy modré.
+Najetí myší na vůz ukáže kartu s detaily (konečná, zpoždění, zastávka, číslo vozu, výbava jako klimatizace,
+Wi-Fi nebo bezbariérový přístup). Klepnutí na vůz ukáže na mapě trasu linky se zastávkami (projetá část tmavší)
+a jízdní řád spoje s časy.
 
 ## Odkud jsou data
 
@@ -11,6 +13,13 @@ směr (konečná), zastávka a zpoždění.
   Parser je v [`src/dszo.js`](src/dszo.js).
 - **Směr jízdy (konečná):** tabulka [www.dszo.cz/online/tabs2.php](https://www.dszo.cz/online/tabs2.php) (JSON),
   spojená s polohami podle čísla vozu.
+- **Jízdní řád spoje:** [www.dszo.cz/online/spoj.php](https://www.dszo.cz/online/) (časy a zastávky spoje, ve kterém vůz jede).
+- **Trasy linek a polohy zastávek:** [OpenStreetMap](https://www.openstreetmap.org) přes Overpass API. DSZO trasy
+  s polohou zastávek veřejně nedává. Skript [`scripts/build-routes.mjs`](scripts/build-routes.mjs) je stáhne při
+  každém nasazení (a jednou týdně) do `routes.json`. Když linka v OSM chybí, zastávky se dohledají podle názvů
+  a spojí rovnými čarami.
+- **Trolejbus nebo autobus:** DSZO to v datech neuvádí, rozlišuje se podle čísla vozu (2xx a 4xx trolejbusy,
+  ostatní autobusy).
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
   minimalistickým stylem v [`src/style.js`](src/style.js): bílý podklad, světlé ulice, jen názvy obcí.
 
@@ -21,7 +30,7 @@ DSZO data obnovuje zhruba každých 15 s, aplikace je stahuje ve stejném interv
 GitHub Pages hostuje jen statické soubory. Server DSZO neposílá hlavičku `Access-Control-Allow-Origin`,
 takže prohlížeč nedovolí stránce na `github.io` jeho data přečíst. Mezi aplikací a DSZO proto stojí malá proxy
 [`proxy/worker.js`](proxy/worker.js) pro Cloudflare Workers (zdarma, 100 000 požadavků denně). Pouští jen
-dvě veřejné adresy DSZO a na 10 s si odpověď drží v cache, takže server DSZO nezatěžuje.
+tři veřejné adresy DSZO a na 10 s si odpověď drží v cache, takže server DSZO nezatěžuje.
 
 Zvažované alternativy:
 - **GitHub Action, která data stahuje a ukládá do repozitáře:** obejde se bez dalšího účtu, ale cron na GitHubu
@@ -40,6 +49,9 @@ Zvažované alternativy:
 
 Kdo má rád příkazovou řádku: `cd proxy && npx wrangler deploy`.
 
+Když se kód v `proxy/worker.js` změní (třeba přibude adresa), stačí ho v Cloudflare v **Edit code** znovu
+vložit a dát **Deploy**.
+
 ## GitHub Pages
 
 Nasazení dělá workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) při každém pushi do
@@ -56,7 +68,8 @@ Při prvním spuštění povol přístup k poloze, mapa se vycentruje na tebe. T
 ```bash
 npm install
 npm run dev      # http://localhost:5173, data DSZO jdou přes proxy dev serveru, Cloudflare není potřeba
-npm test         # testy parseru dat DSZO a proxy
+npm test         # testy parseru dat DSZO, tras a proxy
+npm run routes   # stáhne trasy linek z OpenStreetMap do public/routes.json
 npm run build    # produkční build do dist/
 ```
 

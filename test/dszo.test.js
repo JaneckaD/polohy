@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseVehiclesPage, parseTable, mergeVehicles, formatDelay } from '../src/dszo.js';
+import { parseVehiclesPage, parseTable, mergeVehicles, formatDelay, parseTrip } from '../src/dszo.js';
 
 // Výřez ze skutečné stránky https://www.dszo.cz/online/ (11. 10. 2026), zkrácený.
 const PAGE = `
@@ -19,8 +19,8 @@ test('parses vehicles from the DSZO online page', () => {
   const v = parseVehiclesPage(PAGE);
   assert.equal(v.length, 3);
   assert.deepEqual(v[0], {
-    id: '417', line: '2', lat: 49.225424, lon: 17.6648031, bearing: 228,
-    delay: 41, lowFloor: true, stationId: '5601',
+    id: '417', line: '2', type: 'trolleybus', lat: 49.225424, lon: 17.6648031, bearing: 228,
+    delay: 41, lowFloor: true, stationId: '5601', features: ['lowlevel'], updated: null,
   });
   assert.equal(v[1].bearing, 208);
   // vůz bez stylu: směr neznámý, šipka se dopočítá z pohybu
@@ -32,7 +32,8 @@ test('joins the terminus from tabs2.php', () => {
   const merged = mergeVehicles(parseVehiclesPage(PAGE), parseTable(TABLE));
   assert.equal(merged[0].headsign, 'Otrokovice,žel.st.');
   assert.equal(merged[0].stop, 'Náměstí Míru');
-  assert.equal(merged[0].delayText, 'zpoždění 0:41');
+  assert.equal(merged[0].delayText, '0:41');
+  assert.equal(merged[0].duty, '4/2');
   assert.equal(merged[1].headsign, null);
   assert.equal(merged[2].headsign, 'Sportovní hala');
 });
@@ -45,4 +46,22 @@ test('tolerates broken table and empty page', () => {
 test('formats delay', () => {
   assert.equal(formatDelay(162), '2:42');
   assert.equal(formatDelay(-20), '-0:20');
+});
+
+test('reads vehicle equipment, type and update time', () => {
+  const html = `var vuz917 = new ol.Feature({geometry: new ol.geom.Point(ol.proj.fromLonLat([17.6,49.2])), name: '917', line: '33', delay: '60', lowlevel: '1', station: '1', infow: '<div class="infowindow">Aktualizace: 2026-10-11 12:01:12<br /><img src="img/ico-ac.png" title="klimatizace"><img src="img/ico-usb.png"><span title="WiFi"></span></div>'});`;
+  const [v] = parseVehiclesPage(html);
+  assert.equal(v.type, 'bus');
+  assert.deepEqual(v.features, ['wifi', 'ac', 'lowlevel', 'usb']);
+  assert.equal(v.updated, '2026-10-11 12:01:12');
+  assert.equal(parseVehiclesPage(PAGE)[0].type, 'trolleybus');
+});
+
+test('parses the trip timetable fragment', () => {
+  const html = '<div><b>Linka 2 vůz 417, zpoždění: 0:41</b></div><table><tr><td>11:48</td><td>Bartošova Čtvrť A</td></tr><tr><td>11:49</td><td>Zborovská&nbsp;A</td></tr></table>12:26 Otrokovice,žel.st. C<br>';
+  assert.deepEqual(parseTrip(html), [
+    { time: '11:48', name: 'Bartošova Čtvrť A' },
+    { time: '11:49', name: 'Zborovská A' },
+    { time: '12:26', name: 'Otrokovice,žel.st. C' },
+  ]);
 });

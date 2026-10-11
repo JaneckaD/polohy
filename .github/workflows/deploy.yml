@@ -3,6 +3,9 @@ name: Nasazení na GitHub Pages
 on:
   push:
   workflow_dispatch:
+  # Jednou týdně obnovíme trasy linek z OpenStreetMap.
+  schedule:
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: read
@@ -24,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run routes
       - run: npm run build
         env:
           VITE_DSZO_PROXY: ${{ vars.DSZO_PROXY }}

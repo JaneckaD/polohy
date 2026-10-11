@@ -1,9 +1,9 @@
 // Cloudflare Worker: malá proxy, přes kterou si aplikace na GitHub Pages čte data DSZO.
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
-// Proxy pouští jen dvě veřejné adresy DSZO, nejde ji zneužít na nic jiného.
+// Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 
 const UPSTREAM = 'https://www.dszo.cz';
-const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php']);
+const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php', '/online/spoj.php']);
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,7 +19,9 @@ export default {
       return new Response('Not found', { status: 404, headers: CORS });
     }
 
-    const upstream = await fetch(UPSTREAM + url.pathname, {
+    // spoj.php potřebuje parametry vozu, ostatní adresy žádné nemají.
+    const query = url.pathname === '/online/spoj.php' ? url.search : '';
+    const upstream = await fetch(UPSTREAM + url.pathname + query, {
       headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
       // Krátká cache, aby víc otevřených telefonů nezatěžovalo server DSZO.
       cf: { cacheTtl: 10, cacheEverything: true },

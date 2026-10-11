@@ -8,19 +8,38 @@ body,
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Vozidlo: kolečko s číslem linky, šipka obíhá okolo podle směru jízdy */
+/* Vozidlo: kolečko s číslem linky, šipka obíhá okolo podle směru jízdy.
+   Pozor: prvek je zároveň značka MapLibre, nesmí přepsat její position: absolute,
+   jinak se značky při oddálení rozjedou od svých souřadnic. */
 .vehicle {
-  position: relative;
+  --vehicle-color: #d71920;
   width: 30px;
   height: 30px;
-  cursor: default;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.vehicle[data-type='bus'] {
+  --vehicle-color: #1d5fd1;
+}
+
+.vehicle.dimmed {
+  opacity: 0.35;
+}
+
+.vehicle.selected {
+  z-index: 2;
+}
+
+.vehicle.selected .vehicle-dot {
+  box-shadow: 0 0 0 3px var(--vehicle-color), 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .vehicle-dot {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: #d71920;
+  background: var(--vehicle-color);
   color: #fff;
   font-weight: 700;
   font-size: 13px;
@@ -45,7 +64,7 @@ body,
   transform: translateX(-50%);
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-bottom: 8px solid #d71920;
+  border-bottom: 8px solid var(--vehicle-color);
 }
 
 /* Moje poloha */
@@ -102,14 +121,304 @@ body,
   font-size: 10px;
 }
 
-.vehicle-popup {
-  font-size: 12px;
-  color: #555;
-  line-height: 1.5;
+/* Legenda */
+.legend {
+  position: absolute;
+  left: 12px;
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: #666;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 4px 9px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
-.vehicle-popup-title {
-  font-size: 14px;
-  font-weight: 600;
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d71920;
+}
+
+.legend-dot.bus {
+  background: #1d5fd1;
+}
+
+/* Karta s detaily vozu */
+.card {
+  --line-color: #d71920;
   color: #222;
+  font-size: 13px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-line {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  background: var(--line-color);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-title {
+  min-width: 0;
+}
+
+.card-headsign {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.card-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #777;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.card-type svg {
+  width: 15px;
+  height: 15px;
+  color: var(--line-color);
+}
+
+.card-delay {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.delay-ok { background: #e3f5e6; color: #1b7a2e; }
+.delay-minor { background: #fff6d6; color: #8a6a00; }
+.delay-major { background: #ffe8d4; color: #b24f00; }
+.delay-severe { background: #fde2e2; color: #b3141b; }
+.delay-unknown { background: #f0f0f0; color: #777; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 10px 0 0;
+}
+
+.card-grid dt {
+  color: #888;
+}
+
+.card-grid dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.card-features {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.feature {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border-radius: 8px;
+  background: #f6f6f6;
+  color: #c4c4c4;
+  font-size: 9.5px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.feature.on {
+  background: color-mix(in srgb, var(--line-color) 9%, #fff);
+  color: var(--line-color);
+}
+
+.feature-label {
+  color: #999;
+}
+
+.feature.on .feature-label {
+  color: #444;
+}
+
+/* Plovoucí karta při najetí myší */
+.hover-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 270px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Panel vybraného vozu: na mobilu dole, na počítači vlevo */
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 58%;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+  padding: 16px 16px calc(8px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  z-index: 6;
+}
+
+.sheet[hidden],
+.hover-card[hidden] {
+  display: none;
+}
+
+.sheet-close {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: #f2f2f2;
+  font-size: 20px;
+  line-height: 1;
+  color: #555;
+  cursor: pointer;
+}
+
+.sheet-trip {
+  margin-top: 12px;
+  overflow-y: auto;
+  min-height: 0;
+  border-top: 1px solid #eee;
+}
+
+.trip-empty {
+  color: #999;
+  font-size: 12px;
+  padding: 10px 0;
+}
+
+.trip-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  font-size: 13px;
+}
+
+.trip-list li {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 5px 0 5px 22px;
+}
+
+/* Svislá čára linky se zastávkami */
+.trip-list li::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--trip-color, #d71920);
+}
+
+.trip-list li:first-child::before { top: 50%; }
+.trip-list li:last-child::before { bottom: 50%; }
+
+.trip-list li::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--trip-color, #d71920);
+}
+
+.trip-list li.passed {
+  color: #aaa;
+}
+
+.trip-list li.passed::before,
+.trip-list li.passed::after {
+  filter: brightness(0.5);
+}
+
+.trip-list li.passed::after {
+  background: var(--trip-color, #d71920);
+}
+
+.trip-list li.current {
+  font-weight: 700;
+}
+
+.trip-list li.current::after {
+  background: var(--trip-color, #d71920);
+  width: 9px;
+  height: 9px;
+  left: 2px;
+  margin-top: -6.5px;
+}
+
+.trip-time {
+  font-variant-numeric: tabular-nums;
+  color: #666;
+  min-width: 38px;
+}
+
+.trip-list li.passed .trip-time {
+  color: #bbb;
+}
+
+@media (min-width: 720px) {
+  .sheet {
+    left: 12px;
+    right: auto;
+    top: 52px;
+    bottom: 12px;
+    width: 340px;
+    max-height: none;
+    border-radius: 16px;
+  }
 }

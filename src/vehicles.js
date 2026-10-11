@@ -1,4 +1,4 @@
-import { Marker, Popup } from 'maplibre-gl';
+import { Marker } from 'maplibre-gl';
 
 // Vrstva vozidel: kolečko s číslem linky a malou šipkou ve směru jízdy.
 // Směr bereme z dat (heading), a když chybí, dopočítáme ho z posledních dvou poloh vozu.
@@ -34,29 +34,17 @@ function createElement(vehicle) {
   return el;
 }
 
-// Detail po klepnutí na vozidlo.
-function popupContent(v) {
-  const el = document.createElement('div');
-  el.className = 'vehicle-popup';
-  const rows = [
-    [`Linka ${v.line}`, v.headsign && `→ ${v.headsign}`].filter(Boolean).join(' '),
-    v.stop && `zastávka ${v.stop}`,
-    [v.delayText, `vůz ${v.id}`].filter(Boolean).join(' · '),
-  ];
-  for (const text of rows) {
-    if (!text) continue;
-    const row = document.createElement('div');
-    row.textContent = text;
-    el.append(row);
-  }
-  el.firstChild?.classList.add('vehicle-popup-title');
-  return el;
-}
-
 export class VehicleLayer {
-  constructor(map) {
+  /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
+  constructor(map, handlers = {}) {
     this.map = map;
-    this.items = new Map(); // id -> { marker, el, pos, bearing, anim }
+    this.handlers = handlers;
+    this.items = new Map(); // id -> { marker, el, vehicle, pos, bearing, anim }
+    this.selectedId = null;
+  }
+
+  get(id) {
+    return this.items.get(id)?.vehicle ?? null;
   }
 
   update(vehicles) {
@@ -68,12 +56,9 @@ export class VehicleLayer {
 
       if (!item) {
         const el = createElement(v);
-        const popup = new Popup({ offset: 18, closeButton: false });
-        const marker = new Marker({ element: el })
-          .setLngLat([v.lon, v.lat])
-          .setPopup(popup)
-          .addTo(this.map);
-        item = { marker, el, popup, pos: { lat: v.lat, lon: v.lon }, bearing: null };
+        const marker = new Marker({ element: el }).setLngLat([v.lon, v.lat]).addTo(this.map);
+        item = { marker, el, vehicle: v, pos: { lat: v.lat, lon: v.lon }, bearing: null };
+        this.bindEvents(item);
         this.items.set(v.id, item);
       } else {
         const dot = item.el.querySelector('.vehicle-dot');
@@ -85,8 +70,9 @@ export class VehicleLayer {
       }
 
       const bearing = Number.isFinite(v.bearing) ? v.bearing : item.bearing;
+      item.vehicle = { ...v, bearing };
+      item.el.dataset.type = v.type;
       this.setBearing(item, bearing);
-      item.popup.setDOMContent(popupContent(v));
     }
 
     for (const [id, item] of this.items) {
@@ -94,6 +80,32 @@ export class VehicleLayer {
         item.marker.remove();
         this.items.delete(id);
       }
+    }
+    this.applySelection();
+  }
+
+  bindEvents(item) {
+    const el = item.el;
+    // Najetí myší jen na zařízeních, která umí hover (počítač); na mobilu stačí klepnutí.
+    el.addEventListener('mouseenter', () => {
+      if (matchMedia('(hover: hover)').matches) this.handlers.onHover?.(item.vehicle, el);
+    });
+    el.addEventListener('mouseleave', () => this.handlers.onLeave?.());
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handlers.onSelect?.(item.vehicle);
+    });
+  }
+
+  select(id) {
+    this.selectedId = id;
+    this.applySelection();
+  }
+
+  applySelection() {
+    for (const [id, item] of this.items) {
+      item.el.classList.toggle('selected', id === this.selectedId);
+      item.el.classList.toggle('dimmed', this.selectedId != null && id !== this.selectedId);
     }
   }
 
