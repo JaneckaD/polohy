@@ -34,5 +34,5 @@ jobs:
                 if len(f)>2: names.setdefault(f[0],f[2])
             except KeyError: pass
           x=collections.Counter((mid[l], names.get(ic.get(l),ic.get(l))) for l in mid)
-          for k,v in sorted(x.items()): print(k, v)
+          for k,v in sorted(x.items(), key=lambda kv: str(kv[0])): print(k, v)
           PY
