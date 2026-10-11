@@ -5,40 +5,17 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     steps:
       - run: |
           set +e
           B=https://portal.cisjr.cz/pub/draha/celostatni/szdc
           pip install -q pypdf
           curl -s -m 60 "$B/Popis%20datov%C3%A9%20komunikace%20IS%20KADR%20Dopln%C4%9Bk%20%C4%8D%C3%ADseln%C3%ADky_v1_04.pdf" -o c.pdf
-          curl -s -m 60 "$B/Popis%20DJ%C5%98_CIS_v1_09_06.pdf" -o d.pdf
           python3 - <<'PY'
           from pypdf import PdfReader
-          for f in ['c.pdf','d.pdf']:
-            t='\n'.join((p.extract_text() or '') for p in PdfReader(f).pages)
-            open(f+'.txt','w').write(t)
-          PY
-          wc -l c.pdf.txt d.pdf.txt
-          grep -n -i 'CentralPTTNote\|Centrální pozn\|CZIPTS' c.pdf.txt d.pdf.txt | head -30
-          L=$(grep -n -i 'CentralPTTNote\|Centrální pozn' c.pdf.txt | head -1 | cut -d: -f1)
-          sed -n "$((L)),$((L+160))p" c.pdf.txt
-          echo ======
-          L=$(grep -n -i 'CZIPTS\|IPTS' c.pdf.txt | head -1 | cut -d: -f1)
-          sed -n "$((L)),$((L+80))p" c.pdf.txt
-          echo ====== d
-          grep -n -i -A25 'CentralPTTNote' d.pdf.txt | head -120
-          curl -s -m 300 "$B/2026/JR2026.zip" -o jr.zip
-          mkdir x && cd x && unzip -q ../jr.zip
-          grep -l 'Otrokovice\|Vsetín\|Uherské Hradiště\|Kroměříž' *.xml > zl.txt; wc -l zl.txt
-          echo '--- note codes over trains (count of trains having code)'
-          for f in $(cat zl.txt); do grep -o 'CZCentralPTTNote</Name>\s*<Value>[0-9]*' $f; done | true
-          python3 - <<'PY'
-          import re,collections
-          c=collections.Counter(); ip=collections.Counter(); n=0
-          for f in open('zl.txt').read().split():
-            s=open(f,encoding='utf-8').read(); n+=1
-            for k in set(re.findall(r'<Name>CZCentralPTTNote</Name>\s*<Value>(\d+)\|',s)): c[k]+=1
-            for k in set(re.findall(r'<Name>CZIPTS</Name>\s*<Value>(\d+)\|',s)): ip[k]+=1
-          print('trains',n); print('notes',sorted(c.items(),key=lambda x:-x[1])); print('ipts',sorted(ip.items(),key=lambda x:-x[1])[:40])
+          t='\n'.join((p.extract_text() or '') for p in PdfReader('c.pdf').pages)
+          L=t.split('\n')
+          i=[k for k,l in enumerate(L) if '2.16 Centrální poznámky' in l][-1]
+          print('\n'.join(l for l in L[i:i+190] if l.strip() and 'Popis datové' not in l and 'Klasifikace' not in l and 'TAF TSI' not in l))
           PY
