@@ -8,6 +8,7 @@ import { fetchVehicles, fetchTrip, proxyConfigured, REFRESH_MS } from './data.js
 import { renderDetails, renderTrip } from './card.js';
 import { applyTypeColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
+import { drawRegion } from './region.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
 import { initFilter, setKnownLines } from './filter.js';
@@ -254,6 +255,7 @@ function render() {
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...store.vehicles.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
   updateSelected();
+  drawRegion(map);
   if (lastUpdate) {
     const total = store.vehicles.length;
     setStatus(shown.length === total ? `${total} vozů · ${lastUpdate}` : `${shown.length} z ${total} vozů · ${lastUpdate}`);
@@ -308,7 +310,10 @@ loadRoutes().then((data) => {
   routes = data.routes;
   if (map.isStyleLoaded()) drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
 });
-map.on('load', () => drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref))));
+map.on('load', () => {
+  drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
+  drawRegion(map);
+});
 
 initFilter();
 initInstall();

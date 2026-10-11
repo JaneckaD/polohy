@@ -1,7 +1,7 @@
 // Service worker: aplikace jde nainstalovat na plochu a ukládá si data, aby se rychle otevřela.
 // Aplikace je ale online: polohy vozů jdou vždy ze sítě a nic se z nich necachuje.
 //  - soubory aplikace: nejdřív síť, při výpadku uložená verze (aby se aspoň otevřela s hláškou)
-//  - jízdní řády a trasy (tt/*, routes.json): hned z uložených dat a na pozadí se obnoví
+//  - jízdní řády, trasy, tratě a hranice kraje (tt/*, routes.json, rails.json, region.json): hned z uložených dat a na pozadí se obnoví
 //  - mapové dlaždice a písma OpenFreeMap: z uložených dat, jinak ze sítě (omezený počet)
 const VERSION = 'v2';
 const APP = `mhd-app-${VERSION}`;
@@ -78,7 +78,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (url.origin === self.location.origin) {
-    if (url.pathname.endsWith('/routes.json') || url.pathname.includes('/tt/')) {
+    if (/\/(routes|rails|region)\.json$/.test(url.pathname) || url.pathname.includes('/tt/')) {
       event.respondWith(staleWhileRevalidate(request, DATA));
     } else {
       event.respondWith(networkFirst(request));

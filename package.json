@@ -9,7 +9,8 @@
     "icons": "node scripts/make-icons.mjs",
     "test": "node --test",
     "routes": "node scripts/build-routes.mjs",
-    "timetables": "node scripts/build-timetables.mjs"
+    "timetables": "node scripts/build-timetables.mjs",
+    "rails": "node scripts/build-rails.mjs"
   },
   "repository": {
     "type": "git",

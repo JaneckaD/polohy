@@ -86,15 +86,26 @@ function ensureLayers(map) {
     },
     paint: { 'text-color': ['get', 'arrow'] },
   });
+  // Zastávka jako plný korálek v barvě linky s malým bílým středem: z dálky nepřerušuje čáru.
   map.addLayer({
     id: 'route-stops',
     type: 'circle',
     source: SRC_STOPS,
     paint: {
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 16, 6],
-      'circle-color': ['case', ['get', 'passed'], ['get', 'color'], '#ffffff'],
-      'circle-stroke-color': ['get', 'stroke'],
-      'circle-stroke-width': 2,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 16, 7.5],
+      'circle-color': ['get', 'stroke'],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 16, 1.5],
+    },
+  });
+  map.addLayer({
+    id: 'route-stops-center',
+    type: 'circle',
+    source: SRC_STOPS,
+    minzoom: 13,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 16, 3],
+      'circle-color': '#ffffff',
     },
   });
   map.addLayer({
@@ -201,7 +212,7 @@ export async function computeRoute(vehicle, trip) {
 export function drawRoute(map, route, type) {
   if (!map.isStyleLoaded()) return; // podklad mapy ještě není (nebo se nenačetl), trasu nakreslíme při další obnově
   ensureLayers(map);
-  const { main, passed, casing } = TYPE_COLORS[type] ?? TYPE_COLORS.bus;
+  const { main, passed, casing, stop, stopPassed } = TYPE_COLORS[type] ?? TYPE_COLORS.bus;
   const lines = [];
   for (const l of route.passedLines) if (l.length > 1) lines.push(lineFeature(l, passed, true, '#ffffff'));
   for (const l of route.upcomingLines) if (l.length > 1) lines.push({ ...lineFeature(l, main, false, casing), properties: { color: main, passed: false, casing, arrow: type === 'trolleybus' ? '#1c1c1e' : '#ffffff' } });
@@ -210,7 +221,7 @@ export function drawRoute(map, route, type) {
     type: 'FeatureCollection',
     features: route.stops.map((s) => ({
       type: 'Feature',
-      properties: { name: s.name, passed: s.passed, color: s.passed ? passed : main, stroke: s.passed ? passed : casing, ...(s.time ? { time: s.time } : {}) },
+      properties: { name: s.name, passed: s.passed, color: s.passed ? passed : main, stroke: s.passed ? stopPassed : stop, ...(s.time ? { time: s.time } : {}) },
       geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
     })),
   });
@@ -258,11 +269,18 @@ function ensureJourneyLayers(map) {
     source: SRC_JOURNEY,
     filter: ['==', ['get', 'kind'], 'stop'],
     paint: {
-      'circle-radius': ['case', ['get', 'main'], 7, 4],
-      'circle-color': '#ffffff',
-      'circle-stroke-color': ['get', 'stroke'],
-      'circle-stroke-width': ['case', ['get', 'main'], 3, 2],
+      'circle-radius': ['case', ['get', 'main'], 8, 4.5],
+      'circle-color': ['get', 'stroke'],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1.5,
     },
+  });
+  map.addLayer({
+    id: 'journey-stops-center',
+    type: 'circle',
+    source: SRC_JOURNEY,
+    filter: ['==', ['get', 'kind'], 'stop'],
+    paint: { 'circle-radius': ['case', ['get', 'main'], 3.5, 1.5], 'circle-color': '#ffffff' },
   });
   map.addLayer({
     id: 'journey-labels',
@@ -317,7 +335,7 @@ export async function drawJourney(map, journey, P) {
         pts.push(...seg);
       }
     }
-    const stroke = type === 'trolleybus' ? '#b38900' : main;
+    const stroke = (TYPE_COLORS[type] ?? TYPE_COLORS.bus).stop;
     stops.forEach((s, i) => point(s, { main: i === 0 || i === stops.length - 1, stroke, time: s.time }));
   }
   map.getSource(SRC_JOURNEY).setData({ type: 'FeatureCollection', features });

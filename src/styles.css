@@ -875,12 +875,13 @@ input:focus-visible {
   position: relative;
   z-index: 1;
   justify-self: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   box-sizing: border-box;
   border-radius: 50%;
-  background: #fff;
-  border: 3.5px solid var(--line-ink);
+  /* plný korálek s malým bílým středem, aby čára nevypadala přerušovaně */
+  background: radial-gradient(circle, #fff 0 3px, var(--line-stop) 3.5px);
+  box-shadow: 0 0 0 2px var(--cell);
 }
 
 .tl-stop.passed .tl-dot {
@@ -891,11 +892,10 @@ input:focus-visible {
 }
 
 .tl-stop.terminus .tl-dot {
-  width: 20px;
-  height: 20px;
-  background: var(--line-ink);
-  border: 4px solid #fff;
-  box-shadow: 0 0 0 2px var(--line-ink);
+  width: 22px;
+  height: 22px;
+  background: radial-gradient(circle, #fff 0 4px, var(--line-stop) 4.5px);
+  box-shadow: 0 0 0 2px var(--cell), 0 0 0 4px var(--line-stop);
 }
 
 /* Poloha vozu na ose */
@@ -1906,8 +1906,8 @@ input:focus-visible {
   margin-top: -6.5px;
   box-sizing: border-box;
   border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--line-ink);
+  background: radial-gradient(circle, #fff 0 2px, var(--line-stop) 2.5px);
+  box-shadow: 0 0 0 1.5px var(--cell);
 }
 
 .leg-stops li.mid::after {
@@ -1915,7 +1915,7 @@ input:focus-visible {
   width: 8px;
   height: 8px;
   margin-top: -4px;
-  border-width: 2px;
+  background: var(--line-stop);
 }
 
 .leg-stops li.board,
