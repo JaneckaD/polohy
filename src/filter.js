@@ -1,4 +1,4 @@
-// Filtr vozidel: typ (trolejbus/autobus), linky a jen zpožděné. Ukládá se do localStorage.
+// Filtr vozidel: typ (trolejbus/autobus) a linky. Ukládá se do localStorage.
 import { applyTypeColors } from './colors.js';
 import { store, filterActive, sortLines } from './store.js';
 import { vehicleType } from './dszo.js';
@@ -8,7 +8,6 @@ const badge = document.getElementById('filter-badge');
 const activeBar = document.getElementById('active-filter');
 const linesEl = document.getElementById('filter-lines');
 const typeEl = document.getElementById('filter-type');
-const delayedEl = document.getElementById('filter-delayed');
 
 let knownLines = new Map(); // ref -> type
 
@@ -44,8 +43,7 @@ function renderLines() {
 function renderState() {
   const f = store.filter;
   for (const b of typeEl.querySelectorAll('button')) b.classList.toggle('active', b.dataset.type === f.type);
-  delayedEl.checked = f.delayed;
-  const count = (f.type !== 'all') + f.lines.length + f.delayed;
+  const count = (f.type !== 'all') + f.lines.length;
   badge.hidden = !count;
   badge.textContent = String(count);
 
@@ -54,14 +52,13 @@ function renderState() {
     const parts = [];
     if (f.type !== 'all') parts.push(f.type === 'trolleybus' ? 'trolejbusy' : 'autobusy');
     if (f.lines.length) parts.push(`linky ${sortLines(f.lines).join(', ')}`);
-    if (f.delayed) parts.push('jen zpožděné');
     activeBar.replaceChildren();
     const text = document.createElement('span');
     text.textContent = `Filtr: ${parts.join(' · ')}`;
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.textContent = 'Zrušit';
-    clear.addEventListener('click', () => store.setFilter({ type: 'all', lines: [], delayed: false }));
+    clear.addEventListener('click', () => store.setFilter({ type: 'all', lines: [] }));
     activeBar.append(text, clear);
   }
   if (!sheet.hidden) renderLines();
@@ -82,8 +79,7 @@ export function initFilter() {
     const b = e.target.closest('button');
     if (b) store.setFilter({ type: b.dataset.type });
   });
-  delayedEl.addEventListener('change', () => store.setFilter({ delayed: delayedEl.checked }));
-  document.getElementById('filter-reset').addEventListener('click', () => store.setFilter({ type: 'all', lines: [], delayed: false }));
+  document.getElementById('filter-reset').addEventListener('click', () => store.setFilter({ type: 'all', lines: [] }));
   let last = '';
   store.subscribe(() => {
     const key = JSON.stringify(store.filter);

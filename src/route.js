@@ -67,6 +67,25 @@ function ensureLayers(map) {
       'line-opacity': 1,
     },
   });
+  // Šipky ve směru jízdy na zbývající části trasy.
+  map.addLayer({
+    id: 'route-arrows',
+    type: 'symbol',
+    source: SRC_LINE,
+    filter: ['!', ['get', 'passed']],
+    layout: {
+      'symbol-placement': 'line',
+      'symbol-spacing': 70,
+      'text-field': '›',
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 12, 16, 20],
+      'text-keep-upright': false,
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+      'text-offset': [0, -0.1],
+    },
+    paint: { 'text-color': ['get', 'arrow'] },
+  });
   map.addLayer({
     id: 'route-stops',
     type: 'circle',
@@ -185,7 +204,7 @@ export function drawRoute(map, route, type) {
   const { main, passed, casing } = TYPE_COLORS[type] ?? TYPE_COLORS.bus;
   const lines = [];
   for (const l of route.passedLines) if (l.length > 1) lines.push(lineFeature(l, passed, true, '#ffffff'));
-  for (const l of route.upcomingLines) if (l.length > 1) lines.push(lineFeature(l, main, false, casing));
+  for (const l of route.upcomingLines) if (l.length > 1) lines.push({ ...lineFeature(l, main, false, casing), properties: { color: main, passed: false, casing, arrow: type === 'trolleybus' ? '#1c1c1e' : '#ffffff' } });
   map.getSource(SRC_LINE).setData({ type: 'FeatureCollection', features: lines });
   map.getSource(SRC_STOPS).setData({
     type: 'FeatureCollection',
@@ -201,4 +220,116 @@ export function clearRoute(map) {
   if (!map.getSource(SRC_LINE)) return;
   map.getSource(SRC_LINE).setData(empty);
   map.getSource(SRC_STOPS).setData(empty);
+}
+
+// --- Spojení z vyhledávání na mapě -------------------------------------------------
+const SRC_JOURNEY = 'journey';
+
+function ensureJourneyLayers(map) {
+  if (map.getSource(SRC_JOURNEY)) return;
+  map.addSource(SRC_JOURNEY, { type: 'geojson', data: empty });
+  map.addLayer({
+    id: 'journey-casing',
+    type: 'line',
+    source: SRC_JOURNEY,
+    filter: ['==', ['get', 'kind'], 'ride'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'casing'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 5, 16, 10] },
+  });
+  map.addLayer({
+    id: 'journey-line',
+    type: 'line',
+    source: SRC_JOURNEY,
+    filter: ['==', ['get', 'kind'], 'ride'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 16, 7] },
+  });
+  map.addLayer({
+    id: 'journey-walk',
+    type: 'line',
+    source: SRC_JOURNEY,
+    filter: ['==', ['get', 'kind'], 'walk'],
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': '#ff9500', 'line-width': 4, 'line-dasharray': [0.1, 2] },
+  });
+  map.addLayer({
+    id: 'journey-stops',
+    type: 'circle',
+    source: SRC_JOURNEY,
+    filter: ['==', ['get', 'kind'], 'stop'],
+    paint: {
+      'circle-radius': ['case', ['get', 'main'], 7, 4],
+      'circle-color': '#ffffff',
+      'circle-stroke-color': ['get', 'stroke'],
+      'circle-stroke-width': ['case', ['get', 'main'], 3, 2],
+    },
+  });
+  map.addLayer({
+    id: 'journey-labels',
+    type: 'symbol',
+    source: SRC_JOURNEY,
+    filter: ['all', ['==', ['get', 'kind'], 'stop'], ['get', 'main']],
+    layout: {
+      'text-field': ['concat', ['get', 'time'], '  ', ['get', 'name']],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 12,
+      'text-anchor': 'left',
+      'text-offset': [1, 0],
+      'text-max-width': 14,
+    },
+    paint: { 'text-color': '#1c1c1e', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+  });
+}
+
+const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, '0')}:${String(((m % 60) + 60) % 60).padStart(2, '0')}`;
+
+/** Nakreslí spojení (jízdy po trasách linek, pěší přestupy tečkovaně). Vrací hranice pro přiblížení. */
+export async function drawJourney(map, journey, P) {
+  if (!map.isStyleLoaded()) return null;
+  ensureJourneyLayers(map);
+  const features = [];
+  const pts = [];
+  const point = (s, props) => {
+    if (s.lat == null) return;
+    pts.push([s.lon, s.lat]);
+    features.push({ type: 'Feature', properties: { kind: 'stop', name: s.name, ...props }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } });
+  };
+  for (const leg of journey.legs) {
+    if (leg.type === 'walk') {
+      const a = leg.from >= 0 ? P.stops[leg.from] : null;
+      const b = P.stops[leg.to];
+      if (a?.lat != null && b.lat != null) {
+        features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [[a.lon, a.lat], [b.lon, b.lat]] } });
+      }
+      continue;
+    }
+    const type = leg.trip.pattern.y === 't' ? 'trolleybus' : 'bus';
+    const { main, casing } = TYPE_COLORS[type];
+    const stops = [];
+    for (let k = leg.fromK; k <= leg.toK; k++) {
+      const s = P.stops[leg.trip.pattern.s[k]];
+      stops.push({ name: s.name, lat: s.lat, lon: s.lon, time: hhmm(leg.trip.times[k] - leg.shift) });
+    }
+    const geo = await geometryFor(stops, leg.trip.pattern.r);
+    for (const seg of geo.segments) {
+      if (seg?.length > 1) {
+        features.push({ type: 'Feature', properties: { kind: 'ride', color: main, casing: type === 'trolleybus' ? casing : '#ffffff' }, geometry: { type: 'LineString', coordinates: seg } });
+        pts.push(...seg);
+      }
+    }
+    const stroke = type === 'trolleybus' ? '#b38900' : main;
+    stops.forEach((s, i) => point(s, { main: i === 0 || i === stops.length - 1, stroke, time: s.time }));
+  }
+  map.getSource(SRC_JOURNEY).setData({ type: 'FeatureCollection', features });
+  if (!pts.length) return null;
+  const lons = pts.map((p) => p[0]);
+  const lats = pts.map((p) => p[1]);
+  return [
+    [Math.min(...lons), Math.min(...lats)],
+    [Math.max(...lons), Math.max(...lats)],
+  ];
+}
+
+export function clearJourney(map) {
+  map.getSource(SRC_JOURNEY)?.setData(empty);
 }

@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
+import { buildPlannerData } from './planner-data.mjs';
 import { locateStops, simplifyLine } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 
@@ -153,37 +154,23 @@ if (!tt) {
   if (tt) console.log(`Jízdní řády z GTFS: ${tt.lines.length} linek (${tt.lines.map((l) => l.ref).join(', ')})`);
 }
 
-if (!tt) {
-  // Bez nových dat ponecháme jízdní řády z posledního nasazení.
-  const index = await previousDeploy('tt/index.json');
-  if (index?.lines?.length) {
-    const lines = [];
-    for (const l of index.lines) {
-      const full = await previousDeploy(`tt/${l.ref}.json`);
-      if (full) lines.push(full);
-    }
-    tt = { startDate: index.startDate, days: index.days, lines, previous: true };
-    console.warn(`Používám jízdní řády z posledního nasazení (${lines.length} linek).`);
-  }
-}
-
 mkdirSync(TT_DIR, { recursive: true });
 if (tt) {
-  for (const line of tt.lines) {
-    // Polohy a tvary tras patří do routes.json, jízdní řád je nepotřebuje.
-    const slim = { ...line, directions: line.directions.map((d) => ({ ...d, variants: d.variants.map(({ stops, count }) => ({ stops, count })) })) };
-    writeFileSync(new URL(`${line.ref}.json`, TT_DIR), JSON.stringify({ ...slim, startDate: tt.startDate, days: tt.days }));
-  }
-  writeFileSync(
-    new URL('index.json', TT_DIR),
-    JSON.stringify({
-      startDate: tt.startDate,
-      days: tt.days,
-      lines: tt.lines.map((l) => ({ ref: l.ref, type: l.type, directions: l.directions.map((d) => ({ id: d.id, headsign: d.headsign, from: d.stops[0] })) })),
-    }),
-  );
+  // Data pro vyhledávání spojení a seznam linek (filtr).
+  const planner = buildPlannerData(tt);
+  writeFileSync(new URL('planner.json', TT_DIR), JSON.stringify(planner));
+  writeFileSync(new URL('index.json', TT_DIR), JSON.stringify({ startDate: tt.startDate, days: tt.days, lines: tt.lines.map((l) => ({ ref: l.ref, type: l.type })) }));
+  console.log(`Vyhledávání spojení: ${planner.stops.length} zastávek, ${planner.patterns.length} variant, ${planner.trips.length} spojů.`);
 } else {
-  writeFileSync(new URL('index.json', TT_DIR), JSON.stringify({ lines: [] }));
+  // Bez nových dat ponecháme data z posledního nasazení.
+  const planner = await previousDeploy('tt/planner.json');
+  const index = await previousDeploy('tt/index.json');
+  if (planner?.trips?.length) {
+    writeFileSync(new URL('planner.json', TT_DIR), JSON.stringify(planner));
+    console.warn(`Používám jízdní řády z posledního nasazení (${planner.trips.length} spojů).`);
+  }
+  writeFileSync(new URL('index.json', TT_DIR), JSON.stringify(index?.lines ? index : { lines: [] }));
+  tt = planner?.trips?.length ? { previous: true, lines: [] } : null;
 }
 
 // --- 2. Trasy po silnicích podle zastávek ------------------------------------

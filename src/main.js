@@ -7,11 +7,11 @@ import { VehicleLayer } from './vehicles.js';
 import { fetchVehicles, fetchTrip, proxyConfigured, REFRESH_MS } from './data.js';
 import { renderDetails, renderTrip } from './card.js';
 import { applyTypeColors } from './colors.js';
-import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes } from './route.js';
+import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
 import { initFilter, setKnownLines } from './filter.js';
-import { initTimetables, openLine, loadIndex, refreshIndex } from './ttview.js';
+import { initPlanner } from './plannerview.js';
 import { initInstall } from './install.js';
 
 // MapLibre 6 si worker hledá vedle sebe, po sestavení Vitem ho musíme předat ručně.
@@ -41,8 +41,8 @@ function setStatus(text, isError = false) {
 }
 
 // --- Záložky -------------------------------------------------------------------
-const views = { map: document.getElementById('view-map'), lines: document.getElementById('view-lines') };
-let ttInitialized = false;
+const views = { map: document.getElementById('view-map'), plan: document.getElementById('view-plan') };
+let plannerInitialized = false;
 
 function showView(name) {
   for (const [key, el] of Object.entries(views)) {
@@ -51,19 +51,37 @@ function showView(name) {
   }
   for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('active', tab.dataset.view === name);
   if (name === 'map') map.resize();
-  if (name === 'lines') {
-    if (!ttInitialized) {
-      ttInitialized = true;
-      initTimetables({ showOnMap });
-    } else refreshIndex();
+  if (name === 'plan' && !plannerInitialized) {
+    plannerInitialized = true;
+    initPlanner({ showOnMap: showJourneyOnMap, position: () => myPosition });
   }
 }
 
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => showView(tab.dataset.view));
 
-function showOnMap(ref) {
-  store.setFilter({ lines: [ref] });
+// --- Spojení na mapě ------------------------------------------------------------
+const journeyBar = document.getElementById('journey-bar');
+const fmtMin = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+async function showJourneyOnMap(journey, P) {
+  deselect();
   showView('map');
+  const bounds = await drawJourney(map, journey, P);
+  journeyBar.replaceChildren();
+  const text = document.createElement('span');
+  text.textContent = `Spojení ${fmtMin(journey.dep)} → ${fmtMin(journey.arr)}`;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Zavřít';
+  close.addEventListener('click', hideJourney);
+  journeyBar.append(text, close);
+  journeyBar.hidden = false;
+  if (bounds) map.fitBounds(bounds, { padding: { top: 110, bottom: 130, left: 40, right: 40 }, maxZoom: 16 });
+}
+
+function hideJourney() {
+  journeyBar.hidden = true;
+  clearJourney(map);
 }
 
 // --- Moje poloha -------------------------------------------------------------
@@ -94,7 +112,6 @@ if ('geolocation' in navigator) {
 }
 
 document.getElementById('locate').addEventListener('click', () => {
-  following = null;
   if (myPosition) map.easeTo({ center: myPosition, zoom: Math.max(map.getZoom(), 15) });
   else followMe = true;
 });
@@ -122,9 +139,7 @@ function hideHover() {
 
 // --- Vybraný vůz: trasa a jízdní řád --------------------------------------------
 const sheetEl = document.getElementById('sheet');
-const followBtn = document.getElementById('sheet-follow');
 let selected = null; // { id, trip, token }
-let following = null; // id sledovaného vozu
 
 async function updateSelected(first = false) {
   if (!selected) return;
@@ -132,11 +147,19 @@ async function updateSelected(first = false) {
   if (!v) return deselect();
   applyTypeColors(sheetEl, v.type);
   sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v));
-  sheetEl.querySelector('.sheet-trip').replaceChildren(renderTrip(selected.trip, v, { scroll: first }));
-  followBtn.textContent = following === v.id ? 'Sledováno' : 'Sledovat';
-  followBtn.classList.toggle('following', following === v.id);
-  followBtn.setAttribute('aria-pressed', String(following === v.id));
-  if (following === v.id) map.easeTo({ center: [v.lon, v.lat], duration: 1000 });
+  const tripEl = sheetEl.querySelector('.sheet-trip');
+  const keep = tripEl.scrollTop;
+  tripEl.replaceChildren(
+    renderTrip(selected.trip, v, {
+      scroll: first,
+      showPassed: selected.showPassed,
+      onTogglePassed: () => {
+        selected.showPassed = !selected.showPassed;
+        updateSelected();
+      },
+    }),
+  );
+  if (!first) tripEl.scrollTop = keep;
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? []);
   if (!selected || selected.token !== token) return;
@@ -192,9 +215,9 @@ function sheetPadding() {
 
 async function select(v) {
   hideHover();
+  hideJourney();
   const token = Symbol();
   selected = { id: v.id, trip: null, token };
-  if (following !== v.id) following = null;
   vehicles.select(v.id);
   sheetEl.hidden = false;
   // Vůz posuneme do volné části mapy vedle panelu.
@@ -210,7 +233,6 @@ function deselect() {
   if (!selected) return;
   map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 } });
   selected = null;
-  following = null;
   vehicles.select(null);
   sheetEl.hidden = true;
   sheetEl.classList.remove('expanded');
@@ -218,20 +240,7 @@ function deselect() {
 }
 
 sheetEl.querySelector('.sheet-close').addEventListener('click', deselect);
-followBtn.addEventListener('click', () => {
-  if (!selected) return;
-  following = following === selected.id ? null : selected.id;
-  updateSelected();
-});
-document.getElementById('sheet-timetable').addEventListener('click', () => {
-  const v = selected && vehicles.get(selected.id);
-  if (!v) return;
-  openLine(v.line, v.headsign);
-  ttInitialized = true;
-  showView('lines');
-});
 map.on('click', deselect);
-map.on('dragstart', () => (following = null));
 document.addEventListener('keydown', (e) => e.key === 'Escape' && deselect());
 
 // --- Vozidla -----------------------------------------------------------------
@@ -303,7 +312,10 @@ map.on('load', () => drawLineRoutes(map, routes.filter((r) => store.filter.lines
 
 initFilter();
 initInstall();
-loadIndex().then((index) => setKnownLines(index.lines));
+fetch('./tt/index.json')
+  .then((r) => (r.ok ? r.json() : { lines: [] }))
+  .catch(() => ({ lines: [] }))
+  .then((index) => setKnownLines(index.lines ?? []));
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js');

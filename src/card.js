@@ -56,17 +56,13 @@ export function renderDetails(v) {
   head.append(badge, title);
   card.append(head);
 
-  card.append(h('div', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
-
-  const grid = h('dl', 'card-grid');
-  const add = (label, value) => {
-    if (!value) return;
-    grid.append(h('dt', null, label), h('dd', null, value));
-  };
-  add('Zastávka', v.stop);
-  add('Služba', v.duty);
-  add('Poloha', agoLabel(v.updated));
-  card.append(grid);
+  const pills = h('div', 'card-pills');
+  pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
+  const ago = agoLabel(v.updated);
+  if (ago) pills.append(h('span', 'card-ago', `poloha ${ago}`));
+  card.append(pills);
+  // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
+  if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));
 
   const feats = h('div', 'card-features');
   for (const [key, label] of Object.entries(FEATURES)) {
@@ -81,33 +77,77 @@ export function renderDetails(v) {
   return card;
 }
 
-/** Seznam zastávek spoje s časy, projeté šedě. */
-export function renderTrip(trip, v, { scroll = false } = {}) {
+const nowMinutes = () => {
+  const [hh, mm] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .format(new Date())
+    .split(':')
+    .map(Number);
+  return hh * 60 + mm;
+};
+const toMinutes = (t) => {
+  const [hh, mm] = t.split(':').map(Number);
+  return hh * 60 + mm;
+};
+
+/**
+ * Trasa spoje jako časová osa: projeté zastávky sbalené, poloha vozu, příští zastávka
+ * zvýrazněná a u každé další zastávky odpočet (s aktuálním zpožděním).
+ */
+export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogglePassed } = {}) {
   const box = h('div', 'trip');
   if (!trip) {
-    box.append(h('div', 'trip-empty', 'Načítám jízdní řád…'));
+    box.append(h('div', 'trip-empty', 'Načítám zastávky spoje…'));
     return box;
   }
   if (!trip.length) {
-    box.append(h('div', 'trip-empty', 'Jízdní řád spoje není k dispozici.'));
+    box.append(h('div', 'trip-empty', 'Zastávky spoje nejsou k dispozici.'));
     return box;
   }
   const current = currentTripIndex(trip, v.stop);
-  const list = h('ol', 'trip-list');
+  const delayMin = v.delay > 0 ? Math.round(v.delay / 60) : 0;
+  const now = nowMinutes();
+  const list = h('ol', 'timeline');
+
+  if (current > 0) {
+    const li = h('li', `tl-toggle${showPassed ? ' open' : ''}`);
+    const b = h('button', null, showPassed ? 'Skrýt projeté zastávky' : `${current} ${current === 1 ? 'projetá zastávka' : current < 5 ? 'projeté zastávky' : 'projetých zastávek'}`);
+    b.type = 'button';
+    b.addEventListener('click', () => onTogglePassed?.());
+    li.append(b);
+    list.append(li);
+  }
+
   trip.forEach((s, i) => {
-    const li = h('li', i < current ? 'passed' : i === current ? 'current' : '');
-    li.append(h('span', 'trip-time', s.time), h('span', 'trip-name', s.name));
+    if (i < current && !showPassed) return;
+    const cls = i < current ? 'passed' : i === current ? 'current' : i === current + 1 ? 'next' : 'upcoming';
+    const li = h('li', `tl-stop ${cls}${i === trip.length - 1 ? ' terminus' : ''}`);
+    if (i === current) {
+      const puck = h('span', 'tl-puck', v.line);
+      li.append(puck);
+    } else li.append(h('span', 'tl-dot'));
+    const text = h('div', 'tl-text');
+    text.append(h('span', 'tl-name', s.name));
+    if (i === current) text.append(h('span', 'tl-sub', 'vůz je tady'));
+    else if (i === current + 1) text.append(h('span', 'tl-sub', 'příští zastávka'));
+    else if (i === trip.length - 1) text.append(h('span', 'tl-sub', 'konečná'));
+    li.append(text);
+    const right = h('div', 'tl-right');
+    right.append(h('span', 'tl-time', s.time));
+    if (i > current) {
+      const left = toMinutes(s.time) + delayMin - now;
+      if (left >= 0 && left < 120) right.append(h('span', 'tl-eta', left === 0 ? 'teď' : `za ${left} min`));
+    }
+    li.append(right);
     list.append(li);
   });
   box.append(list);
-  // Při otevření posuneme seznam na aktuální zastávku.
-  // Posouváme jen seznam, ne celý panel (scrollIntoView by posunul i jeho rodiče).
+  // Při otevření posuneme seznam na polohu vozu (jen seznam, ne celý panel).
   if (scroll)
     requestAnimationFrame(() => {
-      const li = list.children[Math.max(0, current)];
-      const box = li?.closest('.sheet-trip');
-      if (!box) return;
-      box.scrollTop += li.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 2 + li.offsetHeight / 2;
+      const li = list.querySelector('.current') ?? list.firstElementChild;
+      const sc = li?.closest('.sheet-trip');
+      if (!sc) return;
+      sc.scrollTop += li.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8;
     });
   return box;
 }

@@ -35,6 +35,7 @@
         </header>
 
         <div id="active-filter" class="active-filter glass" hidden></div>
+        <div id="journey-bar" class="active-filter glass" hidden></div>
 
         <div class="fab-stack">
           <button id="locate" class="round-btn glass tinted" type="button" title="Moje poloha" aria-label="Moje poloha">
@@ -50,26 +51,22 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
           </button>
           <div class="sheet-details"></div>
-          <div class="sheet-actions">
-            <button id="sheet-follow" class="btn" type="button">Sledovat</button>
-            <button id="sheet-timetable" class="btn" type="button">Jízdní řád</button>
-          </div>
           <div class="sheet-trip"></div>
         </div>
       </section>
 
-      <!-- Linky a jízdní řády -->
-      <section id="view-lines" class="view" aria-label="Linky a jízdní řády" hidden>
+      <!-- Vyhledávání spojení -->
+      <section id="view-plan" class="view" aria-label="Spojení" hidden>
         <div class="page root">
           <header class="nav-bar">
-            <button id="tt-back" class="nav-back" type="button" hidden>
+            <button id="pl-back" class="nav-back" type="button" hidden>
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-              <span id="tt-back-label">Zpět</span>
+              <span id="pl-back-label">Zpět</span>
             </button>
-            <h1 id="tt-title" class="nav-title">Linky</h1>
+            <h1 id="pl-title" class="nav-title">Spojení</h1>
             <span></span>
           </header>
-          <div id="tt-body" class="page-body"></div>
+          <div id="pl-body" class="page-body"></div>
         </div>
       </section>
     </main>
@@ -91,12 +88,6 @@
             <button type="button" data-type="trolleybus">Trolejbusy</button>
             <button type="button" data-type="bus">Autobusy</button>
           </div>
-        </div>
-        <div class="filter-section">
-          <label class="switch-row">
-            <span>Jen zpožděné (víc než 2 min)</span>
-            <input id="filter-delayed" class="switch" type="checkbox" role="switch" />
-          </label>
         </div>
         <div class="filter-section">
           <div class="filter-label">Linky · nic nevybráno = všechny</div>
@@ -122,10 +113,10 @@
         <svg class="icon-filled" viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8.2 3.3v14.3L3.7 19.3A.5.5 0 0 1 3 18.8V6.6c0-.3.2-.6.5-.7L8.2 3.3zm1.6.1 4.4 1.9v14.3l-4.4-1.9V3.4zm6 1.9 4.5-1.7c.3-.1.7.1.7.5v12.2c0 .3-.2.6-.5.7l-4.7 1.9V5.3z"/></svg>
         <span>Mapa</span>
       </button>
-      <button class="tab" type="button" data-view="lines" aria-label="Jízdní řády">
-        <svg class="icon-outline" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-        <svg class="icon-filled" viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 2.8a9.2 9.2 0 1 0 0 18.4 9.2 9.2 0 0 0 0-18.4zm.9 4.7v4.1l2.7 1.8a.9.9 0 1 1-1 1.5l-3.1-2.1a.9.9 0 0 1-.4-.8V7.5a.9.9 0 1 1 1.8 0z"/></svg>
-        <span>Jízdní řády</span>
+      <button class="tab" type="button" data-view="plan" aria-label="Spojení">
+        <svg class="icon-outline" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="18" cy="19" r="2.2"/><path d="M6 7.2v3.3a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v.3"/></svg>
+        <svg class="icon-filled" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2" fill="currentColor"/><circle cx="18" cy="19" r="2" fill="currentColor"/><path d="M6 7.2v3.3a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v.3"/></svg>
+        <span>Spojení</span>
       </button>
     </nav>
 
