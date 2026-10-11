@@ -841,6 +841,11 @@ input:focus-visible {
   padding-bottom: 14px;
   border-top: 0.5px solid var(--separator);
   -webkit-overflow-scrolling: touch;
+  /* Místo po stranách, aby se značka vozu na ose (dlouhé číslo linky i pulzování) neořízla. */
+  margin-left: -18px;
+  margin-right: -18px;
+  padding-left: 18px;
+  padding-right: 18px;
 }
 
 /* Časová osa spoje v panelu vozu */
@@ -1769,7 +1774,7 @@ input:focus-visible {
 }
 
 .suggest-icon.bus {
-  background: #e07b00;
+  background: #e8710a;
 }
 
 .suggest-icon.town {
@@ -2322,6 +2327,8 @@ input:focus-visible {
   padding: 0 6px;
   border-radius: 9px;
   color: #ffffff;
+  /* druh vlaku: tmavší odstín barvy druhu (celá značka má barvu druhu vlaku) */
+  background: rgba(0, 0, 0, 0.24);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;

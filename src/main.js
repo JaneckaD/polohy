@@ -231,7 +231,7 @@ async function updateSelected(first = false) {
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? [], pos?.current);
   if (!selected || selected.token !== token) return;
-  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.operator) : v.city ? TYPE_COLORS[v.city] : null);
+  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.kind) : v.city ? TYPE_COLORS[v.city] : null);
   else clearRoute(map);
   if (pos) return; // u vlaku poloha vůči zastávkám už je známá
   // Poloha vůči zastávkám je známá až z trasy: když vůz už odjel ze zastávky, překreslíme seznam.

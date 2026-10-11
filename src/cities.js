@@ -1,11 +1,15 @@
 // MHD dalších měst kraje a regionální autobusy: polohy vozů z mapy IDZK (přes proxy /mhd), jízdní řády z GTFS IDZK.
-// Každé město i dopravce má vlastní barvu, aby bylo na mapě poznat, čí vůz to je.
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
 
+// Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
+// regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
+const MHD = { main: '#0a66d8', text: '#ffffff', stop: '#063f86' };
+const REGIONAL = { main: '#e8710a', text: '#ffffff', stop: '#9c4a00' };
+
 export const CITIES = {
-  km: { name: 'Kroměříž', licence: '775', main: '#e8590c', text: '#ffffff', stop: '#a33d06' },
-  vm: { name: 'Valašské Meziříčí', licence: '946', main: '#00897b', text: '#ffffff', stop: '#005f56' },
+  km: { name: 'Kroměříž', licence: '775', ...MHD },
+  vm: { name: 'Valašské Meziříčí', licence: '946', ...MHD },
 };
 
 /**
@@ -13,14 +17,14 @@ export const CITIES = {
  * live = jak se dopravce jmenuje na mapě IDZK (jen u těch, jejichž vozy na mapě ukazujeme).
  */
 export const CARRIERS = {
-  csad: { name: 'ČSAD BUS Uherské Hradiště', short: 'ČSAD BUS UH', code: '263', live: /ČSAD BUS U/i, main: '#c62828', text: '#ffffff', stop: '#8e1b1b' },
-  zgroup: { name: 'Z-Group bus', short: 'Z-Group', code: '312', live: /Z-Group/i, main: '#558b2f', text: '#ffffff', stop: '#33691e' },
-  arriva: { name: 'ARRIVA autobusy', short: 'Arriva', code: '88', live: /ARRIVA/i, main: '#7b1fa2', text: '#ffffff', stop: '#4a148c' },
-  tdm: { name: 'Transdev Morava', short: 'Transdev Morava', code: '1425', live: /Transdev Morava/i, main: '#c2185b', text: '#ffffff', stop: '#880e4f' },
-  tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', live: /TQM/i, main: '#6d4c41', text: '#ffffff', stop: '#3e2723' },
-  psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
-  tds: { name: 'Transdev Slezsko', short: 'Transdev Slezsko', code: '267', live: /Transdev Slezsko/i, main: '#546e7a', text: '#ffffff', stop: '#263238' },
-  reg: { name: 'IDZK', short: 'IDZK', code: null, main: '#0e2d6a', text: '#ffffff', stop: '#081a3d' },
+  csad: { name: 'ČSAD BUS Uherské Hradiště', short: 'ČSAD BUS UH', code: '263', live: /ČSAD BUS U/i, ...REGIONAL },
+  zgroup: { name: 'Z-Group bus', short: 'Z-Group', code: '312', live: /Z-Group/i, ...REGIONAL },
+  arriva: { name: 'ARRIVA autobusy', short: 'Arriva', code: '88', live: /ARRIVA/i, ...REGIONAL },
+  tdm: { name: 'Transdev Morava', short: 'Transdev Morava', code: '1425', live: /Transdev Morava/i, ...REGIONAL },
+  tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', live: /TQM/i, ...REGIONAL },
+  psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', ...REGIONAL },
+  tds: { name: 'Transdev Slezsko', short: 'Transdev Slezsko', code: '267', live: /Transdev Slezsko/i, ...REGIONAL },
+  reg: { name: 'IDZK', short: 'IDZK', code: null, ...REGIONAL },
 };
 
 /** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */

@@ -60,7 +60,6 @@ function lineBadge(pat) {
     const t = trainOf(pat);
     const badge = applyVehicleColors(h('span', 'line-badge train-badge'), t);
     const k = h('span', 'train-kind', t.code);
-    k.style.background = TRAIN_KINDS[t.kind]?.color ?? '#6c6c70';
     badge.append(k, h('span', null, t.number));
     return badge;
   }
@@ -74,6 +73,8 @@ const rideKind = (pat) =>
 
 // --- stav formuláře (pamatuje se mezi návštěvami) -----------------------------------
 const MY_LOCATION = { name: 'Moje poloha', here: true };
+// Název do pole a výpisu: celý název zastávky (u Zlína s „Zlín,“), jinak název.
+const labelOf = (v) => v?.label ?? v?.name ?? '';
 
 // Našeptávač: co na zastávce jezdí (ikona a barva podle nejdůležitějšího), nebo celé město.
 const ICON_TRAIN = svg('<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-1.5-4M15 20l1.5-4M9.5 13h.01M14.5 13h.01"/>', 16);
@@ -166,8 +167,8 @@ function renderSearch() {
     // „Moje poloha“ může být jen odkud.
     [state.from, state.to] = [state.to, state.from?.here ? null : state.from];
     persist();
-    fromInput.value = state.from?.name ?? '';
-    toInput.value = state.to?.name ?? '';
+    fromInput.value = labelOf(state.from);
+    toInput.value = labelOf(state.to);
   });
   fields.append(swap);
   form.append(fields);
@@ -227,7 +228,7 @@ function renderSearch() {
   const pick = (which, value) => {
     state[which] = value;
     persist();
-    (which === 'from' ? fromInput : toInput).value = value?.name ?? '';
+    (which === 'from' ? fromInput : toInput).value = labelOf(value);
     suggest.hidden = true;
     if (which === 'from' && !state.to) toInput.focus();
     else if (state.from && state.to) search(results);
@@ -242,12 +243,13 @@ function renderSearch() {
     if (which === 'from' && !q) options.push(MY_LOCATION);
     if (P && q) {
       for (const t of findTowns(P, q, 2)) options.push({ name: t.name, town: true });
-      for (const s of findStops(P, q)) options.push({ name: s.name });
+      for (const s of findStops(P, q)) options.push({ name: s.name, label: s.full });
     }
     if (!q) {
       for (const r of state.recent) {
         if (r.from === 'Moje poloha' && which === 'from') continue;
-        options.push(which === 'from' ? { name: r.from, town: !!r.fromTown, recent: true } : { name: r.to, town: !!r.toTown, recent: true });
+        const [name, town] = which === 'from' ? [r.from, !!r.fromTown] : [r.to, !!r.toTown];
+        options.push({ name, town, label: town ? undefined : P?.stops.find((x) => x.name === name)?.full, recent: true });
       }
     }
     const seen = new Set();
@@ -261,13 +263,13 @@ function renderSearch() {
       const icon = h('span', `suggest-icon ${look.kind}`);
       icon.innerHTML = look.icon;
       const text = h('span', 'suggest-text');
-      text.append(h('span', 'suggest-name', o.name));
+      text.append(h('span', 'suggest-name', o.label ?? o.name));
       if (look.sub) text.append(h('span', 'suggest-sub', o.recent ? `Nedávno hledané · ${look.sub}` : look.sub));
       b.append(icon, text);
       // pointerdown, aby výběr proběhl dřív, než pole ztratí focus
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        pick(which, o.here ? MY_LOCATION : o.town ? { name: o.name, town: true } : { name: o.name });
+        pick(which, o.here ? MY_LOCATION : o.town ? { name: o.name, town: true } : { name: o.name, label: o.label ?? o.name });
         input.blur();
       });
       suggest.append(b);
@@ -293,7 +295,7 @@ function renderSearch() {
         if (!state[which] && input.value.trim()) {
           loadPlanner().then((P) => {
             const s = P && findStops(P, input.value)[0];
-            if (s) pick(which, { name: s.name });
+            if (s) pick(which, { name: s.name, label: s.full });
           });
         }
       }, 150),
@@ -316,7 +318,7 @@ function field(container, which, placeholder, dot) {
   input.placeholder = placeholder;
   input.autocomplete = 'off';
   input.enterKeyHint = which === 'from' ? 'next' : 'search';
-  input.value = state[which]?.name ?? '';
+  input.value = labelOf(state[which]);
   input.setAttribute('aria-label', placeholder);
   row.append(input);
   container.append(row);
@@ -398,7 +400,7 @@ function legRows(j, P) {
       const row = h('div', `rleg rleg-walk${transfer ? ' transfer' : ''}`);
       const icon = h('span', 'rleg-icon');
       icon.innerHTML = ICON_WALK;
-      const to = P.stops[l.to].name;
+      const to = P.stops[l.to].full;
       row.append(icon, h('span', 'rleg-text', transfer ? `${l.min} min pěšky na zastávku ${to}` : i === 0 ? `${l.min} min pěšky na ${to}` : `${l.min} min pěšky do cíle`));
       el.append(row);
       return;
@@ -415,7 +417,7 @@ function legRows(j, P) {
     const row = h('div', 'rleg');
     row.append(lineBadge(l.trip.pattern));
     const text = h('span', 'rleg-text');
-    text.append(h('b', 'rleg-time', fmt(l.dep)), ` ${P.stops[l.from].name} `, h('span', 'rleg-arrow', '→'), ` ${P.stops[end.to].name}`);
+    text.append(h('b', 'rleg-time', fmt(l.dep)), ` ${P.stops[l.from].full} `, h('span', 'rleg-arrow', '→'), ` ${P.stops[end.to].full}`);
     row.append(text);
     el.append(row);
   });
@@ -480,8 +482,8 @@ function renderDetail(j, P, date) {
       const icon = h('span', 'leg-walk-icon');
       icon.innerHTML = ICON_WALK;
       const text = h('div');
-      const fromName = l.from < 0 ? 'Z tvé polohy' : P.stops[l.from].name;
-      const toName = P.stops[l.to].name;
+      const fromName = l.from < 0 ? 'Z tvé polohy' : P.stops[l.from].full;
+      const toName = P.stops[l.to].full;
       if (i > 0 && i < j.legs.length - 1) {
         text.append(h('div', 'leg-walk-title', `Přejdi pěšky na zastávku ${toName}`));
         text.append(h('div', 'leg-walk-sub', `z ${fromName} · asi ${l.min} min, ${l.m} m. Přestup mezi různými zastávkami.`));
@@ -513,7 +515,7 @@ function renderDetail(j, P, date) {
     const ol = h('ol', 'leg-stops');
     const row = (s, cls) => {
       const li = h('li', cls);
-      li.append(h('span', 'leg-time', fmt(s.time)), h('span', 'leg-name', s.name));
+      li.append(h('span', 'leg-time', fmt(s.time)), h('span', 'leg-name', s.full ?? s.name));
       return li;
     };
     ol.append(row(stops[0], 'board'));

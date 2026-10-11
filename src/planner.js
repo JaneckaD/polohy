@@ -23,7 +23,7 @@ export const walkMinutes = (meters) => Math.max(1, Math.ceil((meters * DETOUR) /
 
 /** Připraví data: rozbalí časy spojů a spočítá pěší přestupy. */
 export function preparePlanner(data) {
-  const stops = data.stops.map(([name, lat, lon], i) => ({ i, name, lat, lon, norm: normalizeName(name) }));
+  const stops = data.stops.map(([name, lat, lon], i) => ({ i, name, full: name, lat, lon, norm: normalizeName(name) }));
   const trips = data.trips.map(([p, m, t0, ...deltas], id) => {
     const times = [t0];
     for (const d of deltas) times.push(times.at(-1) + d);
@@ -52,7 +52,16 @@ export function preparePlanner(data) {
     const kind = p.y === 'v' ? 'train' : p.c && isCarrier(p.c) ? 'bus' : 'mhd';
     for (const si of p.s) (stops[si].kinds ??= new Set()).add(kind);
   }
-  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, towns: buildTowns(stops), connCache: new Map() };
+  const towns = buildTowns(stops);
+  // Zastávky ve Zlíně jsou v datech bez „Zlín,“ (jako na zastávkách MHD); pro hledání a výpis spojení
+  // celý název, ať je jasné, že „aut.nádr.“ je zlínské autobusové nádraží.
+  for (const i of towns.get('Zlín')?.stops ?? []) {
+    const s = stops[i];
+    if (s.name.includes(',') || s.name.startsWith('Zlín') || s.kinds?.has('train')) continue;
+    s.full = `Zlín, ${s.name}`;
+    s.norm = normalizeName(s.full);
+  }
+  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, towns, connCache: new Map() };
 }
 
 /**
@@ -443,7 +452,7 @@ export function rideStops(P, leg) {
     const s = P.stops[leg.trip.pattern.s[k]];
     // U poslední zastávky úseku čas příjezdu, jinak odjezdu.
     const times = k === leg.toK ? leg.trip.arr : leg.trip.times;
-    out.push({ name: s.name, lat: s.lat, lon: s.lon, time: times[k] - leg.shift });
+    out.push({ name: s.name, full: s.full, lat: s.lat, lon: s.lon, time: times[k] - leg.shift });
   }
   return out;
 }

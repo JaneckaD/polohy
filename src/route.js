@@ -1,7 +1,7 @@
 // Vykreslení trasy vybraného vozu: projetá část šedá, zbývající v barvě linky, zastávky s časy.
 import { TYPE_COLORS, trainColors } from './colors.js';
 import { isCarrier } from './cities.js';
-import { trainOperator } from './trains.js';
+import { trainKind } from './trains.js';
 import { findRoute, splitRoute, attachTimes, tripGeometry, splitTrip, currentTripIndex } from './route-match.js';
 import { RailNetwork, railGeometry } from './railroute.js';
 import { loadRails } from './region.js';
@@ -372,7 +372,7 @@ export async function drawJourney(map, journey, P) {
     }
     const pat = leg.trip.pattern;
     const type = pat.y === 'v' ? 'train' : pat.y === 't' ? 'trolleybus' : 'bus';
-    const colors = type === 'train' ? trainColors(trainOperator(pat.o)) : TYPE_COLORS[pat.c ?? type];
+    const colors = type === 'train' ? trainColors(trainKind(pat.k)) : TYPE_COLORS[pat.c ?? type];
     const { main, casing } = colors;
     const stops = [];
     for (let k = leg.fromK; k <= leg.toK; k++) {

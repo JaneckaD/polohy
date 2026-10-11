@@ -103,7 +103,6 @@ function renderTrainDetails(v, trip) {
   const head = h('div', 'card-head');
   const badge = h('div', 'card-line train');
   const k = h('span', 'train-kind', v.code);
-  k.style.background = kind?.color ?? '#6c6c70';
   badge.append(k, h('span', null, v.number));
   const title = h('div', 'card-title');
   title.append(h('div', 'card-headsign', v.headsign ? `→ ${v.headsign}` : `Vlak ${v.line}`));
