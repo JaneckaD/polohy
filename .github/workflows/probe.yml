@@ -5,15 +5,47 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - run: |
           set +e
-          curl -s -m 30 https://portal.cisjr.cz/pub/ | grep -io 'href="[^"]*"' | head -20
-          curl -s -m 30 https://portal.cisjr.cz/pub/jdf/ | grep -io 'href="[^"]*"' | head -30
-          curl -s -m 30 https://portal.cisjr.cz/pub/jdf/ -o l.html; f=$(grep -io 'href="[^"]*\.zip"' l.html | head -1 | sed 's/href="//I;s/"//')
-          echo "ZIP $f"; curl -sI -m 30 "https://portal.cisjr.cz$f" | grep -i length
-          curl -s -m 300 "https://portal.cisjr.cz$f" -o j.zip -w "dl %{http_code} %{size_download}\n"
-          unzip -l j.zip | head -8; unzip -l j.zip | tail -2
-          mkdir x; cd x; unzip -q ../j.zip; ls | head; find . -name '*.zip' | head -3; find . -name '*.zip' | wc -l
-          z=$(find . -name '*.zip' | head -1); mkdir y; (cd y; unzip -q "../$z"; ls; for f in Linky.txt Dopravci.txt; do echo "== $f"; head -3 $f | iconv -f cp1250 -t utf-8; done)
+          curl -s -m 300 https://portal.cisjr.cz/pub/jdf/JDF.zip -o j.zip
+          curl -sL -m 120 https://raw.githubusercontent.com/hoermalmeister/gtfs-rehost/main/idzk/id-zk-all.zip -o g.zip
+          mkdir g && (cd g && unzip -q ../g.zip)
+          python3 - <<'PY'
+          import csv, zipfile, io, collections, datetime
+          D='20261012'; wd=datetime.date(2026,10,12).weekday()
+          day=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'][wd]
+          act=set()
+          for r in csv.DictReader(open('g/calendar.txt',encoding='utf-8-sig')):
+            if r['start_date']<=D<=r['end_date'] and r[day]=='1': act.add(r['service_id'])
+          for r in csv.DictReader(open('g/calendar_dates.txt',encoding='utf-8-sig')):
+            if r['date']==D: (act.add if r['exception_type']=='1' else act.discard)(r['service_id'])
+          lic=collections.Counter()
+          for r in csv.DictReader(open('g/trips.txt',encoding='utf-8-sig')):
+            if r['service_id'] in act and r['route_id'].startswith('BUS'):
+              lic[r['route_id'].split(':')[1].split('_')[0]]+=1
+          print('IDZK bus licences with trips on',D,len(lic))
+          Z=zipfile.ZipFile('j.zip')
+          rows={}; carriers={}
+          for n in Z.namelist():
+            try: inner=zipfile.ZipFile(io.BytesIO(Z.read(n)))
+            except Exception: continue
+            def rd(f):
+              try: return inner.read(f).decode('cp1250')
+              except KeyError: return ''
+            for line in rd('Linky.txt').splitlines():
+              f=[x.strip('"') for x in line.rstrip(';').split('","')]
+              if f and f[0] in lic: rows[f[0]]=f
+            for line in rd('Dopravci.txt').splitlines():
+              f=[x.strip('"') for x in line.rstrip(';').split('","')]
+              if len(f)>2: carriers.setdefault(f[0], f[2])
+          print('matched', len(rows), 'of', len(lic)); print('missing', sorted(set(lic)-set(rows))[:40])
+          by=collections.defaultdict(lambda: [0,0,set()])
+          for l,f in rows.items():
+            k=(f[2],); by[f[2]][0]+=1; by[f[2]][1]+=lic[l]; by[f[2]][2].add(f[3])
+          for ic,(nl,nt,types) in sorted(by.items(), key=lambda x:-x[1][1]):
+            print(f'{carriers.get(ic,ic)} | IČ {ic} | linek {nl} | spojů {nt} | typy {sorted(types)}')
+          print('types', collections.Counter(f[3] for f in rows.values()))
+          print('sample', list(rows.values())[:3])
+          PY
