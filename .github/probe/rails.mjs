@@ -19,3 +19,4 @@ for (const [x, y] of [['Kroměříž', 'Hulín'], ['Hulín', 'Třebětice'], ['H
   if (a >= 0) console.log(`   okolí A: stupně ${[...new Set(net.adj[a].map(([v]) => net.adj[v].length))].join(',')}, sousedé ${net.adj[a].length}`);
 }
 // v2
+// v3

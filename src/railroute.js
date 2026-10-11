@@ -5,8 +5,9 @@
 const KY = 110574;
 const kxAt = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
 const CELL = 0.01; // mřížka pro hledání blízkých úseků (asi 1 km)
-const DEAD_END_M = 300; // slepý konec trati se napojí na jinou kolej nejvýš takhle daleko
-const BRIDGE_M = 1000; // nejdelší spojka mezi nesouvisejícími kusy tratí (kolejiště velkých stanic v datech chybí)
+// Ve velkých stanicích (Hulín, Valašské Meziříčí, Vsetín) v datech chybí kolejiště, odbočky se s hlavní
+// tratí nepotkají. Když po kolejích cesta není, smí trasa mezi kolejemi přeskočit (nejvýš tolik metrů).
+const JUMP_M = 600;
 
 function project(p, a, b) {
   const kx = kxAt(p[1]);
@@ -60,59 +61,6 @@ export class RailNetwork {
       const hit = this.nearest(this.pts[e], 30, e);
       if (hit) this.link(e, this.split(hit));
     }
-    // Slepé konce (ve velkých stanicích chybí kolejiště a odbočka končí kus od hlavní trati):
-    // napojíme je na nejbližší kolej do 300 m, na kterou se po kolejích nedá dostat zblízka.
-    for (const e of ends) {
-      if (this.adj[e].length !== 1) continue;
-      const near = this.within(e, 1500);
-      const hit = this.nearest(this.pts[e], DEAD_END_M, -1, ([a, b]) => !near.has(a) && !near.has(b));
-      if (hit) this.link(e, this.split(hit));
-    }
-    this.bridge(BRIDGE_M);
-  }
-
-  /**
-   * Kusy sítě, které spolu nesouvisí (v odbočce ve stanici zjednodušení čar ztratilo spojení),
-   * propojí v místě, kde jsou si nejblíž, když je to do maxDist metrů.
-   */
-  bridge(maxDist) {
-    const comp = new Array(this.pts.length).fill(-1);
-    let count = 0;
-    for (let s = 0; s < this.pts.length; s++) {
-      if (comp[s] >= 0) continue;
-      comp[s] = count;
-      const stack = [s];
-      while (stack.length) for (const [v] of this.adj[stack.pop()]) if (comp[v] < 0) (comp[v] = count), stack.push(v);
-      count++;
-    }
-    if (count < 2) return;
-    // Nejbližší místo (bod jednoho kusu k úseku druhého) pro každou dvojici kusů.
-    const best = new Map();
-    const r = Math.max(1, Math.ceil(maxDist / 700));
-    this.pts.forEach((p, i) => {
-      const cx = Math.floor(p[0] / CELL);
-      const cy = Math.floor(p[1] / CELL);
-      for (let x = cx - r; x <= cx + r; x++)
-        for (let y = cy - r; y <= cy + r; y++)
-          for (const si of this.grid.get(`${x},${y}`) ?? []) {
-            const [a, b] = this.segs[si];
-            if (comp[a] === comp[i]) continue;
-            const pr = project(p, this.pts[a], this.pts[b]);
-            const key = comp[i] < comp[a] ? `${comp[i]},${comp[a]}` : `${comp[a]},${comp[i]}`;
-            if (pr.dist <= maxDist && pr.dist < (best.get(key)?.dist ?? Infinity)) best.set(key, { ...pr, seg: si, i });
-          }
-    });
-    // Nejkratší spojky první, každá jen když kusy ještě nejsou propojené.
-    const parent = [...Array(count).keys()];
-    const root = (a) => (parent[a] === a ? a : (parent[a] = root(parent[a])));
-    for (const hit of [...best.values()].sort((a, b) => a.dist - b.dist)) {
-      const [a, b] = [root(comp[hit.i]), root(comp[this.segs[hit.seg][0]])];
-      if (a === b) continue;
-      parent[a] = b;
-      const j = this.split(hit);
-      this.link(hit.i, j);
-      this.index(this.segs.length - 1);
-    }
   }
 
   link(a, b) {
@@ -134,26 +82,8 @@ export class RailNetwork {
       }
   }
 
-  /** Body dosažitelné po kolejích z bodu start do maxDist metrů. */
-  within(start, maxDist) {
-    const dist = new Map([[start, 0]]);
-    const heap = [[0, start]];
-    while (heap.length) {
-      const [du, u] = pop(heap);
-      if (du > (dist.get(u) ?? Infinity)) continue;
-      for (const [v, w] of this.adj[u]) {
-        const dv = du + w;
-        if (dv <= maxDist && dv < (dist.get(v) ?? Infinity)) {
-          dist.set(v, dv);
-          push(heap, [dv, v]);
-        }
-      }
-    }
-    return dist;
-  }
-
-  /** Nejbližší úsek k bodu (do maxDist metrů); skip = bod, jehož úseky nepočítáme, accept = který úsek smí být. */
-  nearest(p, maxDist, skip = -1, accept = null) {
+  /** Nejbližší úsek k bodu (do maxDist metrů); skip = bod, jehož úseky nepočítáme. */
+  nearest(p, maxDist, skip = -1) {
     const cx = Math.floor(p[0] / CELL);
     const cy = Math.floor(p[1] / CELL);
     let best = null;
@@ -162,7 +92,7 @@ export class RailNetwork {
       for (let y = cy - r; y <= cy + r; y++)
         for (const i of this.grid.get(`${x},${y}`) ?? []) {
           const [a, b] = this.segs[i];
-          if (a === skip || b === skip || (accept && !accept(this.segs[i]))) continue;
+          if (a === skip || b === skip) continue;
           const pr = project(p, this.pts[a], this.pts[b]);
           if (pr.dist <= maxDist && (!best || pr.dist < best.dist)) best = { ...pr, seg: i };
         }
@@ -203,6 +133,48 @@ export class RailNetwork {
     const b = this.snap(to[0], to[1]);
     if (a < 0 || b < 0) return null;
     if (a === b) return null;
+    return this.search(a, b, false) ?? this.search(a, b, true);
+  }
+
+  /**
+   * Přeskoky z bodu u na koleje do JUMP_M metrů, které s ním nesousedí: na oba konce nejbližšího úseku.
+   * Přeskok je dražší než jízda po koleji, aby ho trasa použila, jen když jinak nejde.
+   */
+  jumps(u) {
+    const p = this.pts[u];
+    const cx = Math.floor(p[0] / CELL);
+    const cy = Math.floor(p[1] / CELL);
+    const out = [];
+    const seen = new Set();
+    for (let x = cx - 1; x <= cx + 1; x++)
+      for (let y = cy - 1; y <= cy + 1; y++)
+        for (const si of this.grid.get(`${x},${y}`) ?? []) {
+          if (seen.has(si)) continue;
+          seen.add(si);
+          const [a, b] = this.segs[si];
+          if (a === u || b === u) continue;
+          const pr = project(p, this.pts[a], this.pts[b]);
+          if (pr.dist > JUMP_M) continue;
+          const cost = pr.dist * 3 + 100;
+          out.push([a, cost + metres(pr.point, this.pts[a])], [b, cost + metres(pr.point, this.pts[b])]);
+        }
+    return out;
+  }
+
+  /** Přeskoky oběma směry (spočítané jednou, při prvním hledání, kde po kolejích cesta není). */
+  jumpEdges(u) {
+    if (!this.jumpAdj || this.jumpAdj.length !== this.pts.length) {
+      this.jumpAdj = this.pts.map(() => []);
+      for (let i = 0; i < this.pts.length; i++)
+        for (const [v, w] of this.jumps(i)) {
+          this.jumpAdj[i].push([v, w]);
+          this.jumpAdj[v].push([i, w]);
+        }
+    }
+    return this.jumpAdj[u];
+  }
+
+  search(a, b, jump) {
     const limit = metres(this.pts[a], this.pts[b]) * 3 + 2000; // objížďky přes celý kraj ne
     const dist = new Map([[a, 0]]);
     const prev = new Map();
@@ -214,7 +186,7 @@ export class RailNetwork {
       if (u === b) break;
       const du = dist.get(u);
       if (du > limit) return null;
-      for (const [v, w] of this.adj[u]) {
+      for (const [v, w] of jump ? [...this.adj[u], ...this.jumpEdges(u)] : this.adj[u]) {
         const dv = du + w;
         if (dv < (dist.get(v) ?? Infinity)) {
           dist.set(v, dv);
