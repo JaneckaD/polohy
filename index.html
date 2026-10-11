@@ -5,28 +5,124 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MHD Zlín" />
     <title>MHD Zlín live</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   </head>
   <body>
-    <div id="map"></div>
-    <div id="status" class="status">Načítám…</div>
-    <div class="legend">
-      <span><i class="legend-dot trolleybus"></i>trolejbus</span>
-      <span><i class="legend-dot bus"></i>autobus</span>
+    <main class="app">
+      <!-- Mapa -->
+      <section id="view-map" class="view active" aria-label="Mapa">
+        <div id="map"></div>
+
+        <header class="topbar">
+          <div class="brand">
+            <span class="brand-dot"></span>
+            <div>
+              <div class="brand-name">MHD Zlín</div>
+              <div id="status" class="brand-status">Načítám…</div>
+            </div>
+          </div>
+          <button id="filter-open" class="chip-btn" type="button">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Filtr</span>
+            <span id="filter-badge" class="badge" hidden></span>
+          </button>
+        </header>
+
+        <div id="active-filter" class="active-filter" hidden></div>
+
+        <div class="fab-stack">
+          <button id="locate" class="fab" type="button" title="Moje poloha" aria-label="Moje poloha">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          </button>
+        </div>
+
+        <div id="hover-card" class="hover-card" hidden></div>
+
+        <div id="sheet" class="sheet" hidden>
+          <div class="sheet-grip"></div>
+          <button class="sheet-close" type="button" aria-label="Zavřít">×</button>
+          <div class="sheet-details"></div>
+          <div class="sheet-actions">
+            <button id="sheet-follow" class="btn" type="button">Sledovat vůz</button>
+            <button id="sheet-timetable" class="btn" type="button">Jízdní řád linky</button>
+          </div>
+          <div class="sheet-trip"></div>
+        </div>
+      </section>
+
+      <!-- Linky a jízdní řády -->
+      <section id="view-lines" class="view" aria-label="Linky a jízdní řády" hidden>
+        <div class="page">
+          <header class="page-head">
+            <button id="tt-back" class="icon-btn" type="button" aria-label="Zpět" hidden>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <h1 id="tt-title">Linky</h1>
+          </header>
+          <div id="tt-body" class="page-body"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Filtr -->
+    <div id="filter-sheet" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel" role="dialog" aria-label="Filtr vozidel">
+        <div class="sheet-grip"></div>
+        <div class="modal-head">
+          <h2>Filtr vozidel</h2>
+          <button class="icon-btn" type="button" data-close aria-label="Zavřít">×</button>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label">Typ</div>
+          <div class="segmented" id="filter-type">
+            <button type="button" data-type="all">Vše</button>
+            <button type="button" data-type="trolleybus">Trolejbusy</button>
+            <button type="button" data-type="bus">Autobusy</button>
+          </div>
+        </div>
+        <div class="filter-section">
+          <label class="switch-row">
+            <span>Jen zpožděné (víc než 2 min)</span>
+            <input id="filter-delayed" type="checkbox" />
+          </label>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label">Linky <span class="muted">(nic nevybráno = všechny)</span></div>
+          <div id="filter-lines" class="line-grid"></div>
+        </div>
+        <div class="modal-foot">
+          <button id="filter-reset" class="btn" type="button">Zrušit filtr</button>
+          <button class="btn primary" type="button" data-close>Hotovo</button>
+        </div>
+      </div>
     </div>
-    <div id="hover-card" class="hover-card" hidden></div>
-    <div id="sheet" class="sheet" hidden>
-      <button class="sheet-close" type="button" aria-label="Zavřít">×</button>
-      <div class="sheet-details"></div>
-      <div class="sheet-trip"></div>
+
+    <div id="toast" class="toast" hidden></div>
+    <div id="offline" class="offline" hidden>Bez připojení: polohy vozů se neaktualizují</div>
+    <div id="install" class="install" hidden>
+      <span>Přidat MHD Zlín na plochu</span>
+      <button id="install-btn" class="btn primary small" type="button">Instalovat</button>
+      <button id="install-close" class="icon-btn small" type="button" aria-label="Zavřít">×</button>
     </div>
-    <div class="controls">
-      <button id="locate" type="button" title="Moje poloha" aria-label="Moje poloha">◎</button>
-    </div>
+
+    <nav class="tabbar">
+      <button class="tab active" type="button" data-view="map">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>
+        <span>Mapa</span>
+      </button>
+      <button class="tab" type="button" data-view="lines">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <span>Jízdní řády</span>
+      </button>
+    </nav>
+
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

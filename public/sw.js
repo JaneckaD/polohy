@@ -1,33 +1,95 @@
-// Jednoduchý service worker: aplikace jde nainstalovat a otevře se i bez signálu.
-// Vlastní soubory aplikace: nejdřív síť, při výpadku cache. Mapové dlaždice a data o vozidlech se necachují.
-const CACHE = 'mhd-live-v1';
+// Service worker: aplikace jde nainstalovat na plochu a ukládá si data, aby se rychle otevřela.
+// Aplikace je ale online: polohy vozů jdou vždy ze sítě a nic se z nich necachuje.
+//  - soubory aplikace: nejdřív síť, při výpadku uložená verze (aby se aspoň otevřela s hláškou)
+//  - jízdní řády a trasy (tt/*, routes.json): hned z uložených dat a na pozadí se obnoví
+//  - mapové dlaždice a písma OpenFreeMap: z uložených dat, jinak ze sítě (omezený počet)
+const VERSION = 'v2';
+const APP = `mhd-app-${VERSION}`;
+const DATA = `mhd-data-${VERSION}`;
+const TILES = `mhd-tiles-${VERSION}`;
+const MAX_TILES = 1500;
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './manifest.webmanifest'])));
+  event.waitUntil(caches.open(APP).then((c) => c.addAll(['./', './manifest.webmanifest'])));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  const keep = new Set([APP, DATA, TILES]);
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
 
+async function networkFirst(request) {
+  try {
+    const res = await fetch(request);
+    if (res.ok) (await caches.open(APP)).put(request, res.clone());
+    return res;
+  } catch {
+    const hit = await caches.match(request);
+    if (hit) return hit;
+    throw new Error('offline');
+  }
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  const update = fetch(request)
+    .then((res) => {
+      if (res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => null);
+  return hit ?? (await update) ?? Response.error();
+}
+
+let trimming = false;
+async function trimTiles() {
+  if (trimming) return;
+  trimming = true;
+  try {
+    const cache = await caches.open(TILES);
+    const keys = await cache.keys();
+    for (const key of keys.slice(0, Math.max(0, keys.length - MAX_TILES))) await cache.delete(key);
+  } finally {
+    trimming = false;
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(TILES);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await fetch(request);
+  if (res.ok) {
+    cache.put(request, res.clone()).then(trimTiles);
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  event.respondWith(
-    fetch(event.request)
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(event.request, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(event.request)),
-  );
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+
+  if (url.origin === self.location.origin) {
+    if (url.pathname.endsWith('/routes.json') || url.pathname.includes('/tt/')) {
+      event.respondWith(staleWhileRevalidate(request, DATA));
+    } else {
+      event.respondWith(networkFirst(request));
+    }
+    return;
+  }
+
+  // Dlaždice, styl, písma a ikony mapy. Data DSZO (proxy) jdou vždy přímo ze sítě.
+  if (url.hostname === 'tiles.openfreemap.org') {
+    // Popis dlaždic (/planet) ukazuje na aktuální verzi mapy, ten jen obnovujeme na pozadí.
+    // Samotné dlaždice a písma mají verzi v adrese, takže se nemění.
+    event.respondWith(url.pathname === '/planet' ? staleWhileRevalidate(request, DATA) : cacheFirst(request));
+  }
 });

@@ -17,6 +17,31 @@ export function loadRoutes() {
 
 const empty = { type: 'FeatureCollection', features: [] };
 
+const SRC_FILTER = 'filter-routes';
+
+/** Trasy linek vybraných ve filtru: tenká čára v barvě linky pod vozy. */
+export function drawLineRoutes(map, routes) {
+  if (!map.getSource(SRC_FILTER)) {
+    map.addSource(SRC_FILTER, { type: 'geojson', data: empty });
+    map.addLayer(
+      {
+        id: 'filter-routes',
+        type: 'line',
+        source: SRC_FILTER,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2, 16, 4], 'line-opacity': 0.45 },
+      },
+      map.getLayer('route-casing') ? 'route-casing' : undefined,
+    );
+  }
+  map.getSource(SRC_FILTER).setData({
+    type: 'FeatureCollection',
+    features: routes
+      .filter((r) => r.line?.length > 1)
+      .map((r) => lineFeature(r.line, (TYPE_COLORS[r.type] ?? TYPE_COLORS.bus).main, false)),
+  });
+}
+
 function ensureLayers(map) {
   if (map.getSource(SRC_LINE)) return;
   map.addSource(SRC_LINE, { type: 'geojson', data: empty });
@@ -85,7 +110,11 @@ export async function computeRoute(vehicle, trip) {
     const split = splitRoute(match.route, match.proj);
     return { ...split, stops: attachTimes(split.stops, trip) };
   }
-  if (trip?.length) return routeFromTrip(trip, data.stops, vehicle.stop);
+  // Bez trasy po silnicích ukážeme jen zastávky, rovné čáry mezi nimi ne.
+  if (trip?.length) {
+    const r = routeFromTrip(trip, data.stops, vehicle.stop);
+    return r && { ...r, passedLine: [], upcomingLine: [] };
+  }
   return null;
 }
 

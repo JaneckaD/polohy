@@ -7,7 +7,12 @@ import { VehicleLayer } from './vehicles.js';
 import { fetchVehicles, fetchTrip, proxyConfigured, REFRESH_MS } from './data.js';
 import { renderDetails, renderTrip } from './card.js';
 import { TYPE_COLORS } from './colors.js';
-import { computeRoute, drawRoute, clearRoute, loadRoutes } from './route.js';
+import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes } from './route.js';
+import { snapVehicle } from './snap.js';
+import { store, matchesFilter } from './store.js';
+import { initFilter, setKnownLines } from './filter.js';
+import { initTimetables, openLine, loadIndex, refreshIndex } from './ttview.js';
+import { initInstall } from './install.js';
 
 // MapLibre 6 si worker hledá vedle sebe, po sestavení Vitem ho musíme předat ručně.
 setWorkerUrl(workerUrl);
@@ -33,6 +38,32 @@ const statusEl = document.getElementById('status');
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.classList.toggle('error', isError);
+}
+
+// --- Záložky -------------------------------------------------------------------
+const views = { map: document.getElementById('view-map'), lines: document.getElementById('view-lines') };
+let ttInitialized = false;
+
+function showView(name) {
+  for (const [key, el] of Object.entries(views)) {
+    el.hidden = key !== name;
+    el.classList.toggle('active', key === name);
+  }
+  for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('active', tab.dataset.view === name);
+  if (name === 'map') map.resize();
+  if (name === 'lines') {
+    if (!ttInitialized) {
+      ttInitialized = true;
+      initTimetables({ showOnMap });
+    } else refreshIndex();
+  }
+}
+
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => showView(tab.dataset.view));
+
+function showOnMap(ref) {
+  store.setFilter({ lines: [ref] });
+  showView('map');
 }
 
 // --- Moje poloha -------------------------------------------------------------
@@ -63,6 +94,7 @@ if ('geolocation' in navigator) {
 }
 
 document.getElementById('locate').addEventListener('click', () => {
+  following = null;
   if (myPosition) map.easeTo({ center: myPosition, zoom: Math.max(map.getZoom(), 15) });
   else followMe = true;
 });
@@ -90,7 +122,9 @@ function hideHover() {
 
 // --- Vybraný vůz: trasa a jízdní řád --------------------------------------------
 const sheetEl = document.getElementById('sheet');
+const followBtn = document.getElementById('sheet-follow');
 let selected = null; // { id, trip, token }
+let following = null; // id sledovaného vozu
 
 async function updateSelected(first = false) {
   if (!selected) return;
@@ -99,6 +133,9 @@ async function updateSelected(first = false) {
   sheetEl.style.setProperty('--trip-color', (TYPE_COLORS[v.type] ?? TYPE_COLORS.bus).main);
   sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v));
   sheetEl.querySelector('.sheet-trip').replaceChildren(renderTrip(selected.trip, v, { scroll: first }));
+  followBtn.textContent = following === v.id ? 'Přestat sledovat' : 'Sledovat vůz';
+  followBtn.classList.toggle('primary', following === v.id);
+  if (following === v.id) map.easeTo({ center: [v.lon, v.lat], duration: 1000 });
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? []);
   if (!selected || selected.token !== token) return;
@@ -106,20 +143,22 @@ async function updateSelected(first = false) {
   else clearRoute(map);
 }
 
+function sheetPadding() {
+  const wide = matchMedia('(min-width: 720px)').matches;
+  return wide
+    ? { left: sheetEl.getBoundingClientRect().right, top: 0, right: 0, bottom: 0 }
+    : { bottom: map.getContainer().clientHeight * 0.55, top: 0, left: 0, right: 0 };
+}
+
 async function select(v) {
   hideHover();
   const token = Symbol();
   selected = { id: v.id, trip: null, token };
+  if (following !== v.id) following = null;
   vehicles.select(v.id);
   sheetEl.hidden = false;
-  // Vůz posuneme do volné části mapy vedle panelu (na počítači vlevo, na mobilu dole až 58 % výšky).
-  const wide = matchMedia('(min-width: 720px)').matches;
-  map.easeTo({
-    center: [v.lon, v.lat],
-    padding: wide
-      ? { left: sheetEl.getBoundingClientRect().right, top: 0, right: 0, bottom: 0 }
-      : { bottom: map.getContainer().clientHeight * 0.58, top: 0, left: 0, right: 0 },
-  });
+  // Vůz posuneme do volné části mapy vedle panelu.
+  map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
   const trip = await fetchTrip(v);
   if (!selected || selected.token !== token) return;
@@ -131,35 +170,71 @@ function deselect() {
   if (!selected) return;
   map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 } });
   selected = null;
+  following = null;
   vehicles.select(null);
   sheetEl.hidden = true;
   clearRoute(map);
 }
 
 sheetEl.querySelector('.sheet-close').addEventListener('click', deselect);
+followBtn.addEventListener('click', () => {
+  if (!selected) return;
+  following = following === selected.id ? null : selected.id;
+  updateSelected();
+});
+document.getElementById('sheet-timetable').addEventListener('click', () => {
+  const v = selected && vehicles.get(selected.id);
+  if (!v) return;
+  openLine(v.line, v.headsign);
+  ttInitialized = true;
+  showView('lines');
+});
 map.on('click', deselect);
+map.on('dragstart', () => (following = null));
 document.addEventListener('keydown', (e) => e.key === 'Escape' && deselect());
 
 // --- Vozidla -----------------------------------------------------------------
 const vehicles = new VehicleLayer(map, { onHover: showHover, onLeave: hideHover, onSelect: select });
+let routes = [];
 let timer = null;
+
+let lastUpdate = null;
+function render() {
+  const shown = store.vehicles.filter((v) => matchesFilter(v, store.filter));
+  const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...store.vehicles.filter((v) => v.id === selected.id)] : shown;
+  vehicles.update(visible);
+  updateSelected();
+  if (lastUpdate) {
+    const total = store.vehicles.length;
+    setStatus(shown.length === total ? `${total} vozů · ${lastUpdate}` : `${shown.length} z ${total} vozů · ${lastUpdate}`);
+  }
+}
 
 async function refresh() {
   try {
     const list = await fetchVehicles();
-    vehicles.update(list);
-    updateSelected();
-    const time = new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setStatus(`${list.length} vozidel · ${time}`);
+    lastUpdate = new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+    store.setVehicles(list.map((v) => snapVehicle(map, routes, v)));
   } catch (err) {
     console.error(err);
-    setStatus('Data DSZO se nepodařilo načíst', true);
+    setStatus(navigator.onLine ? 'Data DSZO se nepodařilo načíst' : 'Bez připojení', true);
   }
 }
 
+let lastFilter = '';
+store.subscribe(() => {
+  render();
+  const key = JSON.stringify(store.filter);
+  if (key !== lastFilter) {
+    lastFilter = key;
+    // Vybrané linky ukážeme na mapě i s trasou.
+    if (map.isStyleLoaded()) drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
+  }
+});
+
 function start() {
   if (!proxyConfigured) {
-    setStatus('Chybí proxy pro data DSZO (viz README)', true);
+    setStatus('Chybí proxy pro data DSZO', true);
     return;
   }
   if (timer) return;
@@ -174,10 +249,19 @@ function stop() {
 
 // Když je aplikace na pozadí, data nestahujeme.
 document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
-map.on('load', () => {
+
+map.on('load', async () => {
+  // Poslední známé polohy z minula, než dorazí čerstvá data.
+  const cached = store.cachedVehicles();
+  if (cached) store.setVehicles(cached);
   start();
-  loadRoutes();
+  routes = (await loadRoutes()).routes;
+  drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
 });
+
+initFilter();
+initInstall();
+loadIndex().then((index) => setKnownLines(index.lines));
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js');
