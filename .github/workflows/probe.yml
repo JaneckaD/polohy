@@ -5,18 +5,34 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - run: |
           set +e
-          curl -s -m 30 -X POST 'https://mpvnet.cz/zlin/map/mapData' -H 'Origin: https://mpvnet.cz' -H 'Content-Type: application/json; charset=utf-8' \
-            -d '{"w":17.1,"s":48.86,"e":18.4,"n":49.54,"zoom":13,"showStops":false,"mapFilterId":null}' -o m.json
+          curl -s -m 300 https://portal.cisjr.cz/pub/jdf/JDF.zip -o j.zip
+          curl -sL -m 120 https://raw.githubusercontent.com/hoermalmeister/gtfs-rehost/main/idzk/id-zk-all.zip -o g.zip
+          mkdir g && (cd g && unzip -q ../g.zip)
           python3 - <<'PY'
-          import json,collections
-          d=json.load(open('m.json')); tr=d['transmitters']
-          print('keys', list(d.keys()), 'n', len(tr))
-          print(collections.Counter((t['cat'],t.get('cr')) for t in tr))
-          for t in [t for t in tr if t['cat']==2][:12]: print(json.dumps(t,ensure_ascii=False))
-          print(json.dumps([t for t in tr if t['cat']==3][:1],ensure_ascii=False))
-          print(len(json.dumps([t for t in tr if t['cat']==2])))
+          import csv, zipfile, io, collections
+          mid={}
+          for r in csv.DictReader(open('g/routes.txt',encoding='utf-8-sig')):
+            p=r['route_id'].split(':')
+            if len(p)>1 and '_' in p[1]:
+              a=p[1].split('_'); mid[a[0]]=a[1]
+          Z=zipfile.ZipFile('j.zip'); ic={}; names={}
+          for n in Z.namelist():
+            try: inner=zipfile.ZipFile(io.BytesIO(Z.read(n)))
+            except Exception: continue
+            try: L=inner.read('Linky.txt').decode('cp1250')
+            except KeyError: continue
+            for line in L.splitlines():
+              f=[x.strip('"') for x in line.rstrip(';').split('","')]
+              if f and f[0] in mid: ic[f[0]]=f[2]
+            try:
+              for line in inner.read('Dopravci.txt').decode('cp1250').splitlines():
+                f=[x.strip('"') for x in line.rstrip(';').split('","')]
+                if len(f)>2: names.setdefault(f[0],f[2])
+            except KeyError: pass
+          x=collections.Counter((mid[l], names.get(ic.get(l),ic.get(l))) for l in mid)
+          for k,v in sorted(x.items()): print(k, v)
           PY
