@@ -1,0 +1,35 @@
+name: Probe train detail
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          set +e
+          U='https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load'
+          curl -s -m 30 -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' "$U" -o l.json -w "load %{http_code}\n"
+          python3 - <<'PY' > ids.txt
+          import json
+          d=json.load(open('l.json'))['result']
+          f=[x for x in d if -570000<x['geometry']['coordinates'][0]<-457000 and -1206000<x['geometry']['coordinates'][1]<-1125000]
+          print(json.dumps(f[0]['properties'],ensure_ascii=False))
+          for x in f[:3]: print('ID', x['properties'].get('id'), x['properties'].get('tn'), x['properties'].get('tt'))
+          PY
+          cat ids.txt
+          for id in $(grep '^ID' ids.txt | awk '{print $2}'); do
+            b=$(printf '%s' "$id" | base64)
+            curl -s -m 30 -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' "https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=loadDetail&trainNumber=$b" -o d.json -w "detail $id %{http_code} %{size_download}\n"
+            head -c 3000 d.json; echo
+          done
+          curl -s -m 30 -X POST 'https://mpvnet.cz/zlin/map/mapData' -H 'Origin: https://mpvnet.cz' -H 'Content-Type: application/json; charset=utf-8' \
+            -d '{"w":17.1,"s":48.86,"e":18.4,"n":49.54,"zoom":13,"showStops":false,"mapFilterId":null}' -o m.json
+          python3 - <<'PY'
+          import json,collections
+          tr=json.load(open('m.json'))['transmitters']
+          print(json.dumps([t for t in tr if t['cat']==1][:3],ensure_ascii=False))
+          print(json.dumps([t for t in tr if t['cat']==2][:2],ensure_ascii=False))
+          print(collections.Counter(t['cr'] for t in tr if t['cat']==2))
+          PY
