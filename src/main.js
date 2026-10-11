@@ -330,5 +330,18 @@ fetch('./tt/index.json')
   .then((index) => setKnownLines(index.lines ?? []));
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('./sw.js');
+  // Aplikace na ploše se po přepnutí zpět jen probudí a běží dál stará verze.
+  // Při návratu proto zkontrolujeme novou verzi, a když se nainstaluje, stránku jednou obnovíme.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  });
 }
