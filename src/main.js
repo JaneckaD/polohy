@@ -9,6 +9,7 @@ import { renderDetails, renderTrip } from './card.js';
 import { applyTypeColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
 import { drawRegion } from './region.js';
+import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
 import { initFilter, setKnownLines } from './filter.js';
@@ -64,25 +65,70 @@ for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click
 const journeyBar = document.getElementById('journey-bar');
 const fmtMin = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
-async function showJourneyOnMap(journey, P) {
+// Zobrazené spojení: na mapě je jen ono a vozy, kterými se pojede; ostatní vozy a trasy se skryjí.
+let journeyFocus = null; // { journey, P, date, ids }
+
+const pragueNow = () => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date())
+      .map((p) => [p.type, p.value]),
+  );
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, min: Number(parts.hour) * 60 + Number(parts.minute) };
+};
+
+function journeyVehicleIds() {
+  if (!journeyFocus) return null;
+  const { journey, P, date } = journeyFocus;
+  const now = pragueNow();
+  // Vozy hledáme jen pro dnešní spojení, které už brzy jede nebo právě jede.
+  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, store.vehicles, now.min) : [];
+  journeyFocus.ids = ids;
+  return new Set(ids.filter(Boolean));
+}
+
+function updateJourneyBar() {
+  if (!journeyFocus) return;
+  const { journey } = journeyFocus;
+  const rides = journey.legs.filter((l) => l.type === 'ride' && !l.stay).length;
+  const found = (journeyFocus.ids ?? []).filter(Boolean).length;
+  const text = journeyBar.querySelector('.jb-text');
+  const sub = journeyBar.querySelector('.jb-sub');
+  text.textContent = `Spojení ${fmtMin(journey.dep)} → ${fmtMin(journey.arr)}`;
+  sub.textContent = found ? `na mapě ${found === rides ? (rides === 1 ? 'tvůj vůz' : 'tvoje vozy') : `${found} z ${rides} vozů`}` : 'vozy se ukážou, až vyjedou';
+}
+
+async function showJourneyOnMap(journey, P, date) {
   deselect();
   showView('map');
+  journeyFocus = { journey, P, date, ids: [] };
   const bounds = await drawJourney(map, journey, P);
   journeyBar.replaceChildren();
+  const label = document.createElement('span');
+  label.className = 'jb-label';
   const text = document.createElement('span');
-  text.textContent = `Spojení ${fmtMin(journey.dep)} → ${fmtMin(journey.arr)}`;
+  text.className = 'jb-text';
+  const sub = document.createElement('span');
+  sub.className = 'jb-sub';
+  label.append(text, sub);
   const close = document.createElement('button');
   close.type = 'button';
   close.textContent = 'Zavřít';
   close.addEventListener('click', hideJourney);
-  journeyBar.append(text, close);
+  journeyBar.append(label, close);
   journeyBar.hidden = false;
-  if (bounds) map.fitBounds(bounds, { padding: { top: 110, bottom: 130, left: 40, right: 40 }, maxZoom: 16 });
+  if (map.getLayer('filter-routes')) map.setLayoutProperty('filter-routes', 'visibility', 'none');
+  render();
+  if (bounds) map.fitBounds(bounds, { padding: { top: 120, bottom: 130, left: 40, right: 100 }, maxZoom: 16 });
 }
 
 function hideJourney() {
+  if (!journeyFocus) return;
+  journeyFocus = null;
   journeyBar.hidden = true;
   clearJourney(map);
+  if (map.getLayer('filter-routes')) map.setLayoutProperty('filter-routes', 'visibility', 'visible');
+  render();
 }
 
 // --- Moje poloha -------------------------------------------------------------
@@ -223,7 +269,8 @@ function sheetPadding() {
 
 async function select(v) {
   hideHover();
-  hideJourney();
+  // Vůz ze zobrazeného spojení: spojení necháme na mapě.
+  if (!journeyFocus?.ids?.includes(v.id)) hideJourney();
   const token = Symbol();
   selected = { id: v.id, trip: null, token };
   vehicles.select(v.id);
@@ -258,9 +305,11 @@ let timer = null;
 
 let lastUpdate = null;
 function render() {
-  const shown = store.vehicles.filter((v) => matchesFilter(v, store.filter));
+  const mine = journeyVehicleIds();
+  const shown = mine ? store.vehicles.filter((v) => mine.has(v.id)) : store.vehicles.filter((v) => matchesFilter(v, store.filter));
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...store.vehicles.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
+  updateJourneyBar();
   updateSelected();
   drawRegion(map);
   if (lastUpdate) {

@@ -69,3 +69,18 @@ test('hledání zastávek a okolí polohy', () => {
   assert.equal(P.stops[near[0].stop].name, 'C');
   assert.ok(near.some((n) => P.stops[n.stop].name === 'E'));
 });
+
+test('vozy spojení: linka, směr a poloha podle jízdního řádu', async () => {
+  const { matchJourneyVehicles } = await import('../src/journey-vehicles.js');
+  const j = earliestJourney(P, { origins: [{ stop: stop('A'), walk: 0 }], target: stop('D'), date: '2026-10-11', time: 590 });
+  const vehicles = [
+    { id: '1', line: '1', stop: 'B', headsign: 'C', delay: 0 }, // jede podle jízdního řádu (B v 603)
+    { id: '2', line: '1', stop: 'B', headsign: 'C', delay: 0 },
+    { id: '9', line: '2', stop: 'C', headsign: 'D', delay: 0 },
+  ];
+  // Ve 603 je spoj linky 1 u zastávky B, spoj linky 2 (C v 615) ještě nevyjel ke C.
+  const ids = matchJourneyVehicles(j, P, vehicles, 603);
+  assert.equal(ids[0], '1');
+  assert.equal(ids[1], null);
+  assert.deepEqual(matchJourneyVehicles(j, P, vehicles, 700), [null, null]);
+});

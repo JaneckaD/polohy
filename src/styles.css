@@ -297,6 +297,28 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.active-filter .jb-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.active-filter .jb-text {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.active-filter .jb-sub {
+  font-size: 12px;
+  color: var(--label-2);
+  font-weight: 500;
+}
+
+#journey-bar {
+  padding: 6px 6px 6px 16px;
+  border-radius: 22px;
+}
+
 .fab-stack {
   position: absolute;
   right: 12px;
@@ -1707,28 +1729,52 @@ input:focus-visible {
   border-style: dashed;
 }
 
-.plan-when .day-chips {
-  padding-top: 12px;
+.plan-when {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.plan-time {
+.when-field {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  font-size: 17px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-.time-input {
+.when-label {
+  padding-left: 4px;
+  font-size: 13px;
+  color: var(--label-2);
+}
+
+.when-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   font: inherit;
   font-size: 17px;
   font-variant-numeric: tabular-nums;
+  text-align: left;
   border: none;
   background: var(--cell);
   color: var(--label);
-  border-radius: 10px;
-  padding: 7px 12px;
-  min-height: 36px;
+  border-radius: 12px;
+  padding: 0 12px;
+  height: 44px;
+  line-height: 44px;
+}
+
+.when-input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.when-now {
+  height: 44px;
 }
 
 .result-list {

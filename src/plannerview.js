@@ -47,7 +47,6 @@ const nowMinutes = () => {
 };
 const addDays = (date, n) => new Date(new Date(`${date}T12:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
 const fmt = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, '0')}:${String(((m % 60) + 60) % 60).padStart(2, '0')}`;
-const DAY_NAMES = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
 const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n > 1 && n < 5 ? few : many}`;
 const durationText = (min) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`);
 
@@ -133,41 +132,42 @@ function renderSearch() {
   suggest.hidden = true;
   form.append(suggest);
 
-  // Den a čas
+  // Datum a čas vedle sebe
   const when = h('div', 'plan-when');
-  const days = h('div', 'day-chips');
   const today = pragueDate();
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(today, i);
-    const wd = DAY_NAMES[new Date(`${d}T12:00:00Z`).getUTCDay()];
-    const label = i === 0 ? 'Dnes' : i === 1 ? 'Zítra' : `${wd} ${Number(d.slice(8))}. ${Number(d.slice(5, 7))}.`;
-    const b = h('button', `day-chip${(state.date ?? today) === d ? ' active' : ''}`, label);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      state.date = i === 0 ? null : d;
-      for (const x of days.children) x.classList.toggle('active', x === b);
-    });
-    days.append(b);
-  }
-  const timeRow = h('div', 'plan-time');
-  timeRow.append(h('span', null, 'Odjezd v'));
-  const timeInput = h('input', 'time-input');
+  const dateBox = h('label', 'when-field');
+  dateBox.append(h('span', 'when-label', 'Datum'));
+  const dateInput = h('input', 'when-input');
+  dateInput.type = 'date';
+  dateInput.min = today;
+  dateInput.value = state.date && state.date >= today ? state.date : today;
+  loadPlanner().then((P) => {
+    if (P?.startDate) dateInput.max = addDays(P.startDate, P.days - 1);
+  });
+  dateInput.addEventListener('change', () => {
+    const d = dateInput.value;
+    state.date = !d || d === today ? null : d;
+  });
+  dateBox.append(dateInput);
+  const timeBox = h('label', 'when-field');
+  timeBox.append(h('span', 'when-label', 'Odjezd'));
+  const timeInput = h('input', 'when-input');
   timeInput.type = 'time';
   timeInput.value = state.time != null ? fmt(state.time) : fmt(nowMinutes());
   timeInput.addEventListener('change', () => {
     const [hh, mm] = timeInput.value.split(':').map(Number);
     state.time = Number.isFinite(hh) ? hh * 60 + mm : null;
   });
-  const nowBtn = h('button', 'btn small', 'Teď');
+  timeBox.append(timeInput);
+  const nowBtn = h('button', 'btn small when-now', 'Teď');
   nowBtn.type = 'button';
   nowBtn.addEventListener('click', () => {
     state.time = null;
     state.date = null;
+    dateInput.value = today;
     timeInput.value = fmt(nowMinutes());
-    for (const [i, x] of [...days.children].entries()) x.classList.toggle('active', i === 0);
   });
-  timeRow.append(timeInput, nowBtn);
-  when.append(days, timeRow);
+  when.append(dateBox, timeBox, nowBtn);
   form.append(when);
 
   const go = h('button', 'btn primary block', 'Vyhledat spojení');
