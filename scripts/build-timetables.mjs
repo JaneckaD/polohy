@@ -274,7 +274,14 @@ const turning = (list) => list.filter((r) => r.dir && uTurns(r.line).length);
 const before = turning(previous);
 const after = turning(routes);
 console.log(`Trasy s otočkou do protisměru: předtím ${before.length} z ${previous.filter((r) => r.dir).length}, teď ${after.length} z ${routes.length} (bez směru jízdy počítáno ${bearingFallbacks}×).`);
-for (const r of after.slice(0, 25)) console.log(`  linka ${r.ref} → ${r.to}: ${uTurns(r.line).map(([x, y]) => `${y},${x}`).join(' ')}`);
+const nearestStop = (r, [x, y]) => r.stops.reduce((best, s) => {
+  const d = Math.hypot((s[1] - y) * 110574, (s[2] - x) * 72000);
+  return d < best.d ? { d, name: s[0] } : best;
+}, { d: Infinity, name: '?' });
+for (const r of after.slice(0, 30)) {
+  const at = uTurns(r.line).map((p) => { const n = nearestStop(r, p); return `${p[1]},${p[0]} (${n.name} ${Math.round(n.d)} m)`; });
+  console.log(`  linka ${r.ref} → ${r.to}: ${at.join('; ')}`);
+}
 const unlocated = new Set();
 for (const line of tt?.lines ?? []) for (const d of line.directions) for (const v of d.variants) if (!v.coords) for (const s of locateStops(v.stops, osm.stops)) if (s[1] == null) unlocated.add(s[0]);
 if (unlocated.size) console.log(`Zastávky bez polohy v OSM (${unlocated.size}): ${[...unlocated].slice(0, 40).join('; ')}`);

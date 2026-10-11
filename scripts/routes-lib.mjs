@@ -222,19 +222,38 @@ export function stopCorrector(platforms = []) {
   return correct;
 }
 
-/** Místa, kde se trasa otáčí do protisměru (úhel > 150° na krátkém úseku). Vrací [[lon, lat]]. */
+/**
+ * Místa, kde se trasa vrací po stejné silnici zpátky (otočka do protisměru): bod trasy leží do 20 m
+ * od části trasy projeté o víc než 150 m dřív. Kruhové objezdy a serpentiny se tak nepočítají.
+ * Vrací [[lon, lat]] (jedno místo za každý návrat).
+ */
 export function uTurns(line = []) {
   const out = [];
-  const kx = 111320 * Math.cos(((line[0]?.[1] ?? 49) * Math.PI) / 180);
-  for (let i = 1; i < line.length - 1; i++) {
-    const ax = (line[i][0] - line[i - 1][0]) * kx;
-    const ay = (line[i][1] - line[i - 1][1]) * 110574;
-    const bx = (line[i + 1][0] - line[i][0]) * kx;
-    const by = (line[i + 1][1] - line[i][1]) * 110574;
-    const la = Math.hypot(ax, ay);
-    const lb = Math.hypot(bx, by);
-    if (!la || !lb || Math.min(la, lb) > 400) continue;
-    if ((ax * bx + ay * by) / (la * lb) < -0.87) out.push(line[i]);
+  if (line.length < 3) return out;
+  const kx = 111320 * Math.cos((line[0][1] * Math.PI) / 180);
+  const xy = line.map(([lon, lat]) => [lon * kx, lat * 110574]);
+  const along = [0];
+  for (let i = 1; i < xy.length; i++) along.push(along[i - 1] + Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]));
+  // Vzdálenost bodu od úseku a kolik metrů trasy je k nejbližšímu místu úseku.
+  const project = (p, i) => {
+    const [a, b] = [xy[i], xy[i + 1]];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+    return { d: Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy), at: along[i] + t * Math.sqrt(len2) };
+  };
+  let skipUntil = -1;
+  for (let j = 2; j < xy.length; j++) {
+    if (along[j] < skipUntil) continue;
+    for (let i = 0; i + 1 < j && along[i] < along[j] - 150; i++) {
+      const p = project(xy[j], i);
+      if (p.d < 20 && p.at < along[j] - 150) {
+        out.push(line[j]);
+        skipUntil = along[j] + 300;
+        break;
+      }
+    }
   }
   return out;
 }

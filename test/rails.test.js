@@ -60,6 +60,8 @@ test('zastávka na obou stranách silnice: vybere se ta vpravo ve směru jízdy'
 
 test('otočka do protisměru na trase se pozná', async () => {
   const { uTurns } = await import('../scripts/routes-lib.mjs');
-  assert.equal(uTurns([[17.70, 49.2], [17.701, 49.2], [17.702, 49.2]]).length, 0);
-  assert.equal(uTurns([[17.70, 49.2], [17.701, 49.2], [17.7002, 49.20001]]).length, 1);
+  // Rovně, kruhový objezd (smyčka bez návratu po stejné silnici) a otočka zpět po stejné silnici.
+  assert.equal(uTurns([[17.70, 49.2], [17.701, 49.2], [17.702, 49.2], [17.705, 49.2]]).length, 0);
+  assert.equal(uTurns([[17.70, 49.2], [17.703, 49.2], [17.7033, 49.2002], [17.703, 49.2004], [17.7027, 49.2002], [17.703, 49.2], [17.706, 49.2]]).length, 0);
+  assert.equal(uTurns([[17.70, 49.2], [17.704, 49.2], [17.702, 49.20005], [17.702, 49.205]]).length, 1);
 });
