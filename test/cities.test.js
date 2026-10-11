@@ -45,6 +45,10 @@ test('regionální autobus vybraného dopravce z mapy IDZK', () => {
   assert.equal(parseCityBus({ ...t, cr: 'TQM - holding' }).city, 'tqm');
   assert.equal(parseCityBus({ ...t, cr: 'Transdev Slezsko' }).city, 'tds');
   assert.equal(parseCityBus({ ...t, cr: 'ZDS-Psota' }), null, 'ostatní dopravce ne');
+  // MHD Uherské Hradiště a Vsetín podle licence (bez ohledu na dopravce).
+  assert.equal(parseCityBus({ ...t, cn: '805302|302|12|Uherské Hradiště,Mařatice', cr: 'ZDS-Psota' }).city, 'uh');
+  assert.equal(parseCityBus({ ...t, cn: '945601|601|3|Vsetín,Dopravní terminál', cr: 'Z-Group bus' }).city, 'vs');
+  assert.equal(parseCityBus({ ...t, cn: '805302|302|12|Uherské Hradiště,Mařatice', cr: 'ZDS-Psota' }).stop, 'Mařatice');
 });
 
 test('dopravce regionální linky podle route_id GTFS IDZK', async () => {

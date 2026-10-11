@@ -41,8 +41,8 @@ async function trains() {
 // Mapa IDZK: odpovídá jen s hlavičkou Origin své vlastní stránky.
 const MPV_URL = 'https://mpvnet.cz/zlin/map/mapData';
 const MPV_BODY = JSON.stringify({ w: 17.1, s: 48.86, e: 18.4, n: 49.54, zoom: 13, showStops: false, mapFilterId: null });
-// Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = MHD Valašské Meziříčí.
-const CITY_LICENCES = ['775', '946'];
+// Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = Valašské Meziříčí, 805 = Uherské Hradiště, 945 = Vsetín.
+const CITY_LICENCES = ['775', '946', '805', '945'];
 // Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
 const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA|Transdev|TQM/i;
 

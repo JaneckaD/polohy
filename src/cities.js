@@ -10,6 +10,9 @@ const REGIONAL = { main: '#e8710a', text: '#ffffff', stop: '#9c4a00' };
 export const CITIES = {
   km: { name: 'Kroměříž', licence: '775', ...MHD },
   vm: { name: 'Valašské Meziříčí', licence: '946', ...MHD },
+  // MHD Uherské Hradiště (ZDS-Psota, i Staré Město a Kunovice) a Vsetín (Z-Group).
+  uh: { name: 'Uherské Hradiště', licence: '805', ...MHD },
+  vs: { name: 'Vsetín', licence: '945', ...MHD },
 };
 
 /**

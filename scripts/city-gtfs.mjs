@@ -1,10 +1,10 @@
-// MHD dalších měst kraje (Kroměříž, Valašské Meziříčí) a regionální autobusy z GTFS Integrované dopravy
+// MHD dalších měst kraje (Kroměříž, Valašské Meziříčí, Uherské Hradiště, Vsetín) a regionální autobusy z GTFS Integrované dopravy
 // Zlínského kraje, pro vyhledávání spojení a pro jízdní řád vozu na mapě. MHD měst poznáme podle čísla
 // licence v route_id, dopravce regionální linky podle čísla dopravce v route_id. Linky DSZO jsou jinde.
 import { readGtfsFiles, displayStopName } from './gtfs-lib.mjs';
 import { carrierOfRoute } from '../src/cities.js';
 
-export const CITY_ROUTES = { km: 'BUS_MHD:775', vm: 'BUS_MHD:946' };
+export const CITY_ROUTES = { km: 'BUS_MHD:775', vm: 'BUS_MHD:946', uh: 'BUS_MHD:805', vs: 'BUS_MHD:945' };
 
 const toMinutes = (t) => {
   const m = /^(\d{1,2}):(\d{2})/.exec(t ?? '');
