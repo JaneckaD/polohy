@@ -1,5 +1,5 @@
 // Zpracování odpovědi Overpass API na kompaktní trasy linek MHD.
-import { normalizeName } from '../src/names.js';
+import { normalizeName, nameSimilarity } from '../src/names.js';
 
 const STOP_ROLE = /^(stop|platform)(_entry_only|_exit_only)?$/;
 const WAY_ROLE = /^(|forward|backward)$/;
@@ -143,4 +143,28 @@ export function buildRoutes(overpass) {
   for (const [key, [lat, lon, c]] of sums) stops[key] = [round(lat / c), round(lon / c)];
 
   return { routes, stops };
+}
+
+/** Zjednodušená a zaokrouhlená lomená čára [[lon, lat]]. */
+export function simplifyLine(line) {
+  return simplify(line).map(([x, y]) => [round(x), round(y)]);
+}
+
+/**
+ * Polohy zastávek podle názvu ze slovníku OSM: [[název, lat, lon]], u nenalezených lat/lon null.
+ * Názvy z jízdních řádů („Otrokovice,žel.st.“) se s OSM liší, proto i přibližná shoda.
+ */
+export function locateStops(names, dictionary) {
+  const keys = Object.keys(dictionary);
+  return names.map((name) => {
+    let pos = dictionary[normalizeName(name)];
+    if (!pos) {
+      let best = 0.75;
+      for (const k of keys) {
+        const sim = nameSimilarity(k, name);
+        if (sim > best) { best = sim; pos = dictionary[k]; }
+      }
+    }
+    return pos ? [name, pos[0], pos[1]] : [name, null, null];
+  });
 }

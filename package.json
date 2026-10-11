@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "icons": "node scripts/make-icons.mjs",
     "test": "node --test",
-    "routes": "node scripts/build-routes.mjs"
+    "routes": "node scripts/build-routes.mjs",
+    "timetables": "node scripts/build-timetables.mjs"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,7 @@
     "maplibre-gl": "^6.13.0"
   },
   "devDependencies": {
+    "fflate": "^0.8.3",
     "vite": "^6.4.4"
   },
   "private": true,
