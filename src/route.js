@@ -189,7 +189,13 @@ async function geometryFor(trip, ref, train = false) {
         // Vlak: po kolejích mezi stanicemi (mimo kraj koleje nemáme, tam čára není).
         if (train) return railGeometry(await railNetwork(), trip);
         const data = await loadRoutes();
-        const geo = tripGeometry(trip, data.routes, ref, data.stops);
+        // MHD jiného města (ref „km:1“): jen trasy toho města a polohy zastávek ze spoje,
+        // názvy zastávek se mezi městy opakují. Zlínské spoje trasy jiných měst nepoužijí.
+        const city = /^(\w+):/.exec(ref ?? '')?.[1];
+        const geo = city
+          ? tripGeometry(trip, data.routes.filter((r) => r.city === city), ref, {})
+          : tripGeometry(trip, data.routes.filter((r) => !r.city), ref, data.stops);
+        if (city) trip.forEach((s, i) => s.lat != null && (geo.coords[i] = [s.lat, s.lon]));
         // Chybějící kusy (varianty spojů, které předpočítané trasy linek nepokrývají) dopočítáme
         // po silnici všechny, po čtyřech najednou, aby trasa nebyla přerušená. Rovné čáry nekreslíme.
         const missing = geo.segments.map((seg, i) => i).filter((i) => !geo.segments[i] && geo.coords[i] && geo.coords[i + 1]);

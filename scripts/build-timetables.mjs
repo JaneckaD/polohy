@@ -11,6 +11,7 @@ import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from 
 import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
+import { cityStopName } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
 
@@ -310,12 +311,47 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
   }
 }
 
+// MHD dalších měst: trasa po silnicích pro varianty spojů (jako u DSZO), aby ji aplikace nemusela
+// skládat po kouscích přes veřejný OSRM. Kratší varianty, které delší už pokrývají, přeskočíme.
+let cityRouted = 0;
+if (!tt?.previous) {
+  const variants = new Map();
+  for (const t of tt?.rawTrips ?? []) {
+    if (!t.city) continue;
+    const key = `${t.city}:${t.ref}|${t.stops.map((s) => s[0]).join('|')}`;
+    if (!variants.has(key)) variants.set(key, t);
+  }
+  const coveredPairs = new Set();
+  for (const t of [...variants.values()].sort((a, b) => b.stops.length - a.stops.length)) {
+    const ref = `${t.city}:${t.ref}`;
+    const pairs = t.stops.slice(1).map((s, i) => `${ref}|${t.stops[i][0]}|${s[0]}`);
+    if (pairs.every((p) => coveredPairs.has(p))) continue;
+    const located = t.stops.filter((s) => s[1] != null);
+    if (located.length < 2) continue;
+    const points = located.map((s) => [s[2], s[1]]);
+    const key = `b1|${points.map((p) => p.join(',')).join(';')}`;
+    let geometry = cache.get(key);
+    if (geometry) cached++;
+    else {
+      geometry = await osrmRoute(points);
+      if (!geometry) continue;
+      geometry = simplifyLine(geometry);
+      cityRouted++;
+    }
+    for (const p of pairs) coveredPairs.add(p);
+    const line = geometry.length > 2 ? removeDetours(geometry, located) : geometry;
+    const stops = located.map(([n, lat, lon]) => [cityStopName(t.city, n), lat, lon]);
+    routes.push({ ref, type: 'bus', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line, key });
+  }
+  console.log(`Trasy MHD dalších měst: ${routes.filter((r) => r.city).length} variant (nově spočítané ${cityRouted}).`);
+}
+
 // Linky, které v jízdních řádech chybí, necháme z OpenStreetMap.
 const covered = new Set(routes.filter((r) => r.line.length > 1).map((r) => r.ref));
 const osmFallback = osm.routes.filter((r) => !covered.has(r.ref));
 // Slovník poloh zastávek (pro trasu podle jízdního řádu vozu): OSM doplněné o zastávky z jízdních řádů.
 const stopDict = { ...osm.stops };
-for (const r of routes) for (const [name, lat, lon] of r.stops) stopDict[normalizeName(name)] ??= [lat, lon];
+for (const r of routes) if (!r.city) for (const [name, lat, lon] of r.stops) stopDict[normalizeName(name)] ??= [lat, lon];
 writeFileSync(ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: [...routes, ...osmFallback], stops: stopDict, platforms: osm.platforms ?? [] }));
 console.log(`Trasy podle zastávek: ${routes.length} (tvar z jízdních řádů ${shaped}, nově spočítané ${routed}, z cache ${cached}), bez poloh zastávek ${missing}, z OSM navíc ${osmFallback.length}.`);
 // Kontrola: kolik tras se někde otáčí do protisměru (dřív a teď).

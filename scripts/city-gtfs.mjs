@@ -80,6 +80,7 @@ export function cityTrips(zipBytes, { startDate, days, log = () => {} }) {
       ref: route.route_short_name.trim(),
       type: 'bus',
       city: cityOf(trip.route_id),
+      number: (trip.trip_short_name ?? '').trim() || null,
       mask,
       times: dep,
       stops: list.map((r) => {

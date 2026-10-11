@@ -49,6 +49,7 @@ export function parseCityBus(t) {
     // Celé názvy (s obcí) pro hledání spoje v jízdních řádech.
     rawStop: f[3] || null,
     rawHeadsign: f[9] || null,
+    tripNo: f[2] || null,
     lowFloor: f[10] === '1',
     features: f[10] === '1' ? ['lowlevel'] : [],
     plate: plate || null,
@@ -78,7 +79,18 @@ export function cityTrip(P, v, date, now) {
   const di = dayIndex(P.startDate, date);
   const delay = Math.max(0, Math.round((v.delay ?? 0) / 60));
   let best = null;
+  // Podle čísla spoje (z mapy IDZK): ze dnešních jízd ta, která teď jede (nebo je časově nejblíž).
   for (const trip of P.trips) {
+    const pat = trip.pattern;
+    if (!v.tripNo || trip.no !== v.tripNo || pat.c !== v.city || pat.r !== v.line || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
+    const first = trip.times[0];
+    const last = trip.times.at(-1) + delay;
+    const gap = now < first - 30 ? first - now : now > last ? now - last : 0;
+    if (!best || gap < best.score) best = { score: gap, trip };
+  }
+  if (best && best.score > 60) best = null;
+  // Jinak podle linky, cíle a poslední zastávky.
+  for (const trip of best ? [] : P.trips) {
     const pat = trip.pattern;
     if (pat.c !== v.city || pat.r !== v.line || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
     if (v.rawHeadsign && nameSimilarity(v.rawHeadsign, P.stops[pat.s.at(-1)].name) < 0.6) continue;

@@ -29,7 +29,7 @@ export function preparePlanner(data) {
     // Příjezdy: vlaky ve stanici stojí, jinde je příjezd = odjezd.
     const dwell = data.dwell?.[id];
     const arr = dwell ? times.map((t, i) => t - (dwell[i] ?? 0)) : times;
-    return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr };
+    return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr, no: data.tripNo?.[id] ?? null };
   });
   // Pěší přestupy: dvojice různých zastávek do 10 minut chůze.
   const walks = stops.map(() => []);

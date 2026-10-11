@@ -145,12 +145,16 @@ export function buildPlannerFromTrips(tt) {
     // Vlaky stojí ve stanicích déle: kolik minut před odjezdem přijíždí (jen když někde stojí).
     const dwell = t.arr?.map((a, i) => Math.max(0, t.times[i] - a));
     if (dwell?.some((d) => d > 0)) entry.dwell = dwell;
+    // Číslo spoje (MHD jiných měst: podle něj se pozná spoj vozu z mapy IDZK).
+    if (t.number && t.type !== 'train') entry.no = t.number;
     trips.push(entry);
   }
   // Stejné spoje seřadíme podle odjezdu, ať jsou data stabilní.
   trips.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   const dwell = {};
   trips.forEach((t, i) => t.dwell && (dwell[i] = t.dwell));
+  const tripNo = {};
+  trips.forEach((t, i) => t.no && (tripNo[i] = t.no));
   const round = (x) => Math.round(x * 1e5) / 1e5;
   return {
     startDate: tt.startDate,
@@ -165,6 +169,7 @@ export function buildPlannerFromTrips(tt) {
     patterns,
     trips,
     dwell,
+    tripNo,
     skipped,
   };
 }

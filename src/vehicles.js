@@ -34,29 +34,22 @@ function createElement() {
   return el;
 }
 
-// Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku jen druh (Os, R…) v barvě druhu
-// s tenkým rámečkem v barvě dopravce. Číslo vlaku je až v detailu.
+// Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku druh (Os, R…) v kolečku barvy druhu
+// (jako značky DSZO). Číslo vlaku a dopravce jsou až v detailu.
 function setLabel(el, v) {
-  const key = v.type === 'train' ? `${v.code}|${v.operator?.short}` : v.line;
+  const key = v.type === 'train' ? v.code : v.line;
   if (el.dataset.label === key) return;
   el.dataset.label = key;
   const dot = el.querySelector('.vehicle-dot');
-  if (v.type !== 'train') {
-    dot.textContent = v.line;
-    return;
-  }
-  const kind = document.createElement('span');
-  kind.className = 'train-kind';
-  kind.textContent = v.code;
-  kind.style.background = TRAIN_KINDS[v.kind]?.color ?? '#6c6c70';
-  dot.replaceChildren(kind);
+  dot.textContent = key;
+  if (v.type !== 'train') return;
   el.title = `${v.code} ${v.number} · ${v.operator?.short ?? ''}`;
-  el.style.setProperty('--vehicle-color', v.operator?.color ?? '#636366');
-  el.style.setProperty('--vehicle-text', v.operator?.text ?? '#ffffff');
+  el.style.setProperty('--vehicle-color', TRAIN_KINDS[v.kind]?.color ?? '#6c6c70');
+  el.style.setProperty('--vehicle-text', '#ffffff');
 }
 
 const STACK_GRID = 0.0004; // ~40 m
-const STACK_STEP_PX = 24;
+const STACK_STEP_PX = 30;
 
 export class VehicleLayer {
   /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
@@ -159,15 +152,6 @@ export class VehicleLayer {
     } else {
       arrow.style.display = '';
       arrow.style.transform = `rotate(${bearing}deg)`;
-      if (item.el.dataset.type === 'train') {
-        // Vlak je obdélník: šipka obíhá těsně kolem jeho okraje.
-        const dot = item.el.querySelector('.vehicle-dot');
-        const w = dot.offsetWidth || 30;
-        const h = dot.offsetHeight || 20;
-        const rad = (bearing * Math.PI) / 180;
-        const r = Math.round(Math.abs(Math.sin(rad)) * (w / 2) + Math.abs(Math.cos(rad)) * (h / 2) + 9);
-        arrow.style.setProperty('--arrow-r', `${r}px`);
-      }
     }
   }
 

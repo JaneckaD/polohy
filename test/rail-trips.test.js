@@ -70,3 +70,15 @@ test('jízdní řád vlaku a jeho poloha mezi zastávkami', () => {
   // Poslední bod je výhybna (není v jízdním řádu): podle času se zpožděním.
   assert.deepEqual(trainPosition(trip, { stop: 'Výh Lípa', bearing: 90, delay: 120 }, 613), { current: 1, atStop: false });
 });
+
+test('trasa po kolejích přes odbočku, kde se čáry po zjednodušení nedotýkají', () => {
+  // Odbočka začíná 150 m od hlavní trati (ve stanici se ztratilo spojení), konec je dál než 30 m.
+  const main = [[17.4, 49.3], [17.5, 49.3]];
+  const branch = [[17.452, 49.301], [17.47, 49.35]];
+  const net = new RailNetwork([main, branch]);
+  const path = net.path([49.3, 17.41], [49.349, 17.4695]);
+  assert.ok(path, 'cesta existuje');
+  // Úplně oddělené tratě (kilometry od sebe) se nespojí.
+  const far = new RailNetwork([main, [[17.45, 49.4], [17.5, 49.45]]]);
+  assert.equal(far.path([49.3, 17.41], [49.449, 17.499]), null);
+});

@@ -5,6 +5,7 @@
 const KY = 110574;
 const kxAt = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
 const CELL = 0.01; // mřížka pro hledání blízkých úseků (asi 1 km)
+const BRIDGE_M = 1000; // nejdelší spojka mezi nesouvisejícími kusy tratí (kolejiště velkých stanic v datech chybí)
 
 function project(p, a, b) {
   const kx = kxAt(p[1]);
@@ -57,6 +58,51 @@ export class RailNetwork {
       if (this.adj[e].length > 1) continue;
       const hit = this.nearest(this.pts[e], 30, e);
       if (hit) this.link(e, this.split(hit));
+    }
+    this.bridge(BRIDGE_M);
+  }
+
+  /**
+   * Kusy sítě, které spolu nesouvisí (v odbočce ve stanici zjednodušení čar ztratilo spojení),
+   * propojí v místě, kde jsou si nejblíž, když je to do maxDist metrů.
+   */
+  bridge(maxDist) {
+    const comp = new Array(this.pts.length).fill(-1);
+    let count = 0;
+    for (let s = 0; s < this.pts.length; s++) {
+      if (comp[s] >= 0) continue;
+      comp[s] = count;
+      const stack = [s];
+      while (stack.length) for (const [v] of this.adj[stack.pop()]) if (comp[v] < 0) (comp[v] = count), stack.push(v);
+      count++;
+    }
+    if (count < 2) return;
+    // Nejbližší místo (bod jednoho kusu k úseku druhého) pro každou dvojici kusů.
+    const best = new Map();
+    const r = Math.max(1, Math.ceil(maxDist / 700));
+    this.pts.forEach((p, i) => {
+      const cx = Math.floor(p[0] / CELL);
+      const cy = Math.floor(p[1] / CELL);
+      for (let x = cx - r; x <= cx + r; x++)
+        for (let y = cy - r; y <= cy + r; y++)
+          for (const si of this.grid.get(`${x},${y}`) ?? []) {
+            const [a, b] = this.segs[si];
+            if (comp[a] === comp[i]) continue;
+            const pr = project(p, this.pts[a], this.pts[b]);
+            const key = comp[i] < comp[a] ? `${comp[i]},${comp[a]}` : `${comp[a]},${comp[i]}`;
+            if (pr.dist <= maxDist && pr.dist < (best.get(key)?.dist ?? Infinity)) best.set(key, { ...pr, seg: si, i });
+          }
+    });
+    // Nejkratší spojky první, každá jen když kusy ještě nejsou propojené.
+    const parent = [...Array(count).keys()];
+    const root = (a) => (parent[a] === a ? a : (parent[a] = root(parent[a])));
+    for (const hit of [...best.values()].sort((a, b) => a.dist - b.dist)) {
+      const [a, b] = [root(comp[hit.i]), root(comp[this.segs[hit.seg][0]])];
+      if (a === b) continue;
+      parent[a] = b;
+      const j = this.split(hit);
+      this.link(hit.i, j);
+      this.index(this.segs.length - 1);
     }
   }
 

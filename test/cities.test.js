@@ -42,8 +42,10 @@ test('spoj vozu MHD jiného města podle linky, cíle a poslední zastávky', ()
       startDate: '2026-10-11',
       days: 5,
       rawTrips: [
-        { ref: '1', type: 'bus', city: 'vm', mask, times: [1110, 1114, 1124], stops },
-        { ref: '1', type: 'bus', city: 'vm', mask, times: [1170, 1174, 1184], stops },
+        { ref: '1', type: 'bus', city: 'vm', number: '58', mask, times: [1110, 1114, 1124], stops },
+        { ref: '1', type: 'bus', city: 'vm', number: '60', mask, times: [1170, 1174, 1184], stops },
+        // Spoj 57 ve stejný čas jen jinou trasou: číslo spoje z mapy IDZK rozhodne.
+        { ref: '1', type: 'bus', city: 'vm', number: '57', mask, times: [1111, 1114, 1120], stops: [stops[0], stops[1], ['Valašské Meziříčí, sklárny', 49.48, 17.99]] },
         // Zlínská linka 1 se stejným číslem se nesmí splést.
         { ref: '1', type: 'trolleybus', mask, times: [1110, 1114, 1124], stops: [['Zlín, náměstí Míru', 49.226, 17.666], ['Tesla', 49.22, 17.6], ['Krhová', 49.21, 17.59]] },
       ],
@@ -52,5 +54,6 @@ test('spoj vozu MHD jiného města podle linky, cíle a poslední zastávky', ()
   const trip = cityTrip(P, parseCityBus(record), '2026-10-11', 1116);
   assert.deepEqual(trip.map((s) => s.time), ['18:30', '18:34', '18:44']);
   assert.equal(trip[1].name, 'Tesla I');
+  assert.equal(cityTrip(P, { ...parseCityBus(record), tripNo: '57' }, '2026-10-11', 1116).at(-1).name, 'sklárny');
   assert.equal(trip[2].name, 'Krhová, točna');
 });
