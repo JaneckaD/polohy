@@ -1,12 +1,14 @@
 name: Probe rails
 on:
   push:
-    paths: ['.github/workflows/probe.yml']
+    paths: ['.github/workflows/probe.yml', '.github/probe/**']
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - run: |
           curl -s -m 60 'https://janeckad.github.io/polohy/rails.json' -o rails.json -w "rails %{http_code}\n"
-          gzip -9 -c rails.json | base64 -w 0 > r.b64; echo; echo "B64START"; cat r.b64; echo; echo "B64END"
+          curl -s -m 60 'https://janeckad.github.io/polohy/tt/planner.json' -o planner.json -w "planner %{http_code}\n"
+          timeout 200 node .github/probe/rails.mjs rails.json planner.json
