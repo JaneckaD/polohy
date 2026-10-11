@@ -1,0 +1,37 @@
+name: Probe train sources
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          echo "=== SZ OsVlaky"
+          curl -s -m 30 -A "$UA" -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers\OsVlaky&&action=load' -o os.json -w "%{http_code} %{size_download}\n"
+          head -c 3000 os.json; echo
+          python3 -c "
+          import json
+          d=json.load(open('os.json'))
+          print(type(d), list(d.keys()) if isinstance(d,dict) else len(d))
+          r=d.get('result') if isinstance(d,dict) else d
+          print(len(r)); print(json.dumps(r[:3],ensure_ascii=False)[:3000])
+          import collections
+          for k in ('tt','dp','di','d','c','ty'):
+            try: print(k, collections.Counter(x.get('properties',x).get(k) for x in r).most_common(40))
+            except Exception as e: print(k,e)
+          "
+          echo "=== GRAPP page"
+          curl -s -m 30 -A "$UA" -c jar.txt 'https://grapp.spravazeleznic.cz/' -o grapp.html -w "%{http_code} %{size_download}\n"
+          grep -o -i 'token[^<]\{0,200\}' grapp.html | head -20
+          grep -o 'post/[^"'"'"' ]*' grapp.html | sort -u | head -30
+          grep -o 'src="[^"]*\.js[^"]*"' grapp.html | head
+          TOKEN=$(grep -o 'id="token" value="[^"]*"' grapp.html | sed 's/.*value="//;s/"//')
+          echo "TOKEN=$TOKEN"
+          curl -s -m 30 -A "$UA" -b jar.txt -H 'Content-Type: application/json' -X POST "https://grapp.spravazeleznic.cz/post/trains/GetTrainsWithFilter/$TOKEN" --data '{"CarrierCode":[],"PublicKindOfTrain":[],"FreightKindOfTrain":[],"TrainRunning":false,"TrainNoChange":0,"TrainOutOfOrder":false,"Delay":["0","60","5","61","15","-1","30"],"DelayMin":-99999,"DelayMax":-99999,"SearchByTrainNumber":true,"SearchExtraTrain":false,"SearchByTrainName":true,"SearchByTRID":false,"SearchByVehicleNumber":false,"SearchTextType":"0","SearchPhrase":"","SelectedTrain":-1}' -o grapp.json -w "%{http_code} %{size_download}\n"
+          head -c 3000 grapp.json; echo
+          echo "=== mpvnet zlin"
+          curl -s -m 30 -A "$UA" -H 'Origin: https://mpvnet.cz' -H 'Referer: https://mpvnet.cz/zlin/map' -H 'Content-Type: application/json' -X POST 'https://mpvnet.cz/zlin/map/mapData' --data '{"bbox":[17.0,48.8,18.6,49.6],"zoom":10}' -o mpv.json -w "%{http_code} %{size_download}\n"
+          head -c 3000 mpv.json; echo
