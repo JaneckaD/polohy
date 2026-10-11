@@ -84,3 +84,20 @@ test('falls back to stops from the trip timetable', () => {
   assert.deepEqual(r.stops.map((s) => s.passed), [true, true, false]);
   assert.equal(currentTripIndex(trip, 'Zborovská'), 1);
 });
+
+test('reads the compact "out geom" Overpass format', () => {
+  const nodes = OVERPASS.elements.filter((e) => e.type === 'node');
+  const byId = new Map(nodes.map((x) => [x.id, x]));
+  const ways = new Map(OVERPASS.elements.filter((e) => e.type === 'way').map((w) => [w.id, w]));
+  const relations = OVERPASS.elements
+    .filter((e) => e.type === 'relation')
+    .map((r) => ({
+      ...r,
+      members: r.members.map((m) =>
+        m.type === 'way' ? { ...m, geometry: ways.get(m.ref).nodes.map((id) => ({ lat: byId.get(id).lat, lon: byId.get(id).lon })) } : m,
+      ),
+    }));
+  const { routes } = buildRoutes({ elements: [...relations, ...nodes] });
+  assert.equal(routes.length, 2);
+  assert.deepEqual(routes[0].line, buildRoutes(OVERPASS).routes[0].line);
+});

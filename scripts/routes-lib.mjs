@@ -52,18 +52,24 @@ export function buildRoutes(overpass) {
     else if (el.type === 'relation') relations.push(el);
   }
 
+  // Body cesty: z „out geom“ přímo u člena relace, jinak přes samostatné prvky way a node.
+  const wayPoints = (m) => {
+    if (Array.isArray(m.geometry)) return m.geometry.filter(Boolean).map((g) => [g.lon, g.lat]);
+    const w = ways.get(m.ref);
+    return (w?.nodes ?? []).map((id) => nodes.get(id)).filter(Boolean).map((n) => [n.lon, n.lat]);
+  };
+
   const pointOf = (m) => {
     if (m.type === 'node') {
       const n = nodes.get(m.ref);
       return n ? [n.lat, n.lon, n.tags?.name] : null;
     }
     if (m.type === 'way') {
-      const w = ways.get(m.ref);
-      const pts = (w?.nodes ?? []).map((id) => nodes.get(id)).filter(Boolean);
+      const pts = wayPoints(m);
       if (!pts.length) return null;
-      const lat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-      const lon = pts.reduce((s, p) => s + p.lon, 0) / pts.length;
-      return [lat, lon, w.tags?.name];
+      const lon = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+      const lat = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      return [lat, lon, ways.get(m.ref)?.tags?.name];
     }
     return null;
   };
@@ -95,8 +101,8 @@ export function buildRoutes(overpass) {
     for (const m of rel.members ?? []) {
       if (m.type !== 'way' || !WAY_ROLE.test(m.role)) continue;
       const w = ways.get(m.ref);
-      if (!w || w.tags?.public_transport === 'platform' || w.tags?.highway === 'platform') continue;
-      let pts = (w.nodes ?? []).map((id) => nodes.get(id)).filter(Boolean).map((n) => [n.lon, n.lat]);
+      if (w?.tags?.public_transport === 'platform' || w?.tags?.highway === 'platform') continue;
+      let pts = wayPoints(m);
       if (pts.length < 2) continue;
       wayCount++;
       if (wayCount === 1) {
