@@ -5,23 +5,26 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - run: |
           set +e
-          B=https://portal.cisjr.cz/pub/draha/celostatni/szdc/
-          curl -s -m 30 "$B" | sed 's/<[^>]*>/ /g' | grep -v '^\s*$' | head -30
-          curl -s -m 30 "${B}2026/" -o l.html -w "list %{http_code}\n"
-          sed 's/<[^>]*>/ /g' l.html | grep -v '^\s*$' | head -60
-          f=$(grep -o 'href="[^"]*\.zip"' l.html | sed 's/href="//;s/"//' | head -1)
-          echo "FIRST $f"
-          small=$(grep -o 'href="[^"]*\.zip"' l.html | sed 's/href="//;s/"//' | tail -1)
-          echo "LAST $small"
-          curl -s -m 120 -L "${B}2026/$small" -o s.zip -w "zip %{http_code} %{size_download}\n"
-          mkdir x && cd x && unzip -q ../s.zip; ls | head; ls | wc -l
-          for z in $(ls *.zip 2>/dev/null | head -3); do unzip -q -o "$z"; done
-          ls | head
-          x=$(ls *.xml | head -1); echo "XML $x"; head -c 4000 "$x"; echo
-          echo '--- NSP names/values'
-          cat *.xml | grep -o '<Name>[^<]*</Name>\s*<Value>[^<]*</Value>' | sed 's/<[^>]*>/ /g' | sort | uniq -c | sort -rn | head -60
-          cat *.xml | tr -d '\r\n' | grep -o '<NetworkSpecificParameter>.\{0,300\}</NetworkSpecificParameter>' | head -20
+          B=https://portal.cisjr.cz/pub/draha/celostatni/szdc
+          curl -sI -m 30 "$B/2026/JR2026.zip" | grep -i 'length\|type'
+          curl -s -m 30 "$B/2026/2026-10/" | grep -io 'href="[^"]*"' | head -8
+          curl -s -m 300 "$B/2026/JR2026.zip" -o jr.zip -w "zip %{http_code} %{size_download}\n"
+          unzip -l jr.zip | head -5; unzip -l jr.zip | tail -2
+          mkdir x && cd x && unzip -q ../jr.zip
+          n=$(find . -name '*.zip' | wc -l); echo "inner zips $n"
+          if [ "$n" -gt 0 ]; then find . -name '*.zip' | head -3000 | xargs -n1 unzip -q -o 2>/dev/null; fi
+          find . -name '*.xml' | wc -l
+          grep -l 'Otrokovice' $(find . -name '*.xml' | head -20000) 2>/dev/null | head -400 > zl.txt; wc -l zl.txt
+          x=$(head -1 zl.txt); echo "XML $x"; head -c 6000 "$x"; echo
+          echo '--- NSP'
+          cat $(cat zl.txt) | tr -d '\r\n' | grep -o '<NetworkSpecificParameter>.\{0,200\}</NetworkSpecificParameter>' | sed 's/\s\+/ /g' | sort | uniq -c | sort -rn | head -80
+          echo '--- TrainActivity'
+          cat $(cat zl.txt) | grep -o '<TrainActivityType>[^<]*' | sort | uniq -c | sort -rn | head -30
+          cd ..
+          sudo apt-get install -y -qq poppler-utils >/dev/null 2>&1
+          curl -s -m 60 "$B/Popis%20datov%C3%A9%20komunikace%20IS%20KADR%20Dopln%C4%9Bk%20%C4%8D%C3%ADseln%C3%ADky_v1_04.pdf" -o c.pdf -w "pdf %{http_code} %{size_download}\n"
+          pdftotext -layout c.pdf c.txt; grep -n -i -B2 -A60 'CentralPTTNote\|Poznámk' c.txt | head -250
