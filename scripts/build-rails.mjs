@@ -3,7 +3,7 @@
 //
 // Výstup: { generated, lines: [[[lon, lat], …], …] }
 
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildRails } from './rails-lib.mjs';
 import { overpass, previousDeploy } from './overpass.mjs';
 
@@ -24,8 +24,38 @@ out;
 `;
 
 const OUT = new URL('../public/rails.json', import.meta.url);
+const PBF_EXPORT = new URL('../railcache/rails.geojsonseq', import.meta.url);
 
-const data = await overpass(QUERY);
+/**
+ * Koleje z exportu dat Geofabriku (scripts/rails-pbf.sh) ve tvaru odpovědi Overpass:
+ * tratě bez vleček a kolejišť (service) jako cesty s geometrií, stanice a zastávky jako body.
+ */
+function fromPbfExport(text) {
+  const elements = [];
+  for (const row of text.split('\n')) {
+    const json = row.replace(/^\x1e/, '').trim();
+    if (!json) continue;
+    const f = JSON.parse(json);
+    const tags = f.properties ?? {};
+    const id = Number(String(f.id ?? '').slice(1));
+    if (f.geometry?.type === 'LineString' && /^(rail|narrow_gauge)$/.test(tags.railway) && !tags.service) {
+      elements.push({ type: 'way', id, tags, geometry: f.geometry.coordinates.map(([lon, lat]) => ({ lat, lon })) });
+    } else if (f.geometry?.type === 'Point' && /^(station|halt)$/.test(tags.railway) && tags.name) {
+      const [lon, lat] = f.geometry.coordinates;
+      elements.push({ type: 'node', id, tags, lat, lon });
+    }
+  }
+  return { elements };
+}
+
+// Nejdřív data Geofabriku (spolehlivé), jinak Overpass.
+let data = null;
+if (existsSync(PBF_EXPORT)) {
+  data = fromPbfExport(readFileSync(PBF_EXPORT, 'utf8'));
+  console.log(`Koleje z dat Geofabriku: ${data.elements.filter((e) => e.type === 'way').length} úseků.`);
+  if (!data.elements.some((e) => e.type === 'way')) data = null;
+}
+data ??= await overpass(QUERY);
 const rails = data && buildRails(data);
 if (!rails?.lines.length) {
   const previous = await previousDeploy('rails.json');

@@ -30,12 +30,20 @@ jobs:
       - run: npm run routes
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      - id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      # Koleje oblasti z dat Geofabriku (Overpass bývá přetížený); obnovují se jednou týdně.
+      - uses: actions/cache@v4
+        with:
+          path: railcache
+          key: rails-${{ steps.week.outputs.week }}-${{ hashFiles('public/region.json') }}-v1
+      - name: Koleje z dat OpenStreetMap
+        run: scripts/rails-pbf.sh
+        continue-on-error: true
       - run: npm run rails
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
       # Silnice okolí kraje pro vlastní OSRM (trasy linek); obnovují se jednou týdně.
-      - id: week
-        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: osrm
