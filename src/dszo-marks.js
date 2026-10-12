@@ -5,6 +5,24 @@ import { nameSimilarity, stripPlatform } from './names.js';
 
 const dayIndex = (start, date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
 
+// Jízdy DSZO podle linky: data vyhledávání mají desítky tisíc jízd všech dopravců,
+// procházet je všechny pro každý vůz při každé obnově by mapu brzdilo.
+const byLine = new WeakMap();
+function tripsOfLine(P, line) {
+  let index = byLine.get(P);
+  if (!index) {
+    index = new Map();
+    for (const trip of P.trips) {
+      const pat = trip.pattern;
+      if (pat.c || pat.y === 'v') continue;
+      if (!index.has(pat.r)) index.set(pat.r, []);
+      index.get(pat.r).push(trip);
+    }
+    byLine.set(P, index);
+  }
+  return index.get(line) ?? [];
+}
+
 /** Písmeno spoje, kterým vůz DSZO jede, a jeho vysvětlení: { mark, note } nebo null. */
 export function vehicleMark(P, v, date, now) {
   const notes = P?.notes?.[v.line];
@@ -14,9 +32,9 @@ export function vehicleMark(P, v, date, now) {
   const delay = Math.max(0, Math.round((v.delay ?? 0) / 60));
   const stop = stripPlatform(v.stop);
   let best = null;
-  for (const trip of P.trips) {
+  for (const trip of tripsOfLine(P, v.line)) {
     const pat = trip.pattern;
-    if (pat.r !== v.line || pat.c || pat.y === 'v' || trip.mask[di] !== '1') continue;
+    if (trip.mask[di] !== '1') continue;
     if (v.headsign && nameSimilarity(v.headsign, pat.h) < 0.5 && nameSimilarity(v.headsign, P.stops[pat.s.at(-1)].name) < 0.5) continue;
     pat.s.forEach((si, k) => {
       const diff = now - (trip.times[k] + delay);

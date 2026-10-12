@@ -10,8 +10,20 @@ export function normalizeName(name) {
     .trim();
 }
 
+// Stejné názvy se porovnávají při každé obnově poloh znovu a znovu: výsledky si pamatujeme.
+const MAX_CACHE = 50000;
+const tokenCache = new Map();
+const similarityCache = new Map();
+
 export function nameTokens(name) {
-  return normalizeName(name).split(' ').filter(Boolean);
+  const key = String(name ?? '');
+  let tokens = tokenCache.get(key);
+  if (!tokens) {
+    if (tokenCache.size > MAX_CACHE) tokenCache.clear();
+    tokens = normalizeName(key).split(' ').filter(Boolean);
+    tokenCache.set(key, tokens);
+  }
+  return tokens;
 }
 
 /** Zastávky DSZO mají na konci písmeno nástupiště („Zborovská A“), to pro porovnání nepotřebujeme. */
@@ -33,6 +45,17 @@ function oneTypo(a, b) {
  * takže „zel st“ odpovídá „zeleznicni stanice“, nebo když se delší slova liší jedním písmenem.
  */
 export function nameSimilarity(a, b) {
+  const key = `${a ?? ''}\u0000${b ?? ''}`;
+  let sim = similarityCache.get(key);
+  if (sim === undefined) {
+    if (similarityCache.size > MAX_CACHE) similarityCache.clear();
+    sim = similarity(a, b);
+    similarityCache.set(key, sim);
+  }
+  return sim;
+}
+
+function similarity(a, b) {
   const ta = nameTokens(a);
   const tb = nameTokens(b);
   if (!ta.length || !tb.length) return 0;
