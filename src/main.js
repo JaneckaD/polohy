@@ -17,11 +17,12 @@ import { TRAIN_REFRESH_MS } from './trains.js';
 import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
+import { setFilterRegion } from './filtering.js';
 import { initFilter } from './filter.js';
 import { initLegend } from './legend.js';
 import { vehicleMark } from './dszo-marks.js';
 import { initPlanner, loadPlanner } from './plannerview.js';
-import { trainTrip, trainPosition } from './train-trip.js';
+import { trainTrip, trainPosition, completeTrains } from './train-trip.js';
 import { initInstall } from './install.js';
 
 // MapLibre 6 si worker hledá vedle sebe, po sestavení Vitem ho musíme předat ručně.
@@ -34,7 +35,7 @@ const map = new Map({
   style: mapStyle,
   center: ZLIN,
   zoom: 13,
-  minZoom: 9,
+  minZoom: 7, // celá oblast (Zlínský a Jihomoravský kraj) na jedné obrazovce
   maxZoom: 18,
   attributionControl: false,
   dragRotate: false,
@@ -370,13 +371,16 @@ function render() {
   }
 }
 
-// Písmena spojů DSZO (8d…) potřebují data vyhledávání: načteme je chvíli po startu, ať nebrzdí mapu.
+// Písmena spojů DSZO (8d…) a čísla vlaků z mapy IDS JMK potřebují data vyhledávání:
+// načteme je chvíli po startu, ať nebrzdí mapu.
 let marksPlanner = null;
+let rawTrains = [];
 setTimeout(() => {
   loadPlanner()
     .then((P) => {
       marksPlanner = P;
       if (store.vehicles.length) store.setVehicles(withMarks(store.vehicles));
+      if (rawTrains.length) setTrains(rawTrains);
     })
     .catch(() => {});
 }, 3000);
@@ -401,9 +405,15 @@ async function refresh() {
   }
 }
 
+function setTrains(list) {
+  rawTrains = list;
+  const { date, min } = pragueNow();
+  store.setTrains(completeTrains(marksPlanner, list, date, min));
+}
+
 async function refreshTrains() {
   try {
-    store.setTrains(await fetchRegionTrains(await loadRegion()));
+    setTrains(await fetchRegionTrains(await loadRegion()));
   } catch (err) {
     // Vlaky jsou doplněk: bez nich mapa MHD funguje dál (např. starší proxy bez /trains).
     console.warn('Vlaky se nepodařilo načíst:', err.message);
@@ -441,6 +451,11 @@ async function refreshRegioJet() {
 }
 
 store.subscribe(render);
+// Kraj vozu (filtr Kraj) se pozná podle obrysů krajů v region.json.
+loadRegion().then((r) => {
+  setFilterRegion(r);
+  render();
+});
 
 function start() {
   if (!proxyConfigured) {

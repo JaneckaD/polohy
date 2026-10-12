@@ -61,8 +61,8 @@ function render() {
     ]),
     group('Na mapě', [
       row([h('div', 'legend-line route')], 'Trasa vybraného vozu', 'Barevně ještě pojede, šedě už projel, tečky jsou zastávky'),
-      row([h('div', 'legend-line rail')], 'Železniční trať', 'Tratě s osobní dopravou'),
-      row([h('div', 'legend-area')], 'Mimo Zlínský kraj', 'Šrafovaná oblast, tam aplikace zatím vozy neukazuje'),
+      row([h('div', 'legend-line rail')], 'Železniční trať', 'Všechny tratě v oblasti'),
+      row([h('div', 'legend-area')], 'Mimo oblast', 'Šrafovaná plocha mimo Zlínský a Jihomoravský kraj, tam aplikace zatím vozy neukazuje'),
       row([h('div', 'legend-line border')], 'Hranice krajů', null),
       row([h('div', 'me')], 'Moje poloha', null),
     ]),

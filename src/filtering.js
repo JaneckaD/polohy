@@ -2,6 +2,7 @@
 // V každé skupině nic nevybráno = všechno; vůz se ukáže, když vyhoví všem skupinám, které se ho týkají.
 import { CITIES, CARRIERS, COACHES, isCoach } from './cities.js';
 import { TRAIN_KINDS } from './trains.js';
+import { krajOf } from './region.js';
 
 /** Druhy dopravy (barvy jako na mapě). */
 export const KINDS = {
@@ -16,7 +17,15 @@ const MHD_KINDS = ['trolleybus', 'mhd'];
 /** Kraje, ve kterých aplikace ukazuje dopravu (další přibudou). */
 export const REGIONS = {
   zlk: { name: 'Zlínský kraj' },
+  jmk: { name: 'Jihomoravský kraj' },
 };
+
+// Obrys oblasti s kraji (region.json), podle něj se pozná kraj vlaků, regionálních a dálkových autobusů.
+let region = null;
+export function setFilterRegion(r) {
+  region = r;
+}
+const krajAt = (v) => (region && Number.isFinite(v.lon) && Number.isFinite(v.lat) ? (krajOf(region, v.lon, v.lat) ?? 'zlk') : 'zlk');
 
 /** Města s MHD: Zlín–Otrokovice (DSZO) a ostatní podle IDZK. */
 export const NETWORK_NAMES = { zl: 'Zlín–Otrokovice', ...Object.fromEntries(Object.entries(CITIES).map(([k, c]) => [k, c.name])) };
@@ -34,9 +43,9 @@ export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], networks: 
 
 /** Druh dopravy, město, dopravce a kraj vozu. */
 export function describe(v) {
-  if (v.type === 'train') return { kind: 'train', network: null, carrier: v.operator?.short ?? null, region: 'zlk' };
-  if (isCoach(v.city)) return { kind: 'coach', network: null, carrier: COACHES[v.city].short, region: 'zlk' };
-  if (v.city && CARRIERS[v.city]) return { kind: 'regional', network: null, carrier: CARRIERS[v.city].short, region: 'zlk' };
+  if (v.type === 'train') return { kind: 'train', network: null, carrier: v.operator?.short ?? null, region: krajAt(v) };
+  if (isCoach(v.city)) return { kind: 'coach', network: null, carrier: COACHES[v.city].short, region: krajAt(v) };
+  if (v.city && CARRIERS[v.city]) return { kind: 'regional', network: null, carrier: CARRIERS[v.city].short, region: krajAt(v) };
   const kind = v.type === 'trolleybus' ? 'trolleybus' : 'mhd';
   if (v.city) return { kind, network: v.city, carrier: v.operator ?? null, region: 'zlk' };
   return { kind, network: 'zl', carrier: 'DSZO', region: 'zlk' };

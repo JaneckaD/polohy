@@ -1,5 +1,7 @@
-// Vlaky ve Zlínském kraji: polohy všech osobních vlaků od Správy železnic (mapy.spravazeleznic.cz),
-// přes stejnou proxy jako data DSZO. Souřadnice jsou v S-JTSK, na mapě jen vlaky uvnitř kraje.
+// Vlaky v oblasti (Zlínský a Jihomoravský kraj): polohy všech osobních vlaků od Správy železnic
+// (mapy.spravazeleznic.cz), přes stejnou proxy jako data DSZO. Souřadnice jsou v S-JTSK, na mapě jen vlaky
+// uvnitř oblasti. Náhradní zdroje (mapy IDZK a IDS JMK) posílají rovnou lat/lon; vlaky z mapy IDS JMK
+// nemají číslo, to dohledá identifyTrain v train-trip.js.
 import { krovakToWgs } from './krovak.js';
 import { regionContains } from './region.js';
 
@@ -36,6 +38,9 @@ const OPERATORS = [
   [/^AŽD/i, 'AŽD', '#455a64', '#ffffff'],
   [/^Railway Capital/i, 'Railway Capital', '#37474f', '#ffffff'],
   [/^(ŽSSK|ZSSK)|Železničná spoločnosť/i, 'ZSSK', '#c62828', '#ffffff'],
+  [/^CityRail/i, 'CityRail', '#3949ab', '#ffffff'],
+  [/^MBM rail/i, 'MBM rail', '#6d4c41', '#ffffff'],
+  [/^DB Regio|^DB\b/i, 'DB', '#ec0016', '#ffffff'],
   [/^ÖBB/i, 'ÖBB', '#c8102e', '#ffffff'],
 ];
 
@@ -57,16 +62,19 @@ export function parseTrain(t, region) {
   if (region && !regionContains(region, lon, lat)) return null;
   const code = String(t.tt ?? '').trim();
   const delayMin = minutesOf(t.de);
-  const op = trainOperator(t.d);
+  const op = t.d ? trainOperator(t.d) : null;
+  const jmk = t.src === 'jmk';
   return {
-    id: `vlak-${code}-${t.tn}`,
+    id: jmk ? `vlak-jmk-${t.vid}` : `vlak-${code}-${t.tn}`,
     type: 'train',
-    line: `${code} ${t.tn}`,
+    source: jmk ? 'jmk' : null,
+    lineName: t.line || null, // linka IDS JMK (S3, R12…), když vlak známe jen z mapy IDS JMK
+    line: jmk ? `${code} ${t.line}` : `${code} ${t.tn}`,
     code,
     number: String(t.tn ?? ''),
     kind: trainKind(code),
     name: t.na || null,
-    operator: op,
+    operator: op ?? { name: '', short: 'Dopravce', color: '#636366', text: '#ffffff' },
     lat,
     lon,
     bearing: t.a !== '' && t.a != null && Number.isFinite(Number(t.a)) ? ((Number(t.a) % 360) + 360) % 360 : null,

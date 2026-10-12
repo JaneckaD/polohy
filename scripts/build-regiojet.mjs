@@ -80,7 +80,8 @@ async function road(a, b) {
 
 async function main() {
   const region = JSON.parse(await readFile(new URL('../public/region.json', import.meta.url), 'utf8'));
-  const ring = region.geometry.coordinates[0];
+  // Linky spojené se Zlínským krajem: zastávky uvnitř Zlínského kraje (oblast aplikace je větší).
+  const ring = region.properties?.parts?.zlk ?? region.geometry.coordinates[0];
 
   // Zastávky RegioJetu s polohou; v kraji jsou ty uvnitř hranice.
   const stations = new Map();

@@ -1,8 +1,8 @@
 // Cloudflare Worker: malá proxy, přes kterou si aplikace na GitHub Pages čte data DSZO.
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
-// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje;
-//          když mapa vlaků neodpoví, vlaky z mapy IDZK, jinak poslední úspěšná odpověď.
+// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí oblasti (Zlínský a Jihomoravský kraj);
+//          když mapa vlaků neodpoví, vlaky z map IDZK a IDS JMK, jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
@@ -17,13 +17,14 @@ const CORS = {
 
 // Polohy všech osobních vlaků v ČR (souřadnice S-JTSK, EPSG:5514).
 const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load';
-// Obdélník kolem Zlínského kraje v S-JTSK (s rezervou pár kilometrů), přesně ořízne aplikace.
-const ZK_BOX = { minX: -570000, maxX: -457000, minY: -1206000, maxY: -1125000 };
+// Obdélník kolem oblasti (Zlínský a Jihomoravský kraj) v S-JTSK (s rezervou pár kilometrů), přesně ořízne aplikace.
+const ZK_BOX = { minX: -682000, maxX: -462000, minY: -1230000, maxY: -1109000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
 
 // Mapa vlaků SŽ z Cloudflaru často neodpoví (z jiných sítí ano). Čekáme na ni proto jen chvíli
-// a po výpadku ji dvě minuty nezkoušíme. Náhradou jsou vlaky z mapy IDZK (jen vlaky v kraji,
-// bez výchozí a příští stanice), a když nejde ani ta, poslední úspěšná odpověď z cache workeru.
+// a po výpadku ji dvě minuty nezkoušíme. Náhradou jsou vlaky z mapy IDZK (Zlínský kraj) a z mapy IDS JMK
+// (Jihomoravský kraj, bez čísla vlaku, to aplikace dohledá v jízdním řádu podle linky, cíle a polohy),
+// a když nejde ani jedna, poslední úspěšná odpověď z cache workeru.
 const TRAINS_LAST = 'https://dszo-proxy.internal/trains-last';
 let szFailedAt = 0;
 
@@ -68,13 +69,73 @@ async function idzkTrains() {
   }
 }
 
+// Mapa IDS JMK (mapa.idsjmk.cz): API chce přístupový klíč, který stránka mapy posílá v HTML
+// (initializeApplication('…')). Klíč si pamatujeme a při odmítnutí si stáhneme nový.
+const JMK = 'https://mapa.idsjmk.cz';
+let jmkToken = null;
+
+async function jmkFetchToken() {
+  const res = await fetch(`${JMK}/`, { headers: { 'User-Agent': 'Mozilla/5.0 (mhd-zlin-live)' }, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return null;
+  return /initializeApplication\('([^']+)'/.exec(await res.text())?.[1] ?? null;
+}
+
+async function jmkVehicles() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    jmkToken ??= await jmkFetchToken();
+    if (!jmkToken) return null;
+    const res = await fetch(`${JMK}/api/vehicles`, {
+      headers: { 'X-Access-Token': jmkToken, 'User-Agent': 'Mozilla/5.0 (mhd-zlin-live)', Referer: `${JMK}/` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401 || res.status === 403) {
+      jmkToken = null;
+      continue;
+    }
+    if (!res.ok) return null;
+    return (await res.json()).Vehicles ?? [];
+  }
+  return null;
+}
+
+/** Vlaky z mapy IDS JMK (VType 5): linka (S3, R12…), cíl, zpoždění; druh vlaku podle linky. */
+async function jmkTrains() {
+  try {
+    const list = await jmkVehicles();
+    if (!list) return null;
+    return list
+      .filter((v) => v.VType === 5 && !v.IsInactive && Number.isFinite(v.Lat) && Number.isFinite(v.Lng))
+      .map((v) => {
+        const line = String(v.LineName ?? '').replace(/^x/, '');
+        return {
+          lat: v.Lat,
+          lon: v.Lng,
+          tt: /^R/.test(line) ? 'R' : 'Os',
+          tn: '',
+          line,
+          na: '',
+          fn: '',
+          ln: v.FinalStopName ?? '',
+          cna: '',
+          d: '',
+          de: Number.isFinite(v.Delay) ? v.Delay : '',
+          a: Number.isFinite(v.Bearing) && v.Bearing >= 0 ? v.Bearing : '',
+          src: 'jmk',
+          vid: v.ID,
+        };
+      });
+  } catch {
+    return null;
+  }
+}
+
 async function trains() {
   const cache = globalThis.caches?.default;
   const data = await fetchTrains();
   if (!data) {
-    const idzk = await idzkTrains();
-    if (idzk) {
-      return new Response(JSON.stringify({ trains: idzk, source: 'idzk', at: new Date().toISOString() }), {
+    const [idzk, jmk] = await Promise.all([idzkTrains(), jmkTrains()]);
+    if (idzk || jmk) {
+      return new Response(JSON.stringify({ trains: [...(idzk ?? []), ...(jmk ?? [])], source: 'idzk', at: new Date().toISOString() }), {
         headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
       });
     }
@@ -101,7 +162,7 @@ async function trains() {
 
 // Mapa IDZK: odpovídá jen s hlavičkou Origin své vlastní stránky.
 const MPV_URL = 'https://mpvnet.cz/zlin/map/mapData';
-const MPV_BODY = JSON.stringify({ w: 17.1, s: 48.86, e: 18.4, n: 49.54, zoom: 13, showStops: false, mapFilterId: null });
+const MPV_BODY = JSON.stringify({ w: 15.5, s: 48.55, e: 18.7, n: 49.7, zoom: 13, showStops: false, mapFilterId: null });
 // Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = Valašské Meziříčí, 805 = Uherské Hradiště, 945 = Vsetín.
 const CITY_LICENCES = ['775', '946', '805', '945'];
 // Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
@@ -159,8 +220,8 @@ const FLIX_STATIONS = [
   '28d94a3b-cfe4-4dc4-86a5-b3e484cc326c',
   '0dca7499-d85a-41f6-ab4b-7377f25f795f',
 ];
-// Obdélník kolem kraje (WGS84), přesně ořízne aplikace.
-const ZK_WGS = { s: 48.8, n: 49.75, w: 16.9, e: 18.7 };
+// Obdélník kolem oblasti (WGS84), přesně ořízne aplikace.
+const ZK_WGS = { s: 48.55, n: 49.75, w: 15.5, e: 18.7 };
 const FLIX_UUID = /^[0-9a-f-]{36}$/;
 
 async function flixJson(url, ttl) {

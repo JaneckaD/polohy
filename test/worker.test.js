@@ -36,7 +36,7 @@ test('proxy /trains: vlaky Správy železnic jen z okolí Zlínského kraje, jen
   fetchMock.mock.restore();
 });
 
-test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z mapy IDZK, pak poslední úspěšnou odpověď', async () => {
+test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z map IDZK a IDS JMK, pak poslední úspěšnou odpověď', async () => {
   const store = new Map();
   globalThis.caches = {
     default: {
@@ -52,9 +52,23 @@ test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z mapy IDZK, pak p
   const urls = [];
   let sz = true;
   let mpv = true;
-  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+  const jmk = { Vehicles: [
+    { ID: 30155, VType: 5, Lat: 49.305824, Lng: 17.085648, Bearing: 45, LineName: 'R12', Delay: 3, FinalStopName: 'Hlavní nádraží', IsInactive: false },
+    { ID: 31030, VType: 5, Lat: 49.324982, Lng: 16.46002, Bearing: -1, LineName: 'xS3', Delay: 0, FinalStopName: 'Tišnov, žel.st.', IsInactive: false },
+    { ID: 1848, VType: 0, Lat: 49.19, Lng: 16.61, Bearing: 45, LineName: '1', Delay: 4, FinalStopName: 'Řečkovice', IsInactive: false },
+  ] };
+  let jmkTokenAsked = 0;
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
     urls.push(String(url));
     if (String(url).includes('spravazeleznic')) return sz ? Response.json({ result: [feature] }) : new Response('busy', { status: 503 });
+    if (String(url) === 'https://mapa.idsjmk.cz/') {
+      jmkTokenAsked++;
+      return new Response("<script type=\"module\">initializeApplication('dG9rZW4=');</script>");
+    }
+    if (String(url).startsWith('https://mapa.idsjmk.cz/api/vehicles')) {
+      if (!mpv) return new Response('busy', { status: 503 });
+      return init?.headers?.['X-Access-Token'] === 'dG9rZW4=' ? Response.json(jmk) : new Response('no', { status: 401 });
+    }
     return mpv ? Response.json(idzk) : new Response('busy', { status: 503 });
   });
   const get = () => worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
@@ -64,12 +78,20 @@ test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z mapy IDZK, pak p
   sz = false;
   const fallback = await (await get()).json();
   assert.equal(fallback.source, 'idzk');
-  assert.deepEqual(fallback.trains, [{ lat: 49.34574, lon: 17.305443, tt: 'Os', tn: '3912', na: '', fn: '', ln: 'Kojetín', cna: 'Bezměrov', d: 'ČD', de: 3, a: 180 }]);
+  assert.deepEqual(fallback.trains, [
+    { lat: 49.34574, lon: 17.305443, tt: 'Os', tn: '3912', na: '', fn: '', ln: 'Kojetín', cna: 'Bezměrov', d: 'ČD', de: 3, a: 180 },
+    { lat: 49.305824, lon: 17.085648, tt: 'R', tn: '', line: 'R12', na: '', fn: '', ln: 'Hlavní nádraží', cna: '', d: '', de: 3, a: 45, src: 'jmk', vid: 30155 },
+    { lat: 49.324982, lon: 16.46002, tt: 'Os', tn: '', line: 'S3', na: '', fn: '', ln: 'Tišnov, žel.st.', cna: '', d: '', de: 0, a: '', src: 'jmk', vid: 31030 },
+  ]);
+  assert.equal(jmkTokenAsked, 1);
   urls.length = 0;
   await get();
   assert.ok(urls.every((u) => !u.includes('spravazeleznic')));
 
-  // Neodpoví ani IDZK: poslední úspěšná odpověď SŽ, bez ní chyba.
+  // Klíč mapy IDS JMK se pamatuje (stránku mapy stáhneme jen jednou).
+  assert.equal(jmkTokenAsked, 1);
+
+  // Neodpoví ani IDZK, ani IDS JMK: poslední úspěšná odpověď SŽ, bez ní chyba.
   mpv = false;
   const stale = await get();
   assert.equal(stale.headers.get('X-Stale'), '1');

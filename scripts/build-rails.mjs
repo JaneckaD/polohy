@@ -1,5 +1,5 @@
-// Tratě, po kterých ve Zlínském kraji jezdí osobní vlaky (OpenStreetMap, relace route=train),
-// do public/rails.json. Na mapě se kreslí jako koleje, dopravci se zatím nepřidávají.
+// Všechny železniční tratě v oblasti aplikace (Zlínský a Jihomoravský kraj) z OpenStreetMap,
+// do public/rails.json. Na mapě se kreslí jako koleje a po nich trasy vlaků.
 //
 // Výstup: { generated, lines: [[[lon, lat], …], …] }
 
@@ -7,17 +7,16 @@ import { writeFileSync } from 'node:fs';
 import { buildRails } from './rails-lib.mjs';
 import { overpass, previousDeploy } from './overpass.mjs';
 
-// CZ-72 = Zlínský kraj. Koleje z tras osobních vlaků (relace route=train) a k tomu hlavní
-// všechny ostatní tratě bez vleček a kolejišť (service), protože některé regionální tratě
-// (např. Vlárská dráha nebo Luhačovice) relaci vlaku ani značku usage v OSM nemají.
-// Průmyslové a čistě nákladní tratě vynecháme.
+// CZ-72 = Zlínský kraj, CZ-64 = Jihomoravský kraj. Koleje z tras osobních vlaků (relace route=train)
+// a k tomu všechny ostatní tratě (i nákladní a úzkorozchodné), bez vleček, kolejišť a výhybek
+// (service), aby mapa ve stanicích nebyla jen změť kolejí.
 const QUERY = `
-[out:json][timeout:180];
-area["ISO3166-2"="CZ-72"]["boundary"="administrative"]->.kraj;
+[out:json][timeout:300];
+area["ISO3166-2"~"^CZ-(72|64)$"]["boundary"="administrative"]->.kraj;
 relation["type"="route"]["route"="train"](area.kraj)->.r;
 (
   way(r.r)["railway"~"^(rail|narrow_gauge|light_rail)$"](area.kraj);
-  way["railway"="rail"][!"service"]["usage"!~"^(industrial|military|test|freight)$"]["railway:traffic_mode"!="freight"]["passenger"!="no"](area.kraj);
+  way["railway"~"^(rail|narrow_gauge)$"][!"service"](area.kraj);
 );
 out geom;
 node["railway"~"^(station|halt)$"]["name"](area.kraj);
@@ -41,7 +40,7 @@ if (!rails?.lines.length) {
 }
 writeFileSync(OUT, JSON.stringify({ generated: new Date().toISOString(), lines: rails.lines }));
 const points = rails.lines.reduce((n, l) => n + l.length, 0);
-console.log(`Tratě s osobní dopravou: ${rails.ways} úseků → ${rails.lines.length} čar, ${points} bodů.`);
+console.log(`Tratě v oblasti: ${rails.ways} úseků → ${rails.lines.length} čar, ${points} bodů.`);
 
 // Kontrola: osobní stanice a zastávky z OSM by měly ležet u některé z nakreslených tratí.
 const metres = (a, b) => Math.hypot((a[0] - b[0]) * 110574, (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180));

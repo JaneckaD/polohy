@@ -1,6 +1,7 @@
-// Oblast aplikace (Zlínský kraj) a tratě s osobní dopravou.
-// Vše mimo kraj je šrafované, tam aplikace zatím nesahá.
-// Hranice Zlínského kraje: zjednodušený obrys z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json;
+// Oblast aplikace (Zlínský a Jihomoravský kraj) a železniční tratě.
+// Vše mimo oblast je šrafované, tam aplikace zatím nesahá.
+// Obrys oblasti: sjednocené hranice obou krajů z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json
+// (properties.parts = obrysy jednotlivých krajů, podle nich filtr pozná kraj vozu);
 // hranice všech krajů (jen čáry, lehce) ze stejných dat v public/kraje.json.
 
 const empty = { type: 'FeatureCollection', features: [] };
@@ -11,16 +12,13 @@ const fetchJson = (url) =>
 
 let regionPromise = null;
 
-/** Hranice kraje (GeoJSON Feature), načtená jednou. */
+/** Hranice oblasti (GeoJSON Feature), načtená jednou. */
 export function loadRegion() {
   regionPromise ??= fetchJson('./region.json');
   return regionPromise;
 }
 
-/** Leží bod [lon, lat] uvnitř kraje? */
-export function regionContains(region, lon, lat) {
-  const ring = region?.geometry?.coordinates?.[0];
-  if (!ring) return true;
+function ringContains(ring, lon, lat) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
@@ -28,6 +26,19 @@ export function regionContains(region, lon, lat) {
     if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+/** Leží bod [lon, lat] uvnitř oblasti? */
+export function regionContains(region, lon, lat) {
+  const ring = region?.geometry?.coordinates?.[0];
+  return ring ? ringContains(ring, lon, lat) : true;
+}
+
+/** Kraj oblasti, ve kterém bod leží ('zlk', 'jmk'), nebo null. */
+export function krajOf(region, lon, lat) {
+  const parts = region?.properties?.parts ?? {};
+  for (const [key, ring] of Object.entries(parts)) if (ringContains(ring, lon, lat)) return key;
+  return null;
 }
 let railsPromise = null;
 
