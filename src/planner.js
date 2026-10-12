@@ -3,7 +3,7 @@
 // Čisté funkce bez DOM, aby šly testovat v Node.
 
 import { normalizeName } from './names.js';
-import { isCarrier } from './cities.js';
+import { isCarrier, isCoach } from './cities.js';
 
 export const MAX_WALK_MIN = 10;
 const WALK_M_PER_MIN = 75; // asi 4,5 km/h
@@ -66,7 +66,7 @@ export function preparePlanner(data) {
   walks.forEach((list, a) => list.forEach((w) => walkMin.set(a * stops.length + w.to, w)));
   // Co na zastávce staví: vlak, MHD (DSZO a MHD měst) nebo regionální autobus.
   for (const p of data.patterns) {
-    const kind = p.y === 'v' ? 'train' : p.c && isCarrier(p.c) ? 'bus' : 'mhd';
+    const kind = p.y === 'v' ? 'train' : p.c && (isCarrier(p.c) || isCoach(p.c)) ? 'bus' : 'mhd';
     for (const si of p.s) (stops[si].kinds ??= new Set()).add(kind);
   }
   const towns = buildTowns(stops);

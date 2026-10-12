@@ -27,15 +27,21 @@ export const CARRIERS = {
   arriva: { name: 'ARRIVA autobusy', short: 'Arriva', code: '88', live: /ARRIVA/i, ...REGIONAL },
   tdm: { name: 'Transdev Morava', short: 'Transdev Morava', code: '1425', live: /Transdev Morava/i, ...REGIONAL },
   tqm: { name: 'TQM-holding', short: 'TQM', code: '1005', live: /TQM/i, ...REGIONAL },
-  psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', ...REGIONAL },
+  psota: { name: 'ZDS-Psota', short: 'ZDS-Psota', code: '1114', live: /Psota/i, ...REGIONAL },
   tds: { name: 'Transdev Slezsko', short: 'Transdev Slezsko', code: '267', live: /Transdev Slezsko/i, ...REGIONAL },
   reg: { name: 'IDZK', short: 'IDZK', code: null, ...REGIONAL },
+  // Regionální linky IDS JMK (jízdní řády KORDIS JMK) a ostatní regionální linky v oblasti (celostátní data,
+  // dopravce je u spoje).
+  jmk: { name: 'IDS JMK', short: 'IDS JMK', code: null, ...REGIONAL },
+  other: { name: 'Regionální autobus', short: 'Regionální autobus', code: null, ...REGIONAL },
 };
 
 /** Dálkové autobusy (nejsou v IDZK): FlixBus ze sledování spojů, RegioJet odhadem podle jízdního řádu. */
 export const COACHES = {
   flix: { name: 'FlixBus', short: 'FlixBus', ...COACH },
   rj: { name: 'RegioJet', short: 'RegioJet', ...COACH },
+  // Ostatní dálkové a mezinárodní linky (dopravce je u spoje).
+  coach: { name: 'Dálkový autobus', short: 'Dálkový autobus', ...COACH },
 };
 
 /** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */

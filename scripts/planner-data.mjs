@@ -130,8 +130,9 @@ export function buildPlannerFromTrips(tt) {
       maskIdx.set(t.mask, masks.length);
       masks.push(t.mask);
     }
-    const headsign = t.stops.at(-1)[0];
-    const key = `${t.city ?? ''}|${t.ref}|${seq.join(',')}`;
+    // Spoj zkrácený na zastávky v oblasti (dálkové linky) nese skutečný cíl.
+    const headsign = t.headsign ?? t.stops.at(-1)[0];
+    const key = `${t.city ?? ''}|${t.ref}|${headsign}|${t.operator ?? ''}|${seq.join(',')}`;
     if (!patternIdx.has(key)) {
       patternIdx.set(key, patterns.length);
       const pattern = { r: t.ref, y: t.type === 'train' ? 'v' : t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq };
@@ -139,6 +140,9 @@ export function buildPlannerFromTrips(tt) {
       // MHD jiného města (Kroměříž, Valašské Meziříčí): stejná čísla linek jako ve Zlíně.
       if (t.city) pattern.c = t.city;
       if (t.type === 'train') Object.assign(pattern, { n: t.number, k: t.code, o: t.operator, ...(t.line ? { l: t.line } : {}) });
+      // Autobus mimo IDZK: dopravce, mezinárodní linka.
+      else if (t.operator) pattern.o = t.operator;
+      if (t.international) pattern.i = 1;
       patterns.push(pattern);
     }
     const entry = [patternIdx.get(key), maskIdx.get(t.mask), t.times[0], ...t.times.slice(1).map((x, i) => x - t.times[i])];
