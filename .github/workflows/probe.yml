@@ -10,9 +10,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           set +e
-          which pdftotext || sudo apt-get install -y -qq poppler-utils >/dev/null
+          sudo apt-get update -qq >/dev/null; sudo apt-get install -y -qq poppler-utils >/dev/null
           curl -sL 'https://www.dszo.cz/jr/dszo_jr_2026-10-01.zip?foo=20260930' -o /tmp/jr.zip; mkdir -p /tmp/jr; cd /tmp/jr; unzip -o -q /tmp/jr.zip; ls | tr '\n' ' '; echo
-          pdftotext -layout 08a.pdf 08a.txt; head -c 6000 08a.txt
+          pdftotext -layout 08a.pdf 08a.txt; head -c 9000 08a.txt
           echo; echo "=== legend lines (all pdfs)"
           for f in *.pdf; do pdftotext -layout $f - 2>/dev/null; done > all.txt
           grep -nE '^\s*[a-z]\s+[-–]?\s*\S|\b[a-z] *[-–=] *(spoj|jede|ukon|zají|vozov|nejede)' all.txt | sort -u -k2 | head -60
