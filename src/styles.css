@@ -1147,6 +1147,34 @@ input:focus-visible {
   background: var(--glass-strong);
 }
 
+/* Posuvník okna (filtr, legenda): tenký, uvnitř zaoblených rohů, bez šipek (na počítači jinak trčí ven). */
+.modal-panel::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modal-panel::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 30px 0;
+}
+
+.modal-panel::-webkit-scrollbar-thumb {
+  background: var(--label-3);
+  border-radius: 6px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+
+.modal-panel::-webkit-scrollbar-button {
+  display: none;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .modal-panel {
+    scrollbar-width: thin;
+    scrollbar-color: var(--label-3) transparent;
+  }
+}
+
 @keyframes rise {
   from { transform: translateY(40px); opacity: 0; }
 }

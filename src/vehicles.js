@@ -68,8 +68,8 @@ const STACK_STEP_PX = 30;
 const VIEW_MARGIN = 0.25; // rezerva kolem výřezu (podíl jeho šířky/výšky)
 const CULL_MS = 200; // jak často během posunu mapy přepočítat, které značky patří na mapu
 
-// Hodně vozů ve výřezu (oddálená mapa, celé Brno): místo prvků stránky malé tečky kreslené mapou (WebGL),
-// které posun mapy nezpomalí. Kolečka s čísly se vrátí po přiblížení.
+// Hodně vozů ve výřezu (oddálená mapa, celé Brno): místo prvků stránky malé tečky bez čísel kreslené mapou
+// (WebGL), které posun mapy nezpomalí. Kolečka s čísly linek se vrátí po přiblížení.
 const DOT_LIMIT = 250; // nejvíc koleček (prvků stránky) ve výřezu
 const DOT_MAX_ZOOM = 14; // od tohoto přiblížení vždy kolečka
 const SRC_DOTS = 'vehicle-dots';
@@ -77,8 +77,7 @@ const SRC_DOTS = 'vehicle-dots';
 function dotFeature(v) {
   const c = vehicleColors(v);
   const color = v.type === 'train' ? TRAIN_KINDS[v.kind]?.color ?? '#6c6c70' : c.main;
-  const label = v.type === 'train' ? v.code : `${v.line ?? ''}${v.mark ?? ''}`;
-  return { type: 'Feature', properties: { id: v.id, color, text: v.type === 'train' ? '#ffffff' : c.text, label }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
+  return { type: 'Feature', properties: { id: v.id, color }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
 }
 
 export class VehicleLayer {
@@ -126,15 +125,6 @@ export class VehicleLayer {
           'circle-opacity': 1,
           'circle-stroke-opacity': 1,
         },
-      });
-      // Čísla linek v tečkách, jen kde se vejdou (mapa sama skryje překrývající se).
-      map.addLayer({
-        id: `${SRC_DOTS}-labels`,
-        type: 'symbol',
-        source: SRC_DOTS,
-        minzoom: 12,
-        layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 9, 'text-allow-overlap': false, 'text-padding': 1 },
-        paint: { 'text-color': ['get', 'text'] },
       });
       this.dotsDirty = true;
       this.renderDots();
