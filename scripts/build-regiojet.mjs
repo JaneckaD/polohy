@@ -97,9 +97,15 @@ async function main() {
   console.log(`RegioJet: ${stations.size} zastávek, v kraji ${kraj.length}`);
 
   // Linky přes zastávky v kraji (jízdní řád „WEB“ je ten, který ukazuje regiojet.cz).
-  const lines = new Set();
+  // Seznam linek zastávky API někdy odmítne (HTTP 400), proto i známé linky: 721311 Brno – Kroměříž – Zlín
+  // a 721308 Brno – Olomouc – Ostrava (některé spoje přes Zlín).
+  const lines = new Set([721311, 721308]);
   for (const id of kraj) {
-    for (const l of await api(`/consts/lines/${id}`)) if (l.lineGroupCode === 'WEB') lines.add(l.lineNumber);
+    try {
+      for (const l of await api(`/consts/lines/${id}`)) if (l.lineGroupCode === 'WEB') lines.add(l.lineNumber);
+    } catch (err) {
+      console.warn(err.message);
+    }
   }
   console.log(`RegioJet: linky přes kraj ${[...lines].join(', ') || 'žádné'}`);
 

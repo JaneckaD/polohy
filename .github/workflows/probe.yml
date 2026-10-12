@@ -18,7 +18,7 @@ jobs:
           for co in d:
             for c in co['cities']:
               if c['name'] in ('Olomouc','Ostrava','Přerov','Karviná','Frýdek-Místek'): print(c['id'], c['name'])"
-          node scripts/build-regiojet.mjs
+          node scripts/build-regiojet.mjs; head -c 600 public/rj.json; echo
           python3 -c "
           import json; d=json.load(open('public/rj.json')); print('conns',len(d['conns']),'stations',len(d['stations']),'size',len(json.dumps(d)))
           for c in d['conns'][:40]: print(c['id'],c['line'],c['from'],'->',c['to'],c['sym'],c['codes'][:3],[(d['stations'][str(s)][0],a,b) for s,a,b in c['stops']])"
