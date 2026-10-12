@@ -51,10 +51,10 @@ function render() {
   const t = TRAIN_KINDS;
   body.replaceChildren(
     group('Vozy a vlaky', [
-      row([vehicle('3', k.trolleybus.color, k.trolleybus.text, { type: 'trolleybus' })], 'Trolejbus', 'MHD Zlín–Otrokovice, v kolečku číslo linky'),
-      row([vehicle('31', k.mhd.color, k.mhd.text)], 'Autobus MHD', 'Zlín–Otrokovice, Kroměříž, Valašské Meziříčí, Uherské Hradiště, Vsetín'),
-      row([vehicle('371', k.regional.color, k.regional.text)], 'Regionální autobus', 'Linky IDZK (ČSAD BUS UH, Z-Group, Arriva, Transdev, TQM)'),
-      row([vehicle('856', k.coach.color, k.coach.text), vehicle('RJ', k.coach.color, k.coach.text)], 'Dálkový autobus', 'FlixBus podle polohy vozu, RegioJet (RJ) odhadem podle jízdního řádu'),
+      row([vehicle('3', k.trolleybus.color, k.trolleybus.text, { type: 'trolleybus' })], 'Trolejbus', 'Městská doprava, v kolečku číslo linky'),
+      row([vehicle('31', k.mhd.color, k.mhd.text)], 'Autobus MHD', 'Městská doprava'),
+      row([vehicle('371', k.regional.color, k.regional.text)], 'Regionální autobus', 'Linky mezi obcemi; průhledné kolečko = poloha odhadem podle jízdního řádu'),
+      row([vehicle('856', k.coach.color, k.coach.text), vehicle('RJ', k.coach.color, k.coach.text)], 'Dálkový a mezinárodní autobus', 'Linky přes celou republiku a do zahraničí, živě nebo odhadem podle jízdního řádu'),
       row([vehicle('Os', t.os.color, '#fff', { type: 'train' }), vehicle('Sp', t.sp.color, '#fff', { type: 'train' })], 'Osobní a spěšný vlak', 'V kolečku druh vlaku, číslo je v detailu'),
       row([vehicle('R', t.r.color, '#fff', { type: 'train' }), vehicle('EC', t.int.color, '#fff', { type: 'train' })], 'Rychlík a mezinárodní vlak', 'R, RJ, LE, IC… a EC, EN, rj…'),
       row([vehicle('6', k.mhd.color, k.mhd.text, { arrow: 45 })], 'Šipka u kolečka', 'Směr, kterým vůz jede'),
@@ -62,7 +62,7 @@ function render() {
     group('Na mapě', [
       row([h('div', 'legend-line route')], 'Trasa vybraného vozu', 'Barevně ještě pojede, šedě už projel, tečky jsou zastávky'),
       row([h('div', 'legend-line rail')], 'Železniční trať', 'Všechny tratě v oblasti'),
-      row([h('div', 'legend-area')], 'Mimo oblast', 'Šrafovaná plocha mimo Zlínský a Jihomoravský kraj, tam aplikace zatím vozy neukazuje'),
+      row([h('div', 'legend-area')], 'Mimo oblast', 'Šrafovaná plocha, tam aplikace zatím vozy neukazuje'),
       row([h('div', 'legend-line border')], 'Hranice krajů', null),
       row([h('div', 'me')], 'Moje poloha', null),
     ]),

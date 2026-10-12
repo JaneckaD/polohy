@@ -20,7 +20,7 @@ async function getText(path) {
 }
 
 export async function fetchVehicles() {
-  if (!PROXY) throw new Error('Není nastavená proxy pro data DSZO (VITE_DSZO_PROXY).');
+  if (!PROXY) throw new Error('Není nastavená proxy pro živá data (VITE_DSZO_PROXY).');
   const [page, table] = await Promise.all([
     getText('/online/'),
     // Tabulka se směrem jízdy je jen doplněk, bez ní mapa funguje dál.

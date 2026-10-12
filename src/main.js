@@ -91,7 +91,7 @@ function journeyVehicleIds() {
   const { journey, P, date } = journeyFocus;
   const now = pragueNow();
   // Vozy hledáme jen pro dnešní spojení, které už brzy jede nebo právě jede.
-  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.cityBuses, ...store.coaches, ...store.trains], now.min) : [];
+  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, store.allVehicles(), now.min) : [];
   journeyFocus.ids = ids;
   return new Set(ids.filter(Boolean));
 }
@@ -354,7 +354,7 @@ let coachTimer = null;
 let lastUpdate = null;
 function render() {
   const mine = journeyVehicleIds();
-  const all = [...store.vehicles, ...store.cityBuses, ...store.coaches, ...store.trains];
+  const all = store.allVehicles();
   const shown = mine ? all.filter((v) => mine.has(v.id)) : all.filter((v) => matchesFilter(v, store.filter));
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...all.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
@@ -362,7 +362,7 @@ function render() {
   updateSelected();
   drawRegion(map);
   if (lastUpdate) {
-    const total = store.vehicles.length + store.cityBuses.length + store.coaches.length;
+    const total = store.vehicles.length + store.cityBuses.length + store.coaches.length + store.estimated.length;
     const buses = shown.filter((v) => v.type !== 'train').length;
     const trains = shown.length - buses;
     const parts = [buses === total ? `${total} vozů` : `${buses} z ${total} vozů`];
@@ -401,7 +401,7 @@ async function refresh() {
     store.setVehicles(withMarks(list.map((v) => snapVehicle(map, routes, v))));
   } catch (err) {
     console.error(err);
-    setStatus(navigator.onLine ? 'Data DSZO se nepodařilo načíst' : 'Bez připojení', true);
+    setStatus(navigator.onLine ? 'Polohy vozů se nepodařilo načíst' : 'Bez připojení', true);
   }
 }
 
@@ -459,7 +459,7 @@ loadRegion().then((r) => {
 
 function start() {
   if (!proxyConfigured) {
-    setStatus('Chybí proxy pro data DSZO', true);
+    setStatus('Chybí proxy pro živá data', true);
     return;
   }
   if (timer) return;

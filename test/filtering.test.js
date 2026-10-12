@@ -15,9 +15,11 @@ const rjTrain = { id: 'vlak-RJ-2', type: 'train', kind: 'r', operator: { short: 
 const all = [dszoTrolley, dszoBus, kmBus, vmBus, regional, flix, rj, os, rjTrain];
 const shown = (patch) => all.filter((v) => matchesFilter(v, { ...EMPTY_FILTER, ...patch })).map((v) => v.id);
 
-test('filtr: druh, město a dopravce vozu', () => {
-  assert.deepEqual(describe(dszoTrolley), { kind: 'trolleybus', network: 'zl', carrier: 'DSZO', region: 'zlk' });
-  assert.deepEqual(describe(vmBus), { kind: 'mhd', network: 'vm', carrier: 'TQM', region: 'zlk' });
+test('filtr: druh a dopravce vozu (MHD bez dopravce)', () => {
+  assert.deepEqual(describe(dszoTrolley), { kind: 'trolleybus', carrier: null, region: 'zlk' });
+  assert.deepEqual(describe(vmBus), { kind: 'mhd', carrier: null, region: 'zlk' });
+  assert.equal(describe({ id: 'e-1', type: 'bus', city: 'coach', international: true, operatorName: 'D.M.D-GROUP' }).kind, 'intl');
+  assert.equal(describe({ id: 'e-2', type: 'bus', city: 'jmk', operatorName: 'BDS-BUS' }).carrier, 'BDS-BUS');
   assert.equal(describe(regional).kind, 'regional');
   assert.equal(describe(regional).carrier, 'ČSAD BUS UH');
   assert.equal(describe(rj).kind, 'coach');
@@ -34,10 +36,9 @@ test('filtr: nic nevybráno = vše, skupiny se kombinují', () => {
   assert.deepEqual(shown({ kinds: ['train'], trainKinds: ['r'] }), ['vlak-RJ-2']);
   // Dopravce platí napříč druhy: RegioJet autobus i vlak.
   assert.deepEqual(shown({ carriers: ['RegioJet'] }), ['rj-1', 'vlak-RJ-2']);
-  // Město: jen MHD toho města (ostatní druhy, jen když jsou výslovně vybrané).
-  assert.deepEqual(shown({ networks: ['vm'] }), ['vm-1']);
-  assert.deepEqual(shown({ networks: ['vm'], kinds: ['mhd', 'train'] }), ['vm-1', 'vlak-Os-1', 'vlak-RJ-2']);
-  assert.deepEqual(shown({ networks: ['zl', 'km'] }), ['101', '301', 'km-1']);
+  assert.deepEqual(shown({ kinds: ['mhd'] }), ['301', 'km-1', 'vm-1']);
+  // Starý uložený filtr podle města se už nepoužije.
+  assert.equal(all.filter((v) => matchesFilter(v, normalizeFilter({ networks: ['vm'] }))).length, all.length);
   assert.equal(shown({ regions: ['zlk'] }).length, all.length);
   // Druh vlaku nechá ostatní druhy být.
   assert.equal(shown({ trainKinds: ['os'] }).length, all.length - 1);

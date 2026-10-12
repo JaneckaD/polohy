@@ -29,6 +29,8 @@ export const store = {
   trains: [],
   cityBuses: [],
   coaches: [],
+  // Autobusy bez živé polohy: poloha odhadem podle jízdního řádu (src/estimated.js).
+  estimated: [],
 
   setFilter(patch) {
     this.filter = normalizeFilter({ ...this.filter, ...patch });
@@ -55,6 +57,16 @@ export const store = {
   setTrains(list) {
     this.trains = list;
     this.emit();
+  },
+
+  setEstimated(list) {
+    this.estimated = list;
+    this.emit();
+  },
+
+  /** Všechny vozy a vlaky na mapě. */
+  allVehicles() {
+    return [...this.vehicles, ...this.cityBuses, ...this.coaches, ...this.estimated, ...this.trains];
   },
 
   /** Polohy z minulého spuštění, pokud nejsou starší než maxAge ms. */

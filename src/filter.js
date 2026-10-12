@@ -1,9 +1,9 @@
-// Filtr vozidel: druh dopravy (kulatá tlačítka), druh vlaku a kraj (sbalitelné seznamy),
-// město a dopravce schované v „Dalších možnostech“. Ukládá se do localStorage (store.setFilter).
+// Filtr vozidel: druh dopravy (kulatá tlačítka s krátkým vysvětlením), druh vlaku a kraj (sbalitelné
+// seznamy), dopravci schovaní v „Dalších možnostech“. Ukládá se do localStorage (store.setFilter).
 import { store } from './store.js';
 import { TRAIN_KINDS } from './trains.js';
 import { KIND_ICONS } from './icons.js';
-import { KINDS, REGIONS, NETWORK_NAMES, BUS_CARRIERS, EMPTY_FILTER, effectiveKinds, filterActive, filterCount, describeFilter } from './filtering.js';
+import { KINDS, KIND_HINTS, REGIONS, EMPTY_FILTER, effectiveKinds, filterActive, filterCount, describeFilter, describe, carrierColor } from './filtering.js';
 
 const sheet = document.getElementById('filter-sheet');
 const badge = document.getElementById('filter-badge');
@@ -12,7 +12,7 @@ const kindsEl = document.getElementById('filter-kinds');
 const trainFold = document.getElementById('filter-trains');
 const trainKindsEl = document.getElementById('filter-train-kinds');
 const regionsEl = document.getElementById('filter-regions');
-const networksEl = document.getElementById('filter-networks');
+const hintsEl = document.getElementById('filter-kind-hints');
 const carriersEl = document.getElementById('filter-carriers');
 
 const toggle = (list = [], x) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
@@ -20,6 +20,15 @@ const flip = (key, value) => store.setFilter({ [key]: toggle(store.filter[key], 
 
 function renderKinds() {
   const f = store.filter;
+  hintsEl.replaceChildren(
+    ...KIND_HINTS.map(([title, text]) => {
+      const row = document.createElement('div');
+      const b = document.createElement('b');
+      b.textContent = `${title}: `;
+      row.append(b, text);
+      return row;
+    }),
+  );
   kindsEl.replaceChildren(
     ...Object.entries(KINDS).map(([key, k]) => {
       const on = f.kinds.includes(key);
@@ -93,14 +102,19 @@ function renderAll() {
   trainFold.hidden = kinds.length > 0 && !kinds.includes('train') && !f.trainKinds.length;
   checks(trainKindsEl, 'trainKinds', Object.entries(TRAIN_KINDS).map(([k, x]) => [k, x.label, x.color]));
   checks(regionsEl, 'regions', Object.entries(REGIONS).map(([k, x]) => [k, x.name]));
-  chips(networksEl, 'networks', Object.entries(NETWORK_NAMES).map(([k, name]) => [k, name, KINDS.mhd.color]));
-  // Dopravci autobusů, které známe, a vlakoví dopravci podle vlaků, které jsou teď v kraji (a už vybraní).
-  const carriers = new Map(BUS_CARRIERS.map((c) => [c.name, c]));
-  for (const t of store.trains) if (!carriers.has(t.operator.short)) carriers.set(t.operator.short, { name: t.operator.short, color: t.operator.color, text: t.operator.text });
-  for (const name of f.carriers) if (!carriers.has(name)) carriers.set(name, { name, color: '#636366', text: '#ffffff' });
-  chips(carriersEl, 'carriers', [...carriers.values()].map((c) => [c.name, c.name, c.color, c.text]));
+  // Dopravci podle vozů, které teď jezdí v oblasti (a už vybraní), seřazení podle počtu vozů.
+  const carriers = new Map();
+  for (const v of store.allVehicles()) {
+    const name = describe(v).carrier;
+    if (!name) continue;
+    const c = carriers.get(name) ?? { name, n: 0, ...carrierColor(v) };
+    c.n++;
+    carriers.set(name, c);
+  }
+  for (const name of f.carriers) if (!carriers.has(name)) carriers.set(name, { name, n: 0, color: '#636366', text: '#ffffff' });
+  chips(carriersEl, 'carriers', [...carriers.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'cs')).map((c) => [c.name, c.name, c.color, c.text]));
   for (const fold of sheet.querySelectorAll('.filter-fold')) {
-    const n = fold.dataset.fold === 'trains' ? f.trainKinds.length : fold.dataset.fold === 'regions' ? f.regions.length : f.networks.length + f.carriers.length;
+    const n = fold.dataset.fold === 'trains' ? f.trainKinds.length : fold.dataset.fold === 'regions' ? f.regions.length : f.carriers.length;
     fold.querySelector('.fold-value').textContent = foldValue(n);
   }
 }

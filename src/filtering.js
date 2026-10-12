@@ -1,6 +1,6 @@
-// Filtr vozidel: druh dopravy, druh vlaku, kraj, město (MHD) a dopravce.
+// Filtr vozidel: druh dopravy, druh vlaku, kraj a dopravce (obecně, bez výčtu měst).
 // V každé skupině nic nevybráno = všechno; vůz se ukáže, když vyhoví všem skupinám, které se ho týkají.
-import { CITIES, CARRIERS, COACHES, isCoach } from './cities.js';
+import { CARRIERS, COACHES, isCoach } from './cities.js';
 import { TRAIN_KINDS } from './trains.js';
 import { krajOf } from './region.js';
 
@@ -10,9 +10,9 @@ export const KINDS = {
   mhd: { label: 'MHD autobusy', color: '#0a66d8', text: '#ffffff' },
   regional: { label: 'Regionální autobusy', color: '#e8710a', text: '#ffffff' },
   coach: { label: 'Dálkové autobusy', color: '#00838f', text: '#ffffff' },
+  intl: { label: 'Mezinárodní autobusy', color: '#00838f', text: '#ffffff' },
   train: { label: 'Vlaky', color: '#3a3a3c', text: '#ffffff' },
 };
-const MHD_KINDS = ['trolleybus', 'mhd'];
 
 /** Kraje, ve kterých aplikace ukazuje dopravu (další přibudou). */
 export const REGIONS = {
@@ -37,28 +37,28 @@ function krajAt(v) {
   return k;
 }
 
-/** Města s MHD: Zlín–Otrokovice (DSZO) a ostatní podle IDZK. */
-export const NETWORK_NAMES = { zl: 'Zlín–Otrokovice', ...Object.fromEntries(Object.entries(CITIES).map(([k, c]) => [k, c.name])) };
-
-/** Dopravci autobusů, které aplikace zná (vlakoví dopravci přibydou podle vlaků na mapě). */
-export const BUS_CARRIERS = [
-  { name: 'DSZO', color: KINDS.mhd.color, text: '#ffffff' },
-  ...Object.values(CARRIERS)
-    .filter((c) => c.code)
-    .map((c) => ({ name: c.short, color: c.main, text: c.text })),
-  ...Object.values(COACHES).map((c) => ({ name: c.short, color: c.main, text: c.text })),
+/** Krátké vysvětlení druhů dopravy do filtru (obecně, bez výčtu měst a linek). */
+export const KIND_HINTS = [
+  ['MHD', 'trolejbusy a autobusy městské dopravy'],
+  ['Regionální', 'linky mezi obcemi, živě nebo odhadem podle jízdního řádu'],
+  ['Dálkové a mezinárodní', 'linky přes celou republiku a do zahraničí'],
 ];
 
-export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], networks: [], carriers: [] };
+export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], carriers: [] };
 
-/** Druh dopravy, město, dopravce a kraj vozu. */
+/** Barva dopravce ve filtru: podle druhu dopravy, kterou provozuje. */
+export function carrierColor(v) {
+  if (v.type === 'train') return { color: v.operator?.color ?? '#636366', text: v.operator?.text ?? '#ffffff' };
+  const k = KINDS[describe(v).kind] ?? KINDS.regional;
+  return { color: k.color, text: k.text };
+}
+
+/** Druh dopravy, dopravce a kraj vozu. U MHD dopravce neřešíme (filtruje se druhem). */
 export function describe(v) {
-  if (v.type === 'train') return { kind: 'train', network: null, carrier: v.operator?.short ?? null, region: krajAt(v) };
-  if (isCoach(v.city)) return { kind: 'coach', network: null, carrier: COACHES[v.city].short, region: krajAt(v) };
-  if (v.city && CARRIERS[v.city]) return { kind: 'regional', network: null, carrier: CARRIERS[v.city].short, region: krajAt(v) };
-  const kind = v.type === 'trolleybus' ? 'trolleybus' : 'mhd';
-  if (v.city) return { kind, network: v.city, carrier: v.operator ?? null, region: 'zlk' };
-  return { kind, network: 'zl', carrier: 'DSZO', region: 'zlk' };
+  if (v.type === 'train') return { kind: 'train', carrier: v.operator?.short ?? null, region: krajAt(v) };
+  if (isCoach(v.city)) return { kind: v.international ? 'intl' : 'coach', carrier: v.operatorName ?? COACHES[v.city].short, region: krajAt(v) };
+  if (v.city && CARRIERS[v.city]) return { kind: 'regional', carrier: v.operatorName ?? CARRIERS[v.city].short, region: krajAt(v) };
+  return { kind: v.type === 'trolleybus' ? 'trolleybus' : 'mhd', carrier: null, region: krajAt(v) };
 }
 
 /** Uložený filtr (i ze starší verze s typem a dopravci vlaků) → současný tvar. */
@@ -71,10 +71,9 @@ export function normalizeFilter(raw) {
   return f;
 }
 
-/** Druhy dopravy, které filtr ukazuje: vybrané, nebo jen MHD, když je vybrané město. */
+/** Druhy dopravy, které filtr ukazuje (nic nevybráno = všechny). */
 export function effectiveKinds(f) {
-  if (f.kinds.length) return f.kinds;
-  return f.networks.length ? MHD_KINDS : [];
+  return f.kinds;
 }
 
 export function filterActive(f) {
@@ -92,7 +91,6 @@ export function matchesFilter(v, f) {
   if (f.regions.length && !f.regions.includes(d.region)) return false;
   if (f.carriers.length && !f.carriers.includes(d.carrier)) return false;
   if (d.kind === 'train' && f.trainKinds.length && !f.trainKinds.includes(v.kind)) return false;
-  if (d.network && f.networks.length && !f.networks.includes(d.network)) return false;
   return true;
 }
 
@@ -102,7 +100,6 @@ export function describeFilter(f) {
   if (f.kinds.length) parts.push(f.kinds.map((k) => KINDS[k]?.label.toLowerCase() ?? k).join(', '));
   if (f.trainKinds.length) parts.push(f.trainKinds.map((k) => TRAIN_KINDS[k]?.label.toLowerCase() ?? k).join(', '));
   if (f.regions.length) parts.push(f.regions.map((k) => REGIONS[k]?.name ?? k).join(', '));
-  if (f.networks.length) parts.push(`MHD ${f.networks.map((k) => NETWORK_NAMES[k] ?? k).join(', ')}`);
   if (f.carriers.length) parts.push(f.carriers.join(', '));
   return parts.join(' · ');
 }
