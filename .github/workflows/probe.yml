@@ -1,0 +1,22 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          P=https://dszo-proxy.djanecka6.workers.dev
+          echo "== DSZO lines"; curl -s $P/online/ | grep -o "line: *'[^']*'" | sort | uniq -c | head -60
+          echo "== tabs2"; curl -s $P/online/tabs2.php | head -c 1500; echo
+          echo "== mhd lines"; curl -s $P/mhd | python3 -c "
+          import json,sys,collections
+          d=json.load(sys.stdin)
+          print(collections.Counter(v['cn'].split('|')[1]+' '+v.get('cr','') for v in d.get('vehicles',[])).most_common(200))
+          print([ (b.get('line_number'), b.get('connection_no')) for b in d.get('km',[])][:30])
+          print(json.dumps(d.get('km',[])[:1],ensure_ascii=False))"
+          echo "== trains"; curl -s -o /dev/null -w "%{http_code} %{time_total}\n" $P/trains
+          echo "== JDF"; curl -sL https://www.dszo.cz/jr/ -o /dev/null -w "%{http_code}\n"
