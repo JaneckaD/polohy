@@ -5,25 +5,28 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - run: |
           set +e
-          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
-          abs() { case "$1" in http*) echo "$1";; //*) echo "https:$1";; /*) echo "$2$1";; *) echo "$2/$1";; esac; }
-          scan() { # $1 base url, $2 page url, $3 grep pattern
-            curl -sL -m 30 -A "$UA" "$2" -o p.html; echo "## $2 $(wc -c < p.html)"; head -c 1500 p.html | tr '\n' ' '; echo
-            for js in $(grep -oE '(src|href)="[^"]+\.m?js[^"]*"' p.html | sed -E 's/^(src|href)="//;s/"$//' | sort -u | head -25); do
-              u=$(abs "$js" "$1"); curl -sL -m 20 -A "$UA" "$u" -o x.js
-              echo "-- $u $(wc -c < x.js)"; grep -oE "$3" x.js | sort -u | head -40
-            done
-          }
-          echo "=== KROMERIZ"
-          scan https://kromeriz.mhdonline.cz https://kromeriz.mhdonline.cz/ '"[^"]{0,60}(/api|api\.|https?://|wss?://|\.json|vehicle|Vehicle|position|Position)[^"]{0,100}"'
-          for p in manifest.json api/vehicles api/vehicle api/positions vehicles.json data/vehicles.json; do echo "-- $p"; curl -s -m 15 -A "$UA" "https://kromeriz.mhdonline.cz/$p" | head -c 400; echo; done
-          echo "=== KMTS"
-          curl -sL -m 30 -A "$UA" https://www.kmts.cz/aktuality-mimoradnosti-mhd/mame-pro-vas-novinku-v-online-mape-mhd-kromeriz | sed 's/<[^>]*>/ /g' | tr -s ' \n' | grep -iE 'map|online|poloh|http' | head -30
-          echo "=== FLIXTRACK"
-          scan https://www.flixbus.cz https://www.flixbus.cz/track '"[^"]{0,40}(gis|track|ride|position)[^"]{0,120}"'
-          echo "=== REGIOJET"
-          scan https://regiojet.cz https://regiojet.cz/ '"[^"]{0,40}(position|Position|vehicle|Vehicle|track|gps|Gps)[^"]{0,100}"'
+          echo "=== FLIX bundle"
+          curl -sL -m 30 https://wimr-ui.gis.flix.tech/track/assets/index-DglT1Uph.js -o f.js
+          grep -oE '[`"][^`"]{0,30}(https?://[^`"]{3,120}|/api/[^`"]{0,120}|/gis/[^`"]{0,120}|/v[0-9]/[^`"]{0,120})[`"]' f.js | grep -viE 'w3\.org|mapbox|reactjs|github|mozilla|sentry' | sort -u | head -80
+          grep -oE '.{0,120}(rides?/\$\{|ride_id|rideId|trip_uid).{0,160}' f.js | head -20
+          echo "=== RJ restapi paths"
+          curl -sL -m 30 https://regiojet.cz/_next/static/chunks/pages/_app-0cf9cc9f45c0ab6a.js -o rj.js
+          grep -oE '"/[a-zA-Z]+/[^"]{0,80}"' rj.js | grep -iE 'route|vehicle|position|gps|delay|track|station|timetable' | sort -u | head -80
+          grep -oE '"(https?:)?//[^"]{5,100}"' rj.js | sort -u | head -30
+          echo "=== KM playwright"
+          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > s.mjs <<'J'
+          import { chromium } from 'playwright';
+          const b = await chromium.launch(); const p = await b.newPage();
+          p.on('request', r => { const t = r.resourceType(); if (!['image','font','stylesheet'].includes(t)) console.log('REQ', t, r.method(), r.url().slice(0,200), (r.postData()||'').slice(0,300)); });
+          p.on('response', async r => { const t = r.request().resourceType(); if (['xhr','fetch'].includes(t)) { let s=''; try { s = (await r.text()).slice(0,1500); } catch {} console.log('RES', r.status(), r.url().slice(0,200), '\n', s); } });
+          p.on('websocket', ws => { console.log('WS', ws.url()); let n=0; ws.on('framereceived', f => { if (n++ < 6) console.log('WSF', String(f.payload).slice(0,1500)); }); ws.on('framesent', f => console.log('WSS', String(f.payload).slice(0,300))); });
+          await p.goto('https://kromeriz.mhdonline.cz/', { waitUntil: 'networkidle', timeout: 45000 }).catch(e => console.log('goto', e.message));
+          await p.waitForTimeout(15000);
+          await b.close();
+          J
+          node s.mjs
