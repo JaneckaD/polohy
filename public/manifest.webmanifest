@@ -1,6 +1,6 @@
 {
-  "name": "ČR live – MHD, autobusy a vlaky",
-  "short_name": "ČR live",
+  "name": "Doprava živě – MHD, autobusy a vlaky",
+  "short_name": "Doprava živě",
   "description": "Živé polohy MHD, autobusů a vlaků ve Zlínském a Jihomoravském kraji, vyhledávání spojení.",
   "lang": "cs",
   "start_url": "./",

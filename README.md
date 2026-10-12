@@ -1,4 +1,4 @@
-# IDZK live – MHD a vlaky ve Zlínském kraji
+# Doprava živě – MHD, autobusy a vlaky
 
 PWA, která ukazuje živou polohu autobusů a trolejbusů DSZO (Zlín, Otrokovice) na bílé mapě kolem tebe.
 Vozidla jsou kolečka s číslem linky a malou šipkou ve směru jízdy, trolejbusy červené, autobusy modré.
