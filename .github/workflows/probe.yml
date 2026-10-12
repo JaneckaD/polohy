@@ -1,0 +1,11 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml', '.github/probe/**']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/probe/buses.py
