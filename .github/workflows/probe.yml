@@ -5,37 +5,30 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - run: |
-          set +e
-          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
           cat > s.mjs <<'J'
-          import { chromium } from 'playwright';
-          const b = await chromium.launch(); const p = await b.newPage();
-          p.on('response', async r => { if (/global\.api\.flixbus\.com/.test(r.url())) { let s=''; try { s = (await r.text()).slice(0,3000); } catch {} console.log('RES', r.status(), r.url().slice(0,300), '\n', s); } });
-          for (const url of ['https://www.flixbus.cz/track/station/dcc3d0c6-9603-11e6-9066-549f350fcb0c/departures', 'https://www.flixbus.cz/track/station/dcc3d0c6-9603-11e6-9066-549f350fcb0c/arrivals']) {
-            console.log('=== OPEN', url);
-            await p.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(e => console.log('goto', e.message));
-            await p.waitForTimeout(6000);
+          const K = 'apiKey=7781b8fa-07cf-4ab7-8b62-1f3178523ba0';
+          const G = 'https://global.api.flixbus.com/gis';
+          const now = Date.now();
+          const iso = (t) => new Date(t).toISOString();
+          const st = 'dcbc6452-9603-11e6-9066-549f350fcb0c'; // Praha Florenc
+          const r = await fetch(`${G}/v2/timetable/${st}/departures?from=${iso(now - 3 * 3600e3)}&to=${iso(now)}&${K}`);
+          const t = await r.text(); console.log('TT', r.status, t.slice(0, 2500));
+          const rides = JSON.parse(t).rides ?? [];
+          let shown = 0;
+          for (const x of rides) {
+            const id = x.id ?? x.ride_id ?? x.ride?.id ?? x.uuid; if (!id) continue;
+            const d = await (await fetch(`${G}/v3/ride/${id}?${K}`)).json();
+            if (d.location && shown++ < 2) { const { calls, ...rest } = d; console.log('RIDE', JSON.stringify(rest).slice(0, 2000)); console.log('CALL0', JSON.stringify(calls?.[0]).slice(0, 600)); console.log('CALLS', calls?.length); }
           }
-          await b.close();
-          // Stanice FlixBus ve městech kraje
-          for (const q of ['Zlín','Uherské Hradiště','Uherský Brod','Kroměříž','Vsetín','Valašské Meziříčí','Otrokovice','Holešov','Rožnov pod Radhoštěm','Luhačovice','Bystřice pod Hostýnem','Hulín','Staré Město']) {
-            const r = await (await fetch(`https://global.api.flixbus.com/search/autocomplete/cities?q=${encodeURIComponent(q)}&lang=cs&country=cz&flixbus_cities_only=true&stations=true`)).json();
-            const c = r.find(x => x.name === q); console.log('CITY', q, c ? JSON.stringify({id: c.id, st: c.stations}).slice(0, 600) : '-');
+          // stanice v kraji: odjezdy dnes celý den
+          for (const s of ['dcc3cb3d-9603-11e6-9066-549f350fcb0c','dcc3d0c6-9603-11e6-9066-549f350fcb0c','ef348d14-f2ed-4ea3-a8f4-0e39bb858ffb','dc20e5be-2dfc-4894-9784-4dea7d942fbe','28d94a3b-cfe4-4dc4-86a5-b3e484cc326c','0dca7499-d85a-41f6-ab4b-7377f25f795f']) {
+            for (const kind of ['departures', 'arrivals']) {
+              const j = await (await fetch(`${G}/v2/timetable/${s}/${kind}?from=${iso(now - 2 * 3600e3)}&to=${iso(now + 22 * 3600e3)}&${K}`)).json();
+              console.log('ST', j.station?.name, kind, (j.rides ?? []).map((x) => `${x.line?.code ?? ''}|${x.id ?? ''}|${JSON.stringify(x).slice(0, 0)}`).join(' '));
+            }
           }
           J
           node s.mjs
-          echo "=== RJ"
-          H='-H X-Lang:cs -H X-Currency:CZK'
-          D=$(date -u +%Y-%m-%d)
-          curl -s -m 20 $H "https://brn-ybus-pubapi.sa.cz/restapi/routes/search/simple?tariffs=REGULAR&toLocationType=CITY&toLocationId=10202002&fromLocationType=CITY&fromLocationId=17653000&departureDate=$D" -o r.json
-          python3 -c "
-          import json; r=json.load(open('r.json'))['routes']; print(len(r)); [print(x['id'], x['departureTime'], x['vehicleTypes'], x['departureStationId'], x['arrivalStationId'], x.get('delay')) for x in r[:8]]"
-          RID=$(python3 -c "
-          import json; r=[x for x in json.load(open('r.json'))['routes'] if ',' not in x['id']]; print(r[0]['id'], r[0]['departureStationId'], r[0]['arrivalStationId'])")
-          set -- $RID; echo "RID $1"
-          for p in "routes/$1/simple?fromStationId=$2&toStationId=$3" "routes/$1/simple" "routes/$1/position" "routes/$1/positions" "routes/$1/vehiclePosition" "routes/$1/vehicle" "routes/$1/gps" "routes/$1/delay" "routes/$1/tracking" "routes/$1/sections"; do
-            echo "-- $p"; curl -s -m 20 $H "https://brn-ybus-pubapi.sa.cz/restapi/$p" | head -c 1500; echo
-          done
