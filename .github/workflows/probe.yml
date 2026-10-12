@@ -12,5 +12,4 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: node .github/probe/sources.mjs
       - run: node --max-old-space-size=6000 .github/probe/spoj.mjs

@@ -175,7 +175,7 @@ export function kordisTrips(zipBytes, { startDate, days, log = () => {} }) {
 
 // Klíč „čas + místo“ zastavení spoje (místo jako čtverec asi 2 × 2 km), podle něj poznáme spoj,
 // který už v datech je z jiného zdroje (názvy zastávek se mezi zdroji liší).
-const eventKey = (time, lat, lon) => `${time}|${Math.round(lat * 50)}|${Math.round(lon * 30)}`;
+export const eventKey = (time, lat, lon) => `${time}|${Math.round(lat * 50)}|${Math.round(lon * 30)}`;
 
 /** Zastavení spojů, které už v datech jsou (pro vynechání duplicit). */
 export function knownEvents(rawTrips) {
