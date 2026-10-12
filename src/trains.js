@@ -26,16 +26,16 @@ export function trainKind(code) {
 
 /** Dopravci: krátký název a barva značky vlaku (text na ní). */
 const OPERATORS = [
-  [/^České dráhy/i, 'ČD', '#1d4f91', '#ffffff'],
+  [/^(České dráhy|ČD\b)/i, 'ČD', '#1d4f91', '#ffffff'],
   [/^RegioJet/i, 'RegioJet', '#f2c300', '#1c1c1e'],
-  [/^Leo Express/i, 'Leo Express', '#1c1c1e', '#ffc94a'],
+  [/^(Leo Express|LE$)/i, 'Leo Express', '#1c1c1e', '#ffc94a'],
   [/^ARRIVA/i, 'Arriva', '#00788a', '#ffffff'],
   [/^GW Train/i, 'GW Train', '#2e7d32', '#ffffff'],
   [/Länderbahn/i, 'Länderbahn', '#5b2a86', '#ffffff'],
   [/^KŽC/i, 'KŽC', '#8a4b1c', '#ffffff'],
   [/^AŽD/i, 'AŽD', '#455a64', '#ffffff'],
   [/^Railway Capital/i, 'Railway Capital', '#37474f', '#ffffff'],
-  [/^ŽSSK|Železničná spoločnosť/i, 'ZSSK', '#c62828', '#ffffff'],
+  [/^(ŽSSK|ZSSK)|Železničná spoločnosť/i, 'ZSSK', '#c62828', '#ffffff'],
   [/^ÖBB/i, 'ÖBB', '#c8102e', '#ffffff'],
 ];
 
@@ -50,8 +50,10 @@ const minutesOf = (value) => (value === '' || value == null || !Number.isFinite(
 
 /** Záznam z proxy → vůz pro mapu (nebo null, když je mimo kraj). */
 export function parseTrain(t, region) {
-  if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) return null;
-  const [lon, lat] = krovakToWgs(t.x, t.y);
+  // Od SŽ souřadnice S-JTSK (x, y), z mapy IDZK (náhrada, když SŽ neodpoví) rovnou lat, lon.
+  const wgs = Number.isFinite(t.lat) && Number.isFinite(t.lon) ? [t.lon, t.lat] : Number.isFinite(t.x) && Number.isFinite(t.y) ? krovakToWgs(t.x, t.y) : null;
+  if (!wgs) return null;
+  const [lon, lat] = wgs;
   if (region && !regionContains(region, lon, lat)) return null;
   const code = String(t.tt ?? '').trim();
   const delayMin = minutesOf(t.de);

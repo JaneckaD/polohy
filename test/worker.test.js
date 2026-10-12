@@ -36,7 +36,7 @@ test('proxy /trains: vlaky Správy železnic jen z okolí Zlínského kraje, jen
   fetchMock.mock.restore();
 });
 
-test('proxy /trains: když mapa vlaků neodpoví, zkusí to znovu a pak pošle poslední úspěšnou odpověď', async () => {
+test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z mapy IDZK, pak poslední úspěšnou odpověď', async () => {
   const store = new Map();
   globalThis.caches = {
     default: {
@@ -45,24 +45,37 @@ test('proxy /trains: když mapa vlaků neodpoví, zkusí to znovu a pak pošle p
     },
   };
   const feature = { type: 'Feature', geometry: { type: 'Point', coordinates: [-524630, -1187194] }, properties: { tt: 'Os', tn: '891' } };
-  let calls = 0;
-  let ok = true;
-  const fetchMock = mock.method(globalThis, 'fetch', async () => {
-    calls++;
-    return ok ? Response.json({ result: [feature] }) : new Response('busy', { status: 503 });
+  const idzk = { transmitters: [
+    { t: 'T', dm: 3, n: 'Os 3912', cr: 'ČD', x: 49.34574, y: 17.305443, ico: 'a_180.png', cn: 'Os 3912|S4|3912|Bezměrov|180|||||Kojetín|1|', cat: 1 },
+    { cn: '4|4|58|Dlouhá', x: 49.2, y: 17.6, cr: 'DSZO', cat: 3 },
+  ] };
+  const urls = [];
+  let sz = true;
+  let mpv = true;
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    urls.push(String(url));
+    if (String(url).includes('spravazeleznic')) return sz ? Response.json({ result: [feature] }) : new Response('busy', { status: 503 });
+    return mpv ? Response.json(idzk) : new Response('busy', { status: 503 });
   });
-  const first = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
-  assert.equal((await first.json()).trains.length, 1);
-  ok = false;
-  calls = 0;
-  const stale = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
-  assert.equal(calls, 2);
-  assert.equal(stale.status, 200);
+  const get = () => worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
+  assert.equal((await (await get()).json()).trains[0].tn, '891');
+
+  // SŽ neodpoví: vlaky z mapy IDZK (a SŽ pak chvíli nezkoušíme).
+  sz = false;
+  const fallback = await (await get()).json();
+  assert.equal(fallback.source, 'idzk');
+  assert.deepEqual(fallback.trains, [{ lat: 49.34574, lon: 17.305443, tt: 'Os', tn: '3912', na: '', fn: '', ln: 'Kojetín', cna: 'Bezměrov', d: 'ČD', de: 3, a: 180 }]);
+  urls.length = 0;
+  await get();
+  assert.ok(urls.every((u) => !u.includes('spravazeleznic')));
+
+  // Neodpoví ani IDZK: poslední úspěšná odpověď SŽ, bez ní chyba.
+  mpv = false;
+  const stale = await get();
   assert.equal(stale.headers.get('X-Stale'), '1');
   assert.equal((await stale.json()).trains[0].tn, '891');
   store.clear();
-  const none = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
-  assert.equal(none.status, 502);
+  assert.equal((await get()).status, 502);
   fetchMock.mock.restore();
   delete globalThis.caches;
 });

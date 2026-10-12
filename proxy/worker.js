@@ -2,7 +2,7 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje;
-//          když mapa vlaků neodpoví, poslední úspěšná odpověď.
+//          když mapa vlaků neodpoví, vlaky z mapy IDZK, jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
@@ -21,30 +21,63 @@ const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?modul
 const ZK_BOX = { minX: -570000, maxX: -457000, minY: -1206000, maxY: -1125000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
 
-// Mapa vlaků SŽ občas neodpoví nebo vrátí chybu. Proto čekáme jen chvíli, zkusíme to dvakrát
-// a když to nevyjde, pošleme poslední úspěšnou odpověď (max. 10 minut starou) z cache workeru.
+// Mapa vlaků SŽ z Cloudflaru často neodpoví (z jiných sítí ano). Čekáme na ni proto jen chvíli
+// a po výpadku ji dvě minuty nezkoušíme. Náhradou jsou vlaky z mapy IDZK (jen vlaky v kraji,
+// bez výchozí a příští stanice), a když nejde ani ta, poslední úspěšná odpověď z cache workeru.
 const TRAINS_LAST = 'https://dszo-proxy.internal/trains-last';
+let szFailedAt = 0;
 
 async function fetchTrains() {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const upstream = await fetch(TRAINS_URL, {
-        headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)', Referer: 'https://mapy.spravazeleznic.cz/vlaky' },
-        cf: { cacheTtl: 15, cacheEverything: true },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (upstream.ok) return await upstream.json();
-    } catch {
-      /* zkusíme znovu */
-    }
+  if (Date.now() - szFailedAt < 120000) return null;
+  try {
+    const upstream = await fetch(TRAINS_URL, {
+      headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)', Referer: 'https://mapy.spravazeleznic.cz/vlaky' },
+      cf: { cacheTtl: 15, cacheEverything: true },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (upstream.ok) return await upstream.json();
+  } catch {
+    /* níže */
   }
+  szFailedAt = Date.now();
   return null;
+}
+
+/** Vlaky z mapy IDZK ve stejných polích jako od SŽ, jen s polohou ve WGS84 (lat, lon). */
+async function idzkTrains() {
+  try {
+    const res = await fetch(MPV_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
+      body: MPV_BODY,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.transmitters ?? [])
+      .filter((t) => t.cat === 1 && Number.isFinite(t.x) && Number.isFinite(t.y))
+      .map((t) => {
+        // „Os 3912|S4|3912|Bezměrov|180|||||Kojetín|1|“: vlak, linka, číslo, poslední stanice, …, cílová stanice.
+        const f = String(t.cn ?? '').split('|');
+        const [tt = '', tn = ''] = String(t.n ?? f[0] ?? '').split(' ');
+        const angle = /a_(\d+)\.png/.exec(t.ico ?? '');
+        return { lat: t.x, lon: t.y, tt, tn: f[2] || tn, na: '', fn: '', ln: f[9] || '', cna: f[3] || '', d: t.cr ?? '', de: Number.isFinite(t.dm) ? t.dm : '', a: angle ? Number(angle[1]) : '' };
+      });
+  } catch {
+    return null;
+  }
 }
 
 async function trains() {
   const cache = globalThis.caches?.default;
   const data = await fetchTrains();
   if (!data) {
+    const idzk = await idzkTrains();
+    if (idzk) {
+      return new Response(JSON.stringify({ trains: idzk, source: 'idzk', at: new Date().toISOString() }), {
+        headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+      });
+    }
     const last = await cache?.match(TRAINS_LAST);
     if (last) return new Response(last.body, { headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store', 'X-Stale': '1' } });
     return new Response('Upstream error', { status: 502, headers: CORS });

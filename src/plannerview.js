@@ -2,7 +2,7 @@
 import { applyTypeColors, applyVehicleColors } from './colors.js';
 import { TRAIN_KINDS, trainKind, trainOperator } from './trains.js';
 import { networkLabel } from './cities.js';
-import { preparePlanner, searchJourneys, findStops, findTowns, nearbyStops, rideStops } from './planner.js';
+import { preparePlanner, searchJourneys, findStops, findTowns, nearbyStops, rideStops, distanceMeters } from './planner.js';
 
 const body = document.getElementById('pl-body');
 const title = document.getElementById('pl-title');
@@ -121,7 +121,8 @@ const state = {
 
 function persist() {
   try {
-    localStorage.setItem('mhd.plan', JSON.stringify({ from: state.from, to: state.to, recent: state.recent.slice(0, 5) }));
+    // Zastávku doplněnou podle polohy neukládáme: příště se hledá znovu ta nejbližší.
+    localStorage.setItem('mhd.plan', JSON.stringify({ from: state.from?.auto ? null : state.from, to: state.to, recent: state.recent.slice(0, 5) }));
   } catch {
     /* nevadí */
   }
@@ -225,6 +226,15 @@ function renderSearch() {
 
   // Našeptávač zastávek
   let active = null;
+  // Výška našeptávače podle místa nad klávesnicí (visualViewport je bez klávesnice).
+  const fitSuggest = () => {
+    if (suggest.hidden) return;
+    const vv = window.visualViewport;
+    const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const room = bottom - suggest.getBoundingClientRect().top - 12;
+    suggest.style.setProperty('--suggest-max', `${Math.max(150, Math.round(room))}px`);
+  };
+  window.visualViewport?.addEventListener('resize', fitSuggest);
   const pick = (which, value) => {
     state[which] = value;
     persist();
@@ -243,7 +253,7 @@ function renderSearch() {
     if (which === 'from' && !q) options.push(MY_LOCATION);
     if (P && q) {
       for (const t of findTowns(P, q, 2)) options.push({ name: t.name, town: true });
-      for (const s of findStops(P, q)) options.push({ name: s.name, label: s.full });
+      for (const s of findStops(P, q, 12)) options.push({ name: s.name, label: s.full });
     }
     if (!q) {
       for (const r of state.recent) {
@@ -266,16 +276,18 @@ function renderSearch() {
       text.append(h('span', 'suggest-name', o.label ?? o.name));
       if (look.sub) text.append(h('span', 'suggest-sub', o.recent ? `Nedávno hledané · ${look.sub}` : look.sub));
       b.append(icon, text);
-      // pointerdown, aby výběr proběhl dřív, než pole ztratí focus
-      b.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
+      // Myší: pole si nechá focus. Výběr až na klepnutí (click), ne už při dotyku:
+      // posunutí seznamu prstem tak zastávku nevybere.
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => {
         pick(which, o.here ? MY_LOCATION : o.town ? { name: o.name, town: true } : { name: o.name, label: o.label ?? o.name });
         input.blur();
       });
       suggest.append(b);
-      if (suggest.children.length >= 8) break;
+      if (suggest.children.length >= 15) break;
     }
     suggest.hidden = !suggest.children.length;
+    fitSuggest();
     // Našeptávač pod aktivním polem
     suggest.classList.toggle('under-to', which === 'to');
   };
@@ -302,12 +314,13 @@ function renderSearch() {
     );
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        suggest.querySelector('.suggest-item')?.dispatchEvent(new Event('pointerdown'));
+        suggest.querySelector('.suggest-item')?.click();
       }
     });
   }
   go.addEventListener('click', () => search(results));
   if (state.results) drawResults(results, state.results);
+  if (!state.from) fillNearest(fromInput);
 }
 
 function field(container, which, placeholder, dot) {
@@ -323,6 +336,29 @@ function field(container, which, placeholder, dot) {
   row.append(input);
   container.append(row);
   return input;
+}
+
+/** Odkud zatím nic: doplníme nejbližší zastávku podle polohy (ta může přijít až za chvíli). */
+async function fillNearest(input) {
+  const P = await loadPlanner();
+  for (let i = 0; P && i < 20; i++) {
+    if (state.from || !input.isConnected || document.activeElement === input || input.value.trim()) return;
+    const pos = getPosition();
+    if (pos) {
+      let best = null;
+      for (const s of P.stops) {
+        if (s.lat == null) continue;
+        const m = distanceMeters(pos[1], pos[0], s.lat, s.lon);
+        if (!best || m < best.m) best = { s, m };
+      }
+      if (best) {
+        state.from = { name: best.s.name, label: best.s.full, auto: true };
+        input.value = labelOf(state.from);
+      }
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 async function origins(P) {

@@ -1,6 +1,7 @@
 // Oblast aplikace (Zlínský kraj) a tratě s osobní dopravou.
 // Vše mimo kraj je šrafované, tam aplikace zatím nesahá.
-// Hranice Zlínského kraje: zjednodušený obrys z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json.
+// Hranice Zlínského kraje: zjednodušený obrys z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json;
+// hranice všech krajů (jen čáry, lehce) ze stejných dat v public/kraje.json.
 
 const empty = { type: 'FeatureCollection', features: [] };
 const fetchJson = (url) =>
@@ -85,6 +86,7 @@ export function drawRegion(map) {
   }
   map.addSource('rails', { type: 'geojson', data: empty });
   map.addSource('region-mask', { type: 'geojson', data: empty });
+  map.addSource('kraje', { type: 'geojson', data: new URL('./kraje.json', location.href).href });
   let hatch = map.hasImage('hatch');
   try {
     if (!hatch) map.addImage('hatch', hatchImage(), { pixelRatio: 2 });
@@ -123,6 +125,22 @@ export function drawRegion(map) {
   );
   map.addLayer(
     { id: 'region-mask', type: 'fill', source: 'region-mask', paint: hatch ? { 'fill-pattern': 'hatch' } : { 'fill-color': '#e8e8ec', 'fill-opacity': 0.7 } },
+    before,
+  );
+  // Hranice všech krajů: jen lehce, ať je poznat, kde kraj končí.
+  map.addLayer(
+    {
+      id: 'kraje-border',
+      type: 'line',
+      source: 'kraje',
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': '#6e6e73',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 12, 1.6],
+        'line-opacity': 0.6,
+        'line-dasharray': [3, 2],
+      },
+    },
     before,
   );
   map.addLayer(

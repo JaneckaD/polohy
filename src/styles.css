@@ -1730,6 +1730,11 @@ input:focus-visible {
   top: 56px;
   z-index: 5;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  /* Nad klávesnicí: jen tak vysoký, aby byl celý vidět, a dá se v něm posouvat. */
+  max-height: var(--suggest-max, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .plan-suggest.under-to {

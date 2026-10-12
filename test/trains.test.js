@@ -44,3 +44,14 @@ test('druhy vlaků a dopravci', () => {
   assert.equal(trainOperator('Leo Express Tenders s.r.o.').short, 'Leo Express');
   assert.equal(trainOperator('Gepard Express, SE').short, 'Gepard Express');
 });
+
+test('vlak z mapy IDZK (náhrada za SŽ): poloha rovnou ve WGS84, dopravce zkratkou', () => {
+  const v = parseTrain({ lat: 49.34574, lon: 17.305443, tt: 'Os', tn: '3912', ln: 'Kojetín', cna: 'Bezměrov', d: 'ČD', de: 3, a: 180 }, null);
+  assert.equal(v.lat, 49.34574);
+  assert.equal(v.lon, 17.305443);
+  assert.equal(v.operator.short, 'ČD');
+  assert.equal(v.kind, 'os');
+  assert.equal(v.delay, 180);
+  assert.equal(v.headsign, 'Kojetín');
+  assert.equal(v.bearing, 180);
+});
