@@ -9,10 +9,17 @@ import { cityStopName, lineLabel } from './cities.js';
 // Sítě, jejichž vozy nemají jinou polohu. FlixBus a RegioJet mají vlastní zdroj uvnitř Zlínského kraje,
 // jinde (Jihomoravský kraj) je odhadneme také z jízdního řádu. Linky IDS JMK (regionální i MHD) jedou živě
 // z proudu KORDIS (src/jmk.js); odhadem jen, když proud nefunguje.
-const ESTIMATED = new Set(['other', 'coach', 'flix', 'rj']);
+// MHD Olomouckého a Moravskoslezského kraje (town) a regionální linky (other) mohou jet živě z mapy ODIS:
+// spoj, jehož vůz je na mapě živě, se odhadem neukazuje (setLiveTrips).
+const ESTIMATED = new Set(['other', 'coach', 'flix', 'rj', 'town']);
 const JMK_FALLBACK = new Set(['jmk', 'brno', 'jmkmhd']);
 const OWN_SOURCE = new Set(['flix', 'rj']);
 let jmkDown = false;
+let liveTrips = new Set();
+/** Spoje (id spoje v datech vyhledávání), které právě jedou živě: jejich odhad se neukáže. */
+export function setLiveTrips(ids) {
+  liveTrips = ids instanceof Set ? ids : new Set(ids);
+}
 /** Živý proud IDS JMK nefunguje: jeho linky se ukážou odhadem podle jízdního řádu. */
 export function setJmkDown(down) {
   jmkDown = !!down;
@@ -52,6 +59,18 @@ export function segmentsOf(P, pattern) {
   return patternGeo.get(pattern);
 }
 
+// Zastávky spoje se staví jednou (při každé obnově se jinak tvořily znovu pro každý vůz).
+const callsCache = new WeakMap();
+function callsOf(P, trip) {
+  let calls = callsCache.get(trip);
+  if (!calls) {
+    const { pattern, times } = trip;
+    calls = pattern.s.map((si, i) => ({ seq: i + 1, name: cityStopName(pattern.c, P.stops[si].name), lat: P.stops[si].lat, lon: P.stops[si].lon, time: hhmm(times[i]) }));
+    callsCache.set(trip, calls);
+  }
+  return calls;
+}
+
 /**
  * Autobusy, které teď podle jízdního řádu jedou uvnitř oblasti.
  * date = dnešní datum v Praze („2026-10-12“), min = minuty od půlnoci (i se zlomkem).
@@ -62,6 +81,7 @@ export function estimatedVehicles(P, region, date, min) {
   const out = [];
   for (const trip of tripsOf(P)) {
     if (!jmkDown && JMK_FALLBACK.has(trip.pattern.c)) continue;
+    if (liveTrips.has(trip.id)) continue;
     // Spoj dnešního dne, nebo včerejšího, který jede přes půlnoc (časy po 24:00).
     for (const [day, t] of [[di, min], [di - 1, min + 1440]]) {
       if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
@@ -90,7 +110,7 @@ export function estimatedVehicles(P, region, date, min) {
       if (region && !regionContains(region, pos.lon, pos.lat)) continue;
       // FlixBus a RegioJet uvnitř Zlínského kraje ukazují vlastní zdroje.
       if (OWN_SOURCE.has(pattern.c) && (!region || krajOf(region, pos.lon, pos.lat) === 'zlk')) continue;
-      const calls = s.map((si, i) => ({ seq: i + 1, name: cityStopName(pattern.c, P.stops[si].name), lat: P.stops[si].lat, lon: P.stops[si].lon, time: hhmm(times[i]) }));
+      const calls = callsOf(P, trip);
       out.push({
         id: `est-${trip.id}-${day}`,
         type: pattern.y === 'r' ? 'tram' : pattern.y === 't' ? 'trolleybus' : 'bus',

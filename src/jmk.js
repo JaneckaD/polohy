@@ -179,9 +179,10 @@ function loadSaved() {
  * context() vrací { P, region, date, min } pro dohledání spojů.
  */
 export class JmkLive {
-  constructor({ onChange, context }) {
+  constructor({ onChange, context, snapshot = null }) {
     this.onChange = onChange;
     this.context = context;
+    this.snapshot = snapshot; // () => Promise<{ at, list } | null>: poslední dávka z proxy pro rychlý start
     this.raw = new Map(); // ID -> { a, at }
     this.built = new Map(); // ID -> vůz
     this.dirty = false;
@@ -208,6 +209,35 @@ export class JmkLive {
     this.connect();
     this.timer = setInterval(() => this.flush(), FLUSH_MS);
     this.flush();
+    // Proud posílá polohy jen jednou za půl minuty: do té doby vozy z poslední dávky, kterou drží proxy.
+    if (this.snapshot && Date.now() - this.lastMessage > 20000) {
+      this.snapshot().then((snap) => {
+        if (!snap?.list?.length || Date.now() - snap.at > STALE_MS) return;
+        this.ingest(snap.list, snap.at);
+      });
+    }
+  }
+
+  /** Zprávy proudu (z proxy nebo uložené) s časem příjmu; novější zprávy o stejném voze nepřepíší. */
+  ingest(list, at) {
+    let changed = false;
+    for (const j of list) {
+      const a = j?.attributes ?? j;
+      if (!a || a.ID == null) continue;
+      if (!Number.isFinite(a.Lat) && j.geometry) {
+        a.Lat = j.geometry.y;
+        a.Lng = j.geometry.x;
+      }
+      const old = this.raw.get(a.ID);
+      if (old && old.at >= at) continue;
+      this.raw.set(a.ID, { a, at });
+      this.built.delete(a.ID);
+      changed = true;
+    }
+    if (changed) {
+      this.dirty = true;
+      this.flush();
+    }
   }
 
   stop() {

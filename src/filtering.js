@@ -18,6 +18,8 @@ export const KINDS = {
 export const REGIONS = {
   zlk: { name: 'Zlínský kraj' },
   jmk: { name: 'Jihomoravský kraj' },
+  olk: { name: 'Olomoucký kraj' },
+  msk: { name: 'Moravskoslezský kraj' },
 };
 
 // Obrys oblasti s kraji (region.json), podle něj se pozná kraj vlaků, regionálních a dálkových autobusů.

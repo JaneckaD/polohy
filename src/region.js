@@ -1,4 +1,5 @@
-// Oblast aplikace (Zlínský a Jihomoravský kraj) a železniční tratě.
+// Oblast aplikace (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) a železniční tratě.
+// Vlaky a koleje jsou zatím jen ve Zlínském a Jihomoravském kraji (properties.rail).
 // Vše mimo oblast je šrafované, tam aplikace zatím nesahá.
 // Obrys oblasti: sjednocené hranice obou krajů z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json
 // (properties.parts = obrysy jednotlivých krajů, podle nich filtr pozná kraj vozu);
@@ -34,7 +35,19 @@ export function regionContains(region, lon, lat) {
   return ring ? ringContains(ring, lon, lat) : true;
 }
 
-/** Kraj oblasti, ve kterém bod leží ('zlk', 'jmk'), nebo null. */
+/** Oblast vlaků a kolejí (Zlínský a Jihomoravský kraj) jako GeoJSON Feature. */
+export function railArea(region) {
+  const ring = region?.properties?.rail;
+  return ring ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } } : region;
+}
+
+/** Obrys jednoho kraje oblasti ('zlk', …) jako GeoJSON Feature. */
+export function krajArea(region, key) {
+  const ring = region?.properties?.parts?.[key];
+  return ring ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } } : region;
+}
+
+/** Kraj oblasti, ve kterém bod leží ('zlk', 'jmk', 'olk', 'msk'), nebo null. */
 export function krajOf(region, lon, lat) {
   const parts = region?.properties?.parts ?? {};
   for (const [key, ring] of Object.entries(parts)) if (ringContains(ring, lon, lat)) return key;

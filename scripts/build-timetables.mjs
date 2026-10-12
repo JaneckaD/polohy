@@ -17,7 +17,7 @@ import { kordisTrips, nationalTrips, knownEvents, KORDIS_GTFS_URL, NATIONAL_GTFS
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
 import { cityStopName, CITIES, CARRIERS, COACHES, lazyRoutes } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
-import { regionContains } from '../src/region.js';
+import { regionContains, railArea } from '../src/region.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
 const ROUTES = new URL('../public/routes.json', import.meta.url);
@@ -241,7 +241,8 @@ if (tt?.rawTrips) {
     const res = await fetch(url, { headers: UA });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
-    const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
+    // Vlaky jen ve Zlínském a Jihomoravském kraji (oblast kolejí).
+    const region = railArea(JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8')));
     const trains = railTrips(bytes, { startDate: tt.startDate, days: tt.days, region, log: (m) => console.log(m) });
     tt.rawTrips.push(...trains);
     // Kontrola: jde mezi sousedními stanicemi v kraji najít cestu po kolejích (kreslení trasy vlaku)?

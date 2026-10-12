@@ -4,17 +4,18 @@ import { Map, Marker, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
-import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRegionCoaches, fetchCoachRoute, proxyConfigured, REFRESH_MS } from './data.js';
+import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRegionCoaches, fetchCoachRoute, fetchJmkSnapshot, proxyConfigured, REFRESH_MS } from './data.js';
 import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
 import { cityTrip, timeTripPosition, isCoach } from './cities.js';
 import { loadRegioJet, regioJetVehicles } from './regiojet.js';
-import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown } from './estimated.js';
+import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown, setLiveTrips } from './estimated.js';
+import { setOdisSegments } from './odis.js';
 import { JmkLive, setJmkSegments } from './jmk.js';
 import { currentTripIndex } from './route-match.js';
 import { renderDetails, renderTrip } from './card.js';
 import { applyVehicleColors, vehicleColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, loadBusRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
-import { drawRegion, loadRegion } from './region.js';
+import { drawRegion, loadRegion, railArea, krajArea } from './region.js';
 import { TRAIN_REFRESH_MS } from './trains.js';
 import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
@@ -38,7 +39,7 @@ const map = new Map({
   style: mapStyle,
   center: ZLIN,
   zoom: 13,
-  minZoom: 7, // celá oblast (Zlínský a Jihomoravský kraj) na jedné obrazovce
+  minZoom: 7, // celá oblast (čtyři moravské a slezské kraje) na jedné obrazovce
   maxZoom: 18,
   attributionControl: false,
   dragRotate: false,
@@ -402,7 +403,7 @@ setTimeout(() => {
       if (rawTrains.length) setTrains(rawTrains);
     })
     .catch(() => {});
-}, 3000);
+}, 0);
 
 function withMarks(list) {
   if (!marksPlanner?.notes) return list;
@@ -432,7 +433,8 @@ function setTrains(list) {
 
 async function refreshTrains() {
   try {
-    setTrains(await fetchRegionTrains(await loadRegion()));
+    // Vlaky jen ve Zlínském a Jihomoravském kraji.
+    setTrains(await fetchRegionTrains(railArea(await loadRegion())));
   } catch (err) {
     // Vlaky jsou doplněk: bez nich mapa MHD funguje dál (např. starší proxy bez /trains).
     console.warn('Vlaky se nepodařilo načíst:', err.message);
@@ -443,7 +445,10 @@ async function refreshTrains() {
 
 async function refreshCities() {
   try {
-    store.setCityBuses(await fetchCityVehicles());
+    const list = await fetchCityVehicles({ P: jmkPlanner, ...pragueNow() });
+    // Spoje ODIS, které jedou živě, se neukážou ještě jednou odhadem podle jízdního řádu.
+    setLiveTrips(new Set(list.filter((v) => v.live === 'odis' && v.tripId != null).map((v) => v.tripId)));
+    store.setCityBuses(list);
   } catch (err) {
     // MHD dalších měst je doplněk (starší proxy bez /mhd): Zlín funguje dál.
     console.warn('MHD dalších měst se nepodařilo načíst:', err.message);
@@ -454,7 +459,8 @@ async function refreshCities() {
 let flixBuses = [];
 async function refreshCoaches() {
   try {
-    flixBuses = await fetchRegionCoaches(await loadRegion());
+    // FlixBus a RegioJet mají vlastní polohy jen ve Zlínském kraji, jinde je odhad podle jízdního řádu (src/estimated.js).
+    flixBuses = await fetchRegionCoaches(krajArea(await loadRegion(), 'zlk'));
   } catch (err) {
     // Dálkové autobusy jsou doplněk (starší proxy bez /flix).
     console.warn('Dálkové autobusy se nepodařilo načíst:', err.message);
@@ -466,7 +472,7 @@ async function refreshRegioJet() {
   const [data, region] = await Promise.all([loadRegioJet(), loadRegion()]);
   const now = new Date();
   const { date, min } = pragueNow();
-  store.setCoaches([...flixBuses, ...regioJetVehicles(data, region, date, min + now.getSeconds() / 60)]);
+  store.setCoaches([...flixBuses, ...regioJetVehicles(data, krajArea(region, 'zlk'), date, min + now.getSeconds() / 60)]);
 }
 
 // Autobusy bez živé polohy: odhad podle jízdního řádu ze stejných dat jako vyhledávání spojení.
@@ -498,13 +504,18 @@ let jmkRegion = null;
 const jmk = new JmkLive({
   onChange: (list) => store.setJmk(list),
   context: () => ({ P: jmkPlanner, region: jmkRegion, ...pragueNow() }),
+  snapshot: fetchJmkSnapshot,
 });
 if (window.__map) window.__dbg = { store, jmk, select, selected: () => selected, planner: () => jmkPlanner };
 setJmkSegments(segmentsOf);
-Promise.all([loadRegion().catch(() => null), new Promise((r) => setTimeout(r, 2500)).then(loadPlanner).catch(() => null)]).then(([region, P]) => {
+setOdisSegments(segmentsOf);
+// Data vyhledávání (spoje vozů IDS JMK a ODIS) hned po prvním vykreslení mapy, ne až po chvíli.
+const afterPaint = new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+Promise.all([loadRegion().catch(() => null), afterPaint.then(loadPlanner).catch(() => null)]).then(([region, P]) => {
   jmkRegion = region;
   jmkPlanner = P;
   jmk.rebuild();
+  if (P && timer) refreshCities();
 });
 
 store.subscribe(render);

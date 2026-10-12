@@ -5,7 +5,7 @@
 //    nebo IDS JMK (stejné časy na stejných místech), se přeskočí.
 // Výstup jsou rawTrips pro buildPlannerFromTrips: { ref, type: 'bus', city, number, mask, times, stops, headsign, operator }.
 import { readGtfsFiles } from './gtfs-lib.mjs';
-import { regionContains } from '../src/region.js';
+import { regionContains, krajOf } from '../src/region.js';
 import { CARRIERS } from '../src/cities.js';
 
 export const KORDIS_GTFS_URL = 'https://kordis-jmk.cz/gtfs/gtfs.zip';
@@ -188,9 +188,12 @@ export function knownEvents(rawTrips) {
   return set;
 }
 
-// Druhy linek v celostátních datech (GTFS route_type): 701 regionální, 202 dálková, 201 mezinárodní.
-// 704 (městská), 800 (trolejbus) a 900 (tramvaj) jsou MHD a zatím je nebereme.
-const NATIONAL_TYPES = new Set(['701', '202', '201']);
+// Druhy linek v celostátních datech (GTFS route_type): 701 regionální, 202 dálková, 201 mezinárodní,
+// 704 městská (autobus), 800 trolejbus, 900 tramvaj. MHD bereme jen v krajích bez vlastních dat
+// (Olomoucký a Moravskoslezský kraj); MHD Zlínského kraje je z IDZK a DSZO, Jihomoravského z KORDIS.
+const NATIONAL_TYPES = new Set(['701', '202', '201', '704', '800', '900']);
+const MHD_TYPES = { 704: 'bus', 800: 'trolleybus', 900: 'tram' };
+const MHD_KRAJE = new Set(['olk', 'msk']);
 
 /** Síť dálkového spoje podle dopravce (FlixBus a RegioJet mají na mapě vlastní vozy). */
 function coachNetwork(agency) {
@@ -217,7 +220,8 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
       const lat = Number(r.stop_lat);
       const lon = Number(r.stop_lon);
       const ok = Number.isFinite(lat) && lat !== 0;
-      stops.set(r.stop_id, { name: jdfStopName(r.stop_name), lat: ok ? lat : null, lon: ok ? lon : null, in: ok && regionContains(region, lon, lat) });
+      const inside = ok && regionContains(region, lon, lat);
+      stops.set(r.stop_id, { name: jdfStopName(r.stop_name), lat: ok ? lat : null, lon: ok ? lon : null, in: inside, kraj: inside ? krajOf(region, lon, lat) : null });
     },
     ...cal.handlers,
   });
@@ -253,7 +257,9 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
 
   const out = [];
   let duplicates = 0;
-  const kinds = { 701: 0, 202: 0, 201: 0 };
+  let otherMhd = 0;
+  const kinds = { 701: 0, 202: 0, 201: 0, 704: 0, 800: 0, 900: 0 };
+  const routeTowns = new Map(); // route_id → četnost obcí zastávek (MHD: „MHD Ostrava“)
   for (const [id, list] of kept) {
     const trip = trips.get(id);
     const route = routes.get(trip.route_id);
@@ -265,19 +271,35 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
     const all = list.map((r) => stops.get(r.stop_id));
     const idx = all.map((s, i) => (s?.in ? i : -1)).filter((i) => i >= 0);
     if (idx.length < 2) continue;
-    // Spoj už je v datech z IDZK nebo IDS JMK: většina zastavení v oblasti sedí časem i místem.
-    const same = idx.filter((i) => known.has(eventKey(dep[i] % 1440, all[i].lat, all[i].lon))).length;
-    if (same >= idx.length * 0.6) {
-      duplicates++;
-      continue;
+    const mhd = MHD_TYPES[route.route_type];
+    if (mhd) {
+      // MHD jen v Olomouckém a Moravskoslezském kraji (jinde ji máme z IDZK, DSZO a KORDIS).
+      if (idx.filter((i) => MHD_KRAJE.has(all[i].kraj)).length * 2 < idx.length) {
+        otherMhd++;
+        continue;
+      }
+      if (!routeTowns.has(route.route_id)) routeTowns.set(route.route_id, new Map());
+      const towns = routeTowns.get(route.route_id);
+      for (const i of idx) {
+        const town = all[i].name.split(',')[0].trim();
+        towns.set(town, (towns.get(town) ?? 0) + 1);
+      }
+    } else {
+      // Spoj už je v datech z IDZK nebo IDS JMK: většina zastavení v oblasti sedí časem i místem.
+      const same = idx.filter((i) => known.has(eventKey(dep[i] % 1440, all[i].lat, all[i].lon))).length;
+      if (same >= idx.length * 0.6) {
+        duplicates++;
+        continue;
+      }
     }
     const agency = agencies.get(route.agency_id) ?? '';
     const regional = route.route_type === '701';
     kinds[route.route_type]++;
     out.push({
+      ...(mhd ? { route: route.route_id } : {}),
       ref: route.route_short_name.trim(),
-      type: 'bus',
-      city: regional ? 'other' : coachNetwork(agency),
+      type: mhd ?? 'bus',
+      city: mhd ? 'town' : regional ? 'other' : coachNetwork(agency),
       number: (trip.trip_short_name ?? '').trim().split(/\s+/).at(-1) || null,
       mask,
       times: idx.map((i) => dep[i]),
@@ -287,7 +309,16 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
       international: route.route_type === '201',
     });
   }
+  // MHD: město podle nejčastější obce zastávek linky („MHD Ostrava“).
+  for (const t of out) {
+    if (!t.route) continue;
+    const towns = [...(routeTowns.get(t.route) ?? [])].sort((a, b) => b[1] - a[1]);
+    if (towns.length) t.operator = `MHD ${towns[0][0]}`;
+    delete t.route;
+  }
   log(`Celostátní data: regionální ${kinds[701]}, dálkové ${kinds[202]}, mezinárodní ${kinds[201]} spojů v oblasti; už v datech (přeskočeno) ${duplicates}${regrouped ? `, rozdělené spoje ${regrouped}` : ''}.`);
+  const mhdOut = out.filter((t) => t.city === 'town');
+  log(`MHD Olomouckého a Moravskoslezského kraje: ${mhdOut.length} spojů (autobusy ${kinds[704]}, trolejbusy ${kinds[800]}, tramvaje ${kinds[900]}); MHD jinde přeskočeno ${otherMhd}. Města: ${[...new Set(mhdOut.map((t) => t.operator))].join(', ')}`);
   const byOperator = {};
   for (const t of out) byOperator[t.operator] = (byOperator[t.operator] ?? 0) + 1;
   log(`Dopravci: ${Object.entries(byOperator).sort((a, b) => b[1] - a[1]).map(([o, n]) => `${o} ${n}`).join(', ')}`);

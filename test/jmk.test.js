@@ -3,20 +3,29 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { identifyTrain, completeTrains } from '../src/train-trip.js';
 import { parseTrain } from '../src/trains.js';
-import { krajOf, regionContains } from '../src/region.js';
+import { krajOf, regionContains, railArea } from '../src/region.js';
 import { describe as describeVehicle, matchesFilter, setFilterRegion, normalizeFilter } from '../src/filtering.js';
 
 const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
 
-test('oblast: Zlínský a Jihomoravský kraj, kraj podle polohy', () => {
+test('oblast: Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj, kraj podle polohy', () => {
   assert.ok(regionContains(region, 17.6667, 49.2265)); // Zlín
   assert.ok(regionContains(region, 16.6068, 49.1951)); // Brno
   assert.ok(regionContains(region, 16.0487, 48.8555)); // Znojmo
-  assert.ok(!regionContains(region, 17.2509, 49.5938)); // Olomouc
+  assert.ok(regionContains(region, 17.2509, 49.5938)); // Olomouc
+  assert.ok(regionContains(region, 18.2625, 49.8346)); // Ostrava
   assert.ok(!regionContains(region, 15.5870, 49.3961)); // Jihlava
+  assert.ok(!regionContains(region, 16.2, 49.95)); // Svitavy (Pardubický kraj)
   assert.equal(krajOf(region, 17.6667, 49.2265), 'zlk');
   assert.equal(krajOf(region, 16.6068, 49.1951), 'jmk');
-  assert.equal(krajOf(region, 17.2509, 49.5938), null);
+  assert.equal(krajOf(region, 17.2509, 49.5938), 'olk');
+  assert.equal(krajOf(region, 18.2625, 49.8346), 'msk');
+  // Vlaky a koleje zatím jen ve Zlínském a Jihomoravském kraji.
+  const rail = railArea(region);
+  assert.ok(regionContains(rail, 17.6667, 49.2265));
+  assert.ok(regionContains(rail, 16.6068, 49.1951));
+  assert.ok(!regionContains(rail, 17.2509, 49.5938));
+  assert.ok(!regionContains(rail, 18.2625, 49.8346));
 });
 
 test('filtr Kraj: vlak v Brně patří do Jihomoravského kraje, DSZO do Zlínského', () => {

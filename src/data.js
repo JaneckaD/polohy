@@ -13,6 +13,20 @@ const PROXY = (import.meta.env.VITE_DSZO_PROXY || (import.meta.env.DEV ? '/dszo'
 
 export const proxyConfigured = Boolean(PROXY);
 
+/**
+ * Poslední dávka poloh IDS JMK z proxy (proud je posílá jen jednou za půl minuty, proxy si je drží):
+ * mapa je ukáže hned po startu. { at, list: [zprávy proudu] } nebo null (starší proxy bez /jmk).
+ */
+export async function fetchJmkSnapshot() {
+  if (!PROXY) return null;
+  try {
+    const res = await fetch(`${PROXY}/jmk`, { cache: 'no-store' });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 async function getText(path) {
   const res = await fetch(`${PROXY}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
@@ -46,9 +60,9 @@ export async function fetchTrip(v) {
 }
 
 /** Vozy MHD Kroměříže a Valašského Meziříčí (mapa IDZK přes proxy). */
-export function fetchCityVehicles() {
+export function fetchCityVehicles(ctx) {
   if (!PROXY) return Promise.resolve([]);
-  return fetchCityBuses(PROXY);
+  return fetchCityBuses(PROXY, ctx);
 }
 
 /** Dálkové autobusy (FlixBus) uvnitř kraje. */

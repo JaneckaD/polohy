@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { railArea } from '../src/region.js';
 import { krovakToWgs } from '../src/krovak.js';
 import { parseTrain, trainKind, trainOperator } from '../src/trains.js';
 
-const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url)));
+// Vlaky jen v oblasti kolejí (Zlínský a Jihomoravský kraj).
+const region = railArea(JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url))));
 
 test('S-JTSK → WGS84 sedí na metr (porovnáno s PROJ)', () => {
   const [lon, lat] = krovakToWgs(-524630.2005866765, -1187194.2690372884);

@@ -105,7 +105,18 @@ test('proxy /trains: když mapa vlaků neodpoví, vezme vlaky z map IDZK a IDS J
 test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců z mapy IDZK', async () => {
   let req = null;
   let km = null;
+  let odis = null;
   const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
+    if (String(url).includes('/odis/')) {
+      odis = { url: String(url), init };
+      return Response.json({
+        transmitters: [
+          { t: 'H', c: 0, cn: '12|12|132|||Hrabůvka,Poliklinika|157|1119|Hranečník|Dubina|1|Ev. č. 1721|0|0|0|0|0|0|0|0|0|0', x: 49.78, y: 18.26, ico: 'a_180.png', ds: '$z2~min.~37~s', cr: 'DPO', cat: 3 },
+          { t: 'T', c: 681, cn: 'Os 3319|S3|3319|Bohumín|360|||||Bohumín|1|', x: 49.9, y: 18.36, ico: 'a_30.png', ds: '', cr: 'České dráhy', cat: 1 },
+          { t: 'E', cn: 1066, x: 49.5, y: 18.2, cat: 0 },
+        ],
+      });
+    }
     if (String(url).includes('kromeriz')) {
       km = { url: String(url), init };
       return Response.json({ success: true, data: [{ vid: 2702678, line_number: 4, connection_no: 23, time_difference: '-00:05:55', gps_latitude: 49.29, gps_longitude: 17.38, current_stop_name: 'Hygienická stanice', destination_name: 'Nádraží' }] });
@@ -138,6 +149,12 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   assert.equal(JSON.parse(km.init.body).key.length, 36);
   assert.equal(data.km.length, 1);
   assert.equal(data.km[0].line_number, 4);
+  // Mapa ODIS: jen autobusy, trolejbusy a tramvaje (ne vlaky a cizí systémy), kód zkrácený na 12 polí.
+  assert.equal(odis.url, 'https://mpvnet.cz/odis/map/mapData');
+  assert.equal(odis.init.headers.Origin, 'https://mpvnet.cz');
+  assert.equal(data.odis.length, 1);
+  assert.equal(data.odis[0].cn, '12|12|132|||Hrabůvka,Poliklinika|157|1119|Hranečník|Dubina|1|Ev. č. 1721');
+  assert.equal(data.odis[0].cat, 3);
   fetchMock.mock.restore();
 });
 
@@ -147,7 +164,7 @@ test('proxy /mhd: výpadek mapy Kroměříže neshodí ostatní města', async (
   );
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/mhd'));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { vehicles: [], km: [] });
+  assert.deepEqual(await res.json(), { vehicles: [], km: [], odis: [] });
   fetchMock.mock.restore();
 });
 
@@ -192,5 +209,36 @@ test('proxy /flix/route: trasa spoje jen pro platné id', async () => {
   const fetchMock = mock.method(globalThis, 'fetch', async () => Response.json({ segments: [{ segment_sequence: 1, polyline: '_p~iF~ps|U_ulLnnqC' }] }));
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/flix/route?id=11111111-1111-1111-1111-111111111111'));
   assert.deepEqual(await res.json(), { segments: [{ seq: 1, line: '_p~iF~ps|U_ulLnnqC' }] });
+  fetchMock.mock.restore();
+});
+
+test('proxy /jmk: poslední dávka proudu IDS JMK, zprávy beze změny', async () => {
+  const listeners = {};
+  const sent = [];
+  const ws = {
+    accept() {},
+    send: (m) => sent.push(m),
+    close() {},
+    addEventListener: (type, fn) => (listeners[type] = fn),
+  };
+  const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.equal(String(url), 'https://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe');
+    assert.equal(init.headers.Upgrade, 'websocket');
+    setTimeout(() => {
+      listeners.message({ data: '{"attributes":{"ID":1,"LineName":"4"}}' });
+      listeners.message({ data: '{"attributes":{"ID":2,"LineName":"12"}}' });
+    }, 10);
+    return { status: 101, webSocket: ws };
+  });
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil() {} });
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.ok(Date.now() - data.at < 10000);
+  assert.deepEqual(data.list.map((m) => m.attributes.ID), [1, 2]);
+  assert.match(JSON.parse(sent[0]).filter.outFields, /LastStopID/);
+  // Druhý dotaz hned potom: z paměti, bez nového spojení.
+  const calls = fetchMock.mock.callCount();
+  assert.equal((await (await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil() {} })).json()).list.length, 2);
+  assert.equal(fetchMock.mock.callCount(), calls);
   fetchMock.mock.restore();
 });

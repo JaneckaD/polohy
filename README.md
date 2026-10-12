@@ -25,7 +25,15 @@ a jízdní řád spoje s časy.
   `wss://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe` – tramvaje, trolejbusy a autobusy
   MHD Brna, MHD ostatních měst a regionální linky, každý vůz asi po 30 s. Prohlížeč se připojuje přímo (bez proxy),
   spoj se dohledá v jízdních řádech GTFS KORDIS podle linky, poslední projeté a cílové zastávky
-  ([`src/jmk.js`](src/jmk.js)).
+  ([`src/jmk.js`](src/jmk.js)). Proud posílá všechny vozy najednou jednou za půl minuty, proto si proxy
+  poslední dávku drží (`/jmk`) a aplikace ji ukáže hned po startu.
+- **Moravskoslezský kraj (ODIS) živě:** veřejná mapa poloh vozidel ODIS ([mpvnet.cz/odis](https://mpvnet.cz/odis/map))
+  přes proxy `/mhd` (pole `odis`): regionální autobusy a MHD měst včetně tramvají a trolejbusů Ostravy. Spoj se dohledá
+  v celostátních jízdních řádech podle licence linky a čísla spoje ([`src/odis.js`](src/odis.js)).
+- **Olomoucký a Moravskoslezský kraj, jízdní řády:** celostátní jízdní řády CIS JŘ v GTFS
+  ([data.jr.ggu.cz](https://data.jr.ggu.cz)) – regionální linky a MHD měst (autobusy, trolejbusy, tramvaje).
+  Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou zatím jen ve Zlínském
+  a Jihomoravském kraji (`properties.rail` v `region.json`).
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
   minimalistickým stylem v [`src/style.js`](src/style.js): bílý podklad, světlé ulice, jen názvy obcí.
 

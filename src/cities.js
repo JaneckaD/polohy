@@ -1,6 +1,7 @@
 // MHD dalších měst kraje a regionální autobusy: polohy vozů z mapy IDZK (přes proxy /mhd), jízdní řády z GTFS IDZK.
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
+import { parseOdis } from './odis.js';
 
 // Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
@@ -19,6 +20,9 @@ export const CITIES = {
   // a MHD ostatních měst kraje (město je u spoje jako „MHD Znojmo“).
   brno: { name: 'Brno', licence: null, jmk: true, ...MHD },
   jmkmhd: { name: null, licence: null, jmk: true, ...MHD },
+  // MHD měst Olomouckého a Moravskoslezského kraje (jízdní řády CIS JŘ, město je u spoje jako „MHD Ostrava“),
+  // tramvaje, trolejbusy a autobusy; živě z mapy ODIS, jinak odhadem podle jízdního řádu.
+  town: { name: null, licence: null, lazy: true, ...MHD },
 };
 
 /**
@@ -55,7 +59,7 @@ export const isCoach = (key) => key in COACHES;
 /** Síť IDS JMK (živé polohy z proudu KORDIS): regionální linky, MHD Brna a MHD ostatních měst. */
 export const isJmk = (key) => key === 'jmk' || !!CITIES[key]?.jmk;
 /** Trasy po silnicích jsou v routes-bus.json (načítá se až při potřebě), ne v routes.json. */
-export const lazyRoutes = (key) => isCarrier(key) || isCoach(key) || !!CITIES[key]?.jmk;
+export const lazyRoutes = (key) => isCarrier(key) || isCoach(key) || !!CITIES[key]?.jmk || !!CITIES[key]?.lazy;
 
 /** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“, „FlixBus“. */
 export const networkLabel = (key) => (CITIES[key] ? (CITIES[key].name ? `MHD ${CITIES[key].name}` : 'MHD') : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
@@ -173,11 +177,12 @@ export function parseKmBus(b) {
   };
 }
 
-export async function fetchCityBuses(proxy) {
+/** Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS); ctx = { P, date, min } pro spoje ODIS. */
+export async function fetchCityBuses(proxy, ctx = {}) {
   const res = await fetch(`${proxy}/mhd`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`/mhd: HTTP ${res.status}`);
   const data = await res.json();
-  return [...(data.vehicles ?? []).map(parseCityBus), ...(data.km ?? []).map(parseKmBus)].filter(Boolean);
+  return [...(data.vehicles ?? []).map(parseCityBus), ...(data.km ?? []).map(parseKmBus), ...(data.odis ?? []).map((t) => parseOdis(t, ctx))].filter(Boolean);
 }
 
 /**

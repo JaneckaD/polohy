@@ -5,7 +5,10 @@
 //          když mapa vlaků neodpoví, vlaky z map IDZK a IDS JMK, jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
+//       Navíc (pole odis) vozy z mapy ODIS (Moravskoslezský kraj: regionální autobusy a MHD měst včetně Ostravy).
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
+// /jmk: poslední dávka živých poloh IDS JMK (otevřená data KORDIS JMK, CC BY). Proud je posílá jen jednou
+//       za půl minuty, proxy si poslední dávku drží, aby aplikace měla vozy hned po startu.
 
 const UPSTREAM = 'https://www.dszo.cz';
 const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php', '/online/spoj.php']);
@@ -188,14 +191,37 @@ async function kromerizBuses() {
   }
 }
 
+// Mapa ODIS (Moravskoslezský kraj) běží na stejné platformě jako mapa IDZK.
+const ODIS_URL = 'https://mpvnet.cz/odis/map/mapData';
+const ODIS_BODY = JSON.stringify({ w: 16.8, s: 49.3, e: 18.95, n: 50.5, zoom: 13, showStops: false, mapFilterId: null });
+
+async function odisBuses() {
+  try {
+    const res = await fetch(ODIS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
+      body: ODIS_BODY,
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    // Jen autobusy, trolejbusy a tramvaje (vlaky bere aplikace odjinud); z kódu stačí prvních 12 polí.
+    return (data.transmitters ?? [])
+      .filter((t) => t.t === 'H' && t.cat !== 1)
+      .map(({ cn, x, y, ico, ds, cr, cat, t }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, cr, cat, t }));
+  } catch {
+    return []; // výpadek ODIS nesmí shodit ostatní
+  }
+}
+
 async function cityBuses() {
-  const [upstream, km] = await Promise.all([
+  const [upstream, km, odis] = await Promise.all([
     fetch(MPV_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
       body: MPV_BODY,
     }),
     kromerizBuses(),
+    odisBuses(),
   ]);
   if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
   const data = await upstream.json();
@@ -203,7 +229,7 @@ async function cityBuses() {
     .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)) || (t.cat === 2 && CARRIERS.test(t.cr ?? '')))
     // Z kódu stačí prvních 12 polí (linka, spoj, zastávky, cíl, nízkopodlažnost, SPZ), zbytek jsou nuly.
     .map(({ cn, x, y, ico, ds, tm, cr }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, tm, cr }));
-  return new Response(JSON.stringify({ vehicles, km }), {
+  return new Response(JSON.stringify({ vehicles, km, odis }), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });
 }
@@ -294,13 +320,94 @@ async function flixRoute(id) {
   }
 }
 
+// Živé polohy IDS JMK: veřejný proud KORDIS JMK (WebSocket). Proud posílá všechny vozy najednou zhruba
+// jednou za 30 s; dávku si držíme (v paměti a v cache Cloudflaru) a obnovujeme na pozadí.
+const JMK_STREAM = 'https://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe';
+const JMK_FIELDS = 'ID,VType,LineName,Lat,Lng,Bearing,Course,LF,Delay,LastStopID,FinalStopID,IsInactive,TimeUpdated';
+const JMK_LAST = 'https://dszo-proxy.internal/jmk-last';
+let jmkLast = null; // { at, body }
+let jmkPending = null;
+
+/** Počká na jednu dávku proudu (nejvýš 28 s, waitUntil Cloudflaru dává 30 s) a vrátí ji jako JSON { at, list }. Zprávy se neparsují. */
+async function collectJmk() {
+  const res = await fetch(JMK_STREAM, { headers: { Upgrade: 'websocket' } });
+  const ws = res.webSocket;
+  if (!ws) throw new Error(`JMK stream: HTTP ${res.status}`);
+  ws.accept();
+  ws.send(JSON.stringify({ filter: { outFields: JMK_FIELDS } }));
+  const messages = await new Promise((resolve) => {
+    const list = [];
+    let quiet = null;
+    const done = () => {
+      clearTimeout(quiet);
+      clearTimeout(hard);
+      try {
+        ws.close();
+      } catch {
+        /* už zavřené */
+      }
+      resolve(list);
+    };
+    const hard = setTimeout(done, 28000);
+    ws.addEventListener('message', (e) => {
+      if (typeof e.data !== 'string') return;
+      list.push(e.data);
+      // Dávka přijde během chvilky: po 1,2 s ticha je celá.
+      clearTimeout(quiet);
+      quiet = setTimeout(done, 1200);
+    });
+    ws.addEventListener('close', done);
+    ws.addEventListener('error', done);
+  });
+  if (!messages.length) throw new Error('JMK stream: žádná data');
+  const at = Date.now();
+  const body = `{"at":${at},"list":[${messages.join(',')}]}`;
+  jmkLast = { at, body };
+  await globalThis.caches?.default
+    ?.put(JMK_LAST, new Response(body, { headers: { 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'max-age=300' } }))
+    .catch(() => {});
+  return jmkLast;
+}
+
+function refreshJmk() {
+  jmkPending ??= collectJmk()
+    .catch(() => null)
+    .finally(() => {
+      jmkPending = null;
+    });
+  return jmkPending;
+}
+
+async function jmkSnapshot(ctx) {
+  if (!jmkLast) {
+    const cached = await globalThis.caches?.default?.match(JMK_LAST).catch(() => null);
+    if (cached) {
+      const body = await cached.text();
+      const at = Number(/"at":(\d+)/.exec(body)?.[1]) || 0;
+      if (!jmkLast || at > jmkLast.at) jmkLast = { at, body };
+    }
+  }
+  const age = jmkLast ? Date.now() - jmkLast.at : Infinity;
+  // Dávka starší než 25 s se obnoví na pozadí; odpověď je hned ta poslední (do 3 minut).
+  if (age > 25000) {
+    const p = refreshJmk();
+    if (age > 180000) await p;
+    else ctx?.waitUntil?.(p);
+  }
+  if (!jmkLast || Date.now() - jmkLast.at > 180000) return new Response('No data', { status: 503, headers: CORS });
+  return new Response(jmkLast.body, {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+  });
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/trains') return trains();
     if (request.method === 'GET' && url.pathname === '/mhd') return cityBuses();
+    if (request.method === 'GET' && url.pathname === '/jmk') return jmkSnapshot(ctx);
     if (request.method === 'GET' && url.pathname === '/flix') return flixBuses();
     if (request.method === 'GET' && url.pathname === '/flix/route') return flixRoute(url.searchParams.get('id'));
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {
