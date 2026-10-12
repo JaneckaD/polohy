@@ -1,0 +1,17 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --silent
+      - run: |
+          sudo apt-get update -qq >/dev/null; sudo apt-get install -y -qq poppler-utils >/dev/null
+          node scripts/probe-marks.mjs
