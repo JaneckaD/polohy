@@ -27,7 +27,7 @@ test('IDS JMK: regionální linky, MHD Brna (i tramvaje) a MHD jiných měst', (
     'stop_times.txt': [
       'trip_id,arrival_time,departure_time,stop_id,stop_sequence',
       'T1,08:00:00,08:00:00,U1Z1,1', 'T1,08:10:00,08:10:00,U1Z1,2',
-      'T2,08:00:00,08:00:00,U1Z1,1', 'T2,08:40:00,08:40:00,B,2',
+      'T2,08:00:00,08:00:00,U1Z1,1', 'T2,08:40:00,09:05:00,B,2',
       'T3,08:00:00,08:00:00,C,1', 'T3,08:05:00,08:05:00,D,2',
       'T4,08:00:00,08:00:00,U1Z1,1', 'T4,08:05:00,08:05:00,U1Z1,2',
     ],
@@ -40,6 +40,7 @@ test('IDS JMK: regionální linky, MHD Brna (i tramvaje) a MHD jiných měst', (
   assert.deepEqual(by['104'].stops.map((s) => s[0]), ['Brno, Mendlovo náměstí', 'Pohořelice, nám.']);
   assert.deepEqual(by['104'].nodes, [1, null], 'uzel zastávky z U1Z1');
   assert.equal(by['104'].mask, '111');
+  assert.deepEqual(by['104'].times, [480, 520], 'v cíli příjezd, ne odjezd další jízdy');
   assert.equal(by['104'].operator, undefined, 'KORDIS není dopravce');
   assert.equal(by['44'].city, 'brno');
   assert.equal(by['1'].city, 'brno');

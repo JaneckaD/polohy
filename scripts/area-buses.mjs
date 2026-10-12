@@ -60,7 +60,8 @@ function calendars(startDate, days) {
 
 /** Časy v minutách popořadě (po půlnoci dál než 24:00). */
 function minutes(rows) {
-  const dep = rows.map((r) => toMinutes(r.departure_time) ?? toMinutes(r.arrival_time));
+  // V cílové zastávce příjezd: odjezd tam bývá až další jízda vozu (tramvaj čeká na konečné).
+  const dep = rows.map((r, i) => (i === rows.length - 1 ? toMinutes(r.arrival_time) ?? toMinutes(r.departure_time) : toMinutes(r.departure_time) ?? toMinutes(r.arrival_time)));
   if (dep.some((t) => t == null)) return null;
   for (let i = 1; i < dep.length; i++) while (dep[i] < dep[i - 1]) dep[i] += 1440;
   return dep;

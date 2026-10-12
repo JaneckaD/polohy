@@ -70,7 +70,7 @@ const CULL_MS = 200; // jak často během posunu mapy přepočítat, které zna�
 
 // Hodně vozů ve výřezu (oddálená mapa, celé Brno): místo prvků stránky malé tečky kreslené mapou (WebGL),
 // které posun mapy nezpomalí. Kolečka s čísly se vrátí po přiblížení.
-const DOT_LIMIT = 300; // nejvíc koleček (prvků stránky) ve výřezu
+const DOT_LIMIT = 250; // nejvíc koleček (prvků stránky) ve výřezu
 const DOT_MAX_ZOOM = 14; // od tohoto přiblížení vždy kolečka
 const SRC_DOTS = 'vehicle-dots';
 
