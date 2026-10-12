@@ -11,10 +11,10 @@ jobs:
           set +e
           mkdir /tmp/j; cd /tmp/j
           curl -s -m 20 'https://mapa.idsjmk.cz/' -H 'User-Agent: Mozilla/5.0' -o index.html
-          grep -n '<script' index.html | cut -c1-250
-          for u in $(grep -oE '<script[^>]+src="[^"]+"' index.html | sed -E 's/.*src="([^"]+)"/\1/' | grep -v '/lib/'); do
-            case $u in http*) url=$u;; /*) url="https://mapa.idsjmk.cz$u";; *) url="https://mapa.idsjmk.cz/$u";; esac
+          sed -n '640,700p' index.html | cut -c1-300
+          for u in $(sed -n '640,$p' index.html | grep -oE "(from|import)\s*['\"][^'\"]+['\"]" | grep -oE "['\"][^'\"]+['\"]" | tr -d "'\""); do
+            case $u in http*) url=$u;; /*) url="https://mapa.idsjmk.cz$u";; *) url="https://mapa.idsjmk.cz/${u#./}";; esac
             echo "=== $url"; curl -s -m 20 "$url" -o b.js; wc -c b.js
-            grep -oE '.{0,160}(api/|Authorization|apikey|apiKey|ApiKey|X-Api|token|Token|vehicles|signalr|hub)[^;]{0,200}' b.js | head -40
+            grep -oE "(from|import)\s*['\"][^'\"]+['\"]" b.js | head -30
+            grep -oE '.{0,200}(api/|Authorization|apikey|apiKey|ApiKey|X-Api|token|Token|vehicles|signalr|hub|fetch\()[^;]{0,250}' b.js | head -40
           done
-          grep -n -iE 'key|token|api' index.html | cut -c1-250 | head -20
