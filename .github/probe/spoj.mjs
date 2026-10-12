@@ -42,3 +42,4 @@ setOdisUp(vs.length > 20);
 const est = estimatedVehicles(P, region, date, min);
 console.log(`odhad: ${est.length} vozů`, by((v) => `${v.city}/${v.type}/${krajOf(region, v.lon, v.lat)}`, est));
 const towns = {}; for (const t of P.trips) if (t.pattern.c === 'town') towns[t.pattern.o] = (towns[t.pattern.o] ?? 0) + 1; console.log('MHD měst', JSON.stringify(towns).slice(0, 1500));
+// 1791827675
