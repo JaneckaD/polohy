@@ -20,7 +20,7 @@ for (const [name, vp] of [['desktop', { width: 1440, height: 900 }], ['mobile', 
   console.log(name, 'z15 markers', types.slice(0, 600));
   const t = await p.$('.vehicle[data-type=tram]') ?? await p.$('.vehicle[data-type=bus]');
   if (t) {
-    await t.click();
+    await t.dispatchEvent('click');
     await p.waitForTimeout(4000);
     console.log(name, 'sheet', (await p.textContent('#sheet')).replace(/\s+/g, ' ').slice(0, 500));
   }
