@@ -5,11 +5,22 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - run: |
-          set +e
-          W=https://dszo-proxy.djanecka6.workers.dev
-          for p in /trains /mhd /flix; do echo "== $p"; curl -s -m 40 -w '\nHTTP %{http_code} %{size_download}\n' "$W$p" | tail -c 700; done
-          echo "== SŽ direct"
-          curl -s -m 40 -w '\nHTTP %{http_code} %{size_download}\n' -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load' | tail -c 500
+          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > s.mjs <<'J'
+          import { chromium } from 'playwright';
+          const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Europe/Prague' }); const p = await ctx.newPage();
+          p.on('console', m => console.log('console', m.type(), m.text().slice(0, 300)));
+          p.on('pageerror', e => console.log('pageerror', e.message, e.stack?.slice(0, 500)));
+          p.on('response', r => { if (/workers\.dev/.test(r.url())) console.log('RES', r.status(), r.url()); });
+          await p.goto('https://janeckad.github.io/polohy/', { waitUntil: 'networkidle' });
+          await p.waitForTimeout(12000);
+          const n = await p.locator('.vehicle').evaluateAll(els => els.map(e => e.dataset.type + ':' + e.textContent));
+          console.log('markers', n.length, JSON.stringify(n));
+          console.log('status', await p.locator('#status').textContent());
+          await p.screenshot({ path: 'shot.png' });
+          await b.close();
+          J
+          node s.mjs
