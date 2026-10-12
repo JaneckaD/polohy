@@ -184,14 +184,15 @@ input:focus-visible {
   min-width: 0;
 }
 
-/* Logo: stejná ikona jako aplikace na ploše (tečka se šipkou), vektorově, vystředěná v pilulce. */
+/* Logo vlevo nahoře: česká vlajka v kolečku (vektorově, ostrá v každém rozlišení), vystředěná v pilulce.
+   Ikona aplikace na ploše a v kartě prohlížeče je jiná (tečka se šipkou). */
 .brand-logo {
   display: block;
   width: 32px;
   height: 32px;
   flex: none;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(11, 42, 91, 0.3);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(14, 45, 106, 0.3);
 }
 
 .brand-name {
