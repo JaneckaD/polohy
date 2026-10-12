@@ -114,7 +114,7 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
     return Response.json({
       transmitters: [
         { cn: '946001|1|58|Valašské Meziříčí,Tesla I|130|Valašské Meziříčí,sklárny|94|1116|Valašské Meziříčí,stan.MHD u náměstí|Krhová,točna|1|2TD5812', x: 49.47, y: 17.98, ico: 'a_0.png', ds: '$z1~min.~34~s', tm: '18:36:45', cr: 'TQM–MHDVM', cat: 2 },
-        { cn: '823150|150|234|Kroměříž,Bílany,rozc.', x: 49.3, y: 17.4, ico: 'a_0.png', ds: '', tm: '', cr: 'ZDS-Psota', cat: 2 },
+        { cn: '823150|150|234|Kroměříž,Bílany,rozc.', x: 49.3, y: 17.4, ico: 'a_0.png', ds: '', tm: '', cr: 'Neznámý dopravce', cat: 2 },
         { cn: '805302|302|12|Uherské Hradiště,Mařatice', x: 49.07, y: 17.46, ico: 'a_0.png', ds: '', tm: '', cr: 'ZDS-Psota', cat: 2 },
         { cn: '802371|371|202|Tupesy|-19|Velehrad,náměstí|0|1317|Buchlovice,náměstí|Uherské Hradiště,aut.nádr.|1|7Z50806|0|0|0|0', x: 49.1, y: 17.39, ico: 'a_60.png', ds: '$p-0~min.~19~s', tm: '21:55:02', cr: 'ČSAD BUS UH', cat: 2 },
         { cn: '773165|165|267|Napajedla,Chmelnice', x: 49.17, y: 17.51, ico: 'a_210.png', ds: '', tm: '', cr: 'ARRIVA, pr. Zlín', cat: 2 },
