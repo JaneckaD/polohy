@@ -46,6 +46,9 @@ jobs:
       - run: npm run timetables
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      - run: npm run regiojet
+        env:
+          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
       - run: npm run build
         env:
           VITE_DSZO_PROXY: ${{ vars.DSZO_PROXY }}

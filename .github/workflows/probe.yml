@@ -5,26 +5,26 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: |
-          set +e
-          H='-H X-Lang:cs -H X-Currency:CZK'
-          echo "== route simple full"
-          curl -s -m 20 $H "https://brn-ybus-pubapi.sa.cz/restapi/routes/8729095225/simple?fromStationId=17655001&toStationId=10204002" | python3 -c "
-          import json,sys; d=json.load(sys.stdin); d.pop('priceClasses',None); print(json.dumps(d,ensure_ascii=False)[:3000])"
-          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
-          cat > s.mjs <<'J'
-          import { chromium } from 'playwright';
-          const b = await chromium.launch(); const p = await b.newPage();
-          p.on('response', async r => { if (/sa\.cz/.test(r.url())) { let s=''; try { s = (await r.text()).slice(0,2500); } catch {} console.log('RES', r.request().method(), r.status(), r.url().slice(0,250), '\n', s); } });
-          for (const u of ['https://regiojet.cz/stations/17655001', 'https://regiojet.cz/stations/17902002']) {
-            console.log('=== OPEN', u);
-            await p.goto(u, { waitUntil: 'networkidle', timeout: 60000 }).catch(e => console.log('goto', e.message));
-            await p.waitForTimeout(5000);
-            const txt = await p.locator('body').innerText().catch(() => '');
-            console.log('TEXT', txt.slice(0, 2500).replace(/\n+/g, ' | '));
-          }
-          await b.close();
-          J
-          node s.mjs
+          curl -s -H 'X-Lang: cs' https://brn-ybus-pubapi.sa.cz/restapi/consts/locations | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin); c=d[0]['cities'][0]; print(json.dumps(c,ensure_ascii=False)[:800])
+          for co in d:
+            for c in co['cities']:
+              if c['name'] in ('Olomouc','Ostrava','Přerov','Karviná','Frýdek-Místek'): print(c['id'], c['name'])"
+          node scripts/build-regiojet.mjs
+          python3 -c "
+          import json; d=json.load(open('public/rj.json')); print('conns',len(d['conns']),'stations',len(d['stations']),'size',len(json.dumps(d)))
+          for c in d['conns'][:40]: print(c['id'],c['line'],c['from'],'->',c['to'],c['sym'],c['codes'][:3],[(d['stations'][str(s)][0],a,b) for s,a,b in c['stops']])"
+          D=$(date -u +%Y-%m-%d)
+          for p in "17653000 10202002" "10202002 17653000"; do set -- $p
+            curl -s -H 'X-Lang: cs' -H 'X-Currency: CZK' "https://brn-ybus-pubapi.sa.cz/restapi/routes/search/simple?tariffs=REGULAR&toLocationType=CITY&toLocationId=$2&fromLocationType=CITY&fromLocationId=$1&departureDate=$D" | python3 -c "
+          import json,sys
+          for r in json.load(sys.stdin).get('routes',[]): print(r['id'], r['departureTime'], r.get('predictedDepartureTime'), r['arrivalTime'], r.get('predictedArrivalTime'), r.get('delay'))"
+          done

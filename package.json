@@ -9,7 +9,8 @@
     "test": "node --test",
     "routes": "node scripts/build-routes.mjs",
     "timetables": "node scripts/build-timetables.mjs",
-    "rails": "node scripts/build-rails.mjs"
+    "rails": "node scripts/build-rails.mjs",
+    "regiojet": "node scripts/build-regiojet.mjs"
   },
   "repository": {
     "type": "git",
