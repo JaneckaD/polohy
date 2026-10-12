@@ -1,0 +1,61 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          set +e
+          echo "=== mpvnet"
+          curl -s -m 30 -X POST 'https://mpvnet.cz/zlin/map/mapData' -H 'Origin: https://mpvnet.cz' -H 'Content-Type: application/json; charset=utf-8' \
+            -d '{"w":16.9,"s":48.8,"e":18.6,"n":49.7,"zoom":13,"showStops":false,"mapFilterId":null}' -o m.json
+          python3 -c "
+          import json,collections
+          tr=json.load(open('m.json'))['transmitters']; print('n',len(tr))
+          c=collections.Counter((t['cat'],str(t.get('cn','')).split('|')[0][:3],t.get('cr')) for t in tr)
+          [print(k,v) for k,v in sorted(c.items(),key=str)]
+          [print('KM',json.dumps(t,ensure_ascii=False)[:250]) for t in tr if str(t.get('cn','')).startswith('775')]
+          "
+          echo "=== IDOS"
+          curl -s -m 30 -A 'Mozilla/5.0' https://idos.cz/vlakyautobusymhdvse/spojeni/ -o idos.html; wc -c idos.html
+          grep -oE '(src|href)="[^"]+\.js[^"]*"' idos.html | head -20
+          for js in $(grep -oE 'src="[^"]+\.js[^"]*"' idos.html | sed 's/src="//;s/"$//' | head -12); do
+            u="$js"; case "$u" in http*) ;; //*) u="https:$u";; /*) u="https://idos.cz$u";; esac
+            curl -s -m 20 -A 'Mozilla/5.0' "$u" -o x.js
+            echo "-- $u $(wc -c < x.js)"; grep -oE '"[^"]{0,80}(oloh|osition|Position|vehicle|Vehicle|mapa|Mapa|Delay|zpozd)[^"]{0,80}"' x.js | sort -u | head -25
+          done
+          echo "=== FLIX"
+          H='x-api-authentication: 6f0tps9288drbd41O5jb'
+          curl -s -m 20 -H "$H" 'https://global.api.flixbus.com/mobile/v1/network/autocomplete?q=Zl%C3%ADn&limit=5&lang=cs' | head -c 800; echo
+          curl -s -m 20 'https://global.api.flixbus.com/search/autocomplete/cities?q=Zlin&lang=cs&country=cz&flixbus_cities_only=false' | head -c 800; echo
+          echo "=== REGIOJET"
+          curl -s -m 20 -H 'X-Lang: cs' 'https://brn-ybus-pubapi.sa.cz/restapi/consts/locations' -o loc.json; wc -c loc.json
+          python3 -c "
+          import json
+          d=json.load(open('loc.json'))
+          for country in d:
+            for city in country.get('cities',[]):
+              if city['name'] in ('Zlín','Praha','Brno','Uherské Hradiště','Vsetín','Kroměříž','Otrokovice','Valašské Meziříčí'): print(city['id'], city['name'], [ (s['id'],s['name']) for s in city.get('stations',[])][:6])
+          "
+          ZL=$(python3 -c "
+          import json
+          for c in json.load(open('loc.json')):
+            for city in c.get('cities',[]):
+              if city['name']=='Zlín': print(city['id'])")
+          PR=$(python3 -c "
+          import json
+          for c in json.load(open('loc.json')):
+            for city in c.get('cities',[]):
+              if city['name']=='Praha': print(city['id'])")
+          D=$(date -u +%Y-%m-%d)
+          curl -s -m 20 -H 'X-Lang: cs' -H 'X-Currency: CZK' "https://brn-ybus-pubapi.sa.cz/restapi/routes/search/simple?tariffs=REGULAR&toLocationType=CITY&toLocationId=$ZL&fromLocationType=CITY&fromLocationId=$PR&departureDate=$D" -o r.json; wc -c r.json; head -c 1500 r.json; echo
+          RID=$(python3 -c "
+          import json
+          r=json.load(open('r.json')).get('routes',[]); print(r[0]['id'] if r else '')")
+          echo RID $RID
+          for p in "routes/$RID/simple?fromStationId=x" "routes/$RID/positions" "routes/$RID/vehiclePosition" "routes/$RID/position" "routes/$RID"; do
+            echo "-- $p"; curl -s -m 20 -H 'X-Lang: cs' "https://brn-ybus-pubapi.sa.cz/restapi/$p" | head -c 600; echo
+          done
