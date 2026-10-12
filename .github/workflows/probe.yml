@@ -9,19 +9,8 @@ jobs:
     steps:
       - run: |
           set +e
-          K='{"key":"09658f18-0f8c-4909-a571-0bc6b4acfbec"}'
-          echo "=== KM fetcher"
-          for c in pages/_app-42380175bb600331 640.eac086ac6c393903 956-834afb9af9e0f443 193-6f7a862efb691661 675-f5bb6e9a9044bfd5 main-f4125b1bad1757a2; do
-            curl -s -m 20 "https://kromeriz.mhdonline.cz/_next/static/chunks/$c.js" -o c.js
-            grep -oE '.{0,300}09658f18.{0,300}' c.js | head -3
-            grep -oE '.{0,200}(method:"POST"|"POST").{0,300}' c.js | head -3
-          done
-          for ct in 'text/plain;charset=UTF-8' 'application/json; charset=utf-8'; do
-            echo "-- ct $ct"; curl -s -m 20 -X POST https://kromeriz.mhdonline.cz/api/buses -H "Content-Type: $ct" -H 'Origin: https://kromeriz.mhdonline.cz' -H 'Referer: https://kromeriz.mhdonline.cz/' -d "$K" | head -c 300; echo
-          done
-          echo "-- no ct"; curl -s -m 20 -X POST https://kromeriz.mhdonline.cz/api/buses -H 'Content-Type:' -d "$K" | head -c 300; echo
-          echo "=== FLIX gis usage"
           curl -sL -m 30 https://wimr-ui.gis.flix.tech/track/assets/index-DglT1Uph.js -o f.js
-          grep -oE '.{0,200}(WIMB_API_URL|WIMR_API_KEY)\}?.{0,300}' f.js | grep -v 'WIMB_API_URL:"' | head -20
-          grep -oE '`\$\{[^}]{1,40}\}/v[0-9][^`]{0,150}`' f.js | sort -u | head -40
-          grep -oE '"/v[0-9]/[^"]{0,120}"' f.js | sort -u | head -40
+          echo "=== zl usage"; grep -oE '.{0,150}zl\.[A-Z_]+.{0,250}' f.js | head -20
+          echo "=== templates"; grep -oE '`[^`]{0,60}(ride|station|trip|vehicle|position|timetable|departure)[^`]{0,100}`' f.js | sort -u | head -60
+          echo "=== quoted paths"; grep -oE '"[^" ]{0,40}/(rides?|stations?|trips?|vehicles?|positions?|timetables?|departures?)[^" ]{0,80}"' f.js | sort -u | head -60
+          echo "=== x-api-key"; grep -oE '.{0,200}(X-API-Key|x-api-key|apikey|api_key|X-Api-Key).{0,200}' f.js | head -6
