@@ -12,15 +12,8 @@ jobs:
         with:
           node-version: 22
       - run: |
-          U=https://brn-ybus-pubapi.sa.cz/restapi
-          for path in consts/lines/17655001 consts/timetables/WEB/721311; do
-            echo "== $path"
-            curl -s -o /dev/null -w "bare %{http_code}\n" "$U/$path"
-            curl -s -o /dev/null -w "lang %{http_code}\n" -H 'X-Lang: cs' "$U/$path"
-            curl -s -o /dev/null -w "lang+cur %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' "$U/$path"
-            curl -s -o /dev/null -w "lang+cur+ua %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -A 'mhd-zlin-live (github.com/JaneckaD/polohy)' "$U/$path"
-            curl -s -o /dev/null -w "web %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -H 'X-Application-Origin: WEB' -H 'Origin: https://regiojet.cz' -H 'Referer: https://regiojet.cz/' -A 'Mozilla/5.0' "$U/$path"
-            curl -s -o /dev/null -w "web-noua %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -H 'X-Application-Origin: WEB' "$U/$path"
-            curl -s -H 'X-Lang: cs' -H 'X-Currency: CZK' "$U/$path" | head -c 400; echo
-          done
-          node -e "fetch('$U/consts/lines/17655001',{headers:{'X-Lang':'cs','X-Currency':'CZK'}}).then(r=>r.text().then(t=>console.log('node',r.status,t.slice(0,300))))"
+          node scripts/build-regiojet.mjs
+          python3 -c "
+          import json; d=json.load(open('public/rj.json')); print('conns',len(d['conns']),'stations',len(d['stations']),'size',len(json.dumps(d)))
+          for c in d['conns'][:60]: print(c['id'],c['line'],c['from'],'->',c['to'],c['valid'],c['sym'],c['codes'][:4],[(d['stations'][str(s)][0],a,b) for s,a,b in c['stops']])"
+          curl -s -H 'X-Lang: cs' -H 'X-Application-Origin: WEB' https://brn-ybus-pubapi.sa.cz/restapi/consts/timetables/8730625016/symbols | head -c 1500; echo

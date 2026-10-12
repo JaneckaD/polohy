@@ -5,7 +5,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const API = 'https://brn-ybus-pubapi.sa.cz/restapi';
-const HEADERS = { 'X-Lang': 'cs', 'X-Currency': 'CZK', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
+const HEADERS = { 'X-Lang': 'cs', 'X-Currency': 'CZK', 'X-Application-Origin': 'WEB', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
 const OSRM = process.env.OSRM_URL || 'https://router.project-osrm.org';
 const PUBLIC_OSRM = OSRM === 'https://router.project-osrm.org';
 const OUT = new URL('../public/rj.json', import.meta.url);
