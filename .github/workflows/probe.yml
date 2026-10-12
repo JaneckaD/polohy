@@ -1,0 +1,22 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          set +e
+          echo "=== IDS JMK"
+          curl -s -m 20 -D - 'https://mapa.idsjmk.cz/api/vehicles.json' -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://mapa.idsjmk.cz/' -o /tmp/jmk.json | head -15
+          head -c 1500 /tmp/jmk.json; echo
+          jq -r '.Vehicles | length' /tmp/jmk.json
+          jq -c '[.Vehicles[] | {RouteType: .RouteType, VType: .VType}] | group_by(.) | map({k: .[0], n: length})' /tmp/jmk.json
+          jq -c '.Vehicles[] | select(.LineName|test("^(S|R|[0-9]{3,})")) ' /tmp/jmk.json | head -8
+          jq -c '[.Vehicles[] | .LineName] | unique' /tmp/jmk.json | cut -c1-2000
+          echo "=== SZ"
+          curl -s -m 20 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load' -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' -o /tmp/sz.json
+          jq -c '[.result[].properties | .d] | group_by(.) | map({k: .[0], n: length})' /tmp/sz.json
+          jq -c '.result[0]' /tmp/sz.json
