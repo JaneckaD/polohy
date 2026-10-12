@@ -32,6 +32,9 @@ test('ODIS: tramvaj MHD Ostrava podle čísla linky a spoje (licence 915…)', (
   // Číslo spoje nesedí (MHD Ostrava posílá pořadí vozu): spoj podle linky, příští zastávky a cíle.
   const other = parseOdis({ ...t, cn: t.cn.replace('|132|', '|999|') }, { P, date: '2026-10-12', min: 1110 });
   assert.equal(other.tripId, v.tripId);
+  // Názvy na mapě bez obce a části („Poliklinika“) i s jinou obcí v cíli.
+  const short = parseOdis({ ...t, cn: '12|12|999|||Poliklinika|157|1119|Hranečník|Ostrava, Dubina|1|Ev. č. 1721' }, { P, date: '2026-10-12', min: 1110 });
+  assert.equal(short.tripId, v.tripId);
   assert.equal(parseOdis({ ...t, cn: t.cn.replace('|132|', '|999|').replace('|Dubina|', '|Hranečník|') }, { P, date: '2026-10-12', min: 1110 }).calls, undefined, 'jiný cíl');
   // Bez dat vyhledávání: druh podle čísla linky.
   assert.equal(parseOdis(t).type, 'tram');

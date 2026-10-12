@@ -197,6 +197,7 @@ const MHD_KRAJE = new Set(['olk', 'msk']);
 // Městské dopravní podniky: jejich MHD (i tramvaje a trolejbusy) je ze Spojenky, ostatní MHD a regionální
 // linky z celostátních dat (licence a čísla spojů sedí na živé polohy ODIS).
 const CITY_DP = /dopravní podnik/i;
+const DP_TOWNS = [[/^DPO\b|Ostrava/i, 'Ostrava'], [/Olomouc/i, 'Olomouc'], [/Opava/i, 'Opava']];
 
 /** Síť dálkového spoje podle dopravce (FlixBus a RegioJet mají na mapě vlastní vozy). */
 function coachNetwork(agency) {
@@ -470,9 +471,10 @@ export function spojenkaTrips(zipBytes, { startDate, days, region, kraje = MHD_K
     });
   }
   for (const t of out) {
-    // Město podle nejčastější obce zastávek linky (linky DPO mají v názvu jen části Ostravy).
+    // Město podle dopravního podniku, jinak podle nejčastější obce zastávek linky.
     const towns = [...(routeTowns.get(t.route) ?? [])].sort((a, b) => b[1] - a[1]).map(([n]) => n);
-    if (towns[0]) t.operator = `MHD ${towns[0]}`;
+    const town = DP_TOWNS.find(([re]) => re.test(t.operator))?.[1] ?? towns[0];
+    if (town) t.operator = `MHD ${town}`;
     delete t.route;
   }
   const count = (f) => out.filter(f).length;

@@ -61,7 +61,7 @@ export function matchOdisByStop(P, line, next, headsign, date, min, delayMin = 0
   let best = null;
   for (const trip of tripsByLine(P).get(String(line)) ?? []) {
     const s = trip.pattern.s;
-    if (headsign && nameSimilarity(headsign, P.stops[s.at(-1)].name) < 0.6) continue;
+    if (headsign && stopSimilarity(headsign, P.stops[s.at(-1)].name) < 0.6) continue;
     for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
       if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
       const t = min + shift - Math.max(0, delayMin);
@@ -112,7 +112,18 @@ function tripCalls(P, trip, net, tram) {
   return callsCache.get(trip);
 }
 
-const sameStop = (a, b) => !!a && !!b && nameSimilarity(a, b) >= 0.75;
+// Názvy zastávek na mapě ODIS bývají bez obce („Kotva“, „Mor. Ostrava, Plynárny“), v jízdních řádech
+// s obcí („Ostrava,Zábřeh,Kotva“): porovná se celý název, název bez obce i poslední část.
+const tails = (name) => {
+  const parts = String(name).split(',').map((x) => x.trim()).filter(Boolean);
+  return [...new Set([parts.join(','), parts.slice(1).join(','), parts.at(-1)].filter(Boolean))];
+};
+function stopSimilarity(a, b) {
+  let best = 0;
+  for (const x of tails(a)) for (const y of tails(b)) best = Math.max(best, nameSimilarity(x, y));
+  return best;
+}
+const sameStop = (a, b) => !!a && !!b && stopSimilarity(a, b) >= 0.75;
 const TYPES = { r: 'tram', t: 'trolleybus' };
 
 /** Druh vozu MHD Ostrava podle čísla linky, když spoj nenajdeme: 1–20 tramvaje, 101–199 trolejbusy. */
