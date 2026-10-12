@@ -8,15 +8,29 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --silent
       - run: |
-          P=https://dszo-proxy.djanecka6.workers.dev
-          echo "== DSZO lines"; curl -s $P/online/ | grep -o "line: *'[^']*'" | sort | uniq -c | head -60
-          echo "== tabs2"; curl -s $P/online/tabs2.php | head -c 1500; echo
-          echo "== mhd lines"; curl -s $P/mhd | python3 -c "
-          import json,sys,collections
-          d=json.load(sys.stdin)
-          print(collections.Counter(v['cn'].split('|')[1]+' '+v.get('cr','') for v in d.get('vehicles',[])).most_common(200))
-          print([ (b.get('line_number'), b.get('connection_no')) for b in d.get('km',[])][:30])
-          print(json.dumps(d.get('km',[])[:1],ensure_ascii=False))"
-          echo "== trains"; curl -s -o /dev/null -w "%{http_code} %{time_total}\n" $P/trains
-          echo "== JDF"; curl -sL https://www.dszo.cz/jr/ -o /dev/null -w "%{http_code}\n"
+          echo "== SZ direct"; curl -s -o /tmp/sz.json -w "%{http_code} %{time_total} %{size_download}\n" -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load'; head -c 300 /tmp/sz.json; echo
+          echo "== mpvnet trains"; curl -s -X POST -H 'Content-Type: application/json' -H 'Origin: https://mpvnet.cz' -H 'Referer: https://mpvnet.cz/zlin/map' -d '{"w":17.1,"s":48.86,"e":18.4,"n":49.54,"zoom":13,"showStops":false,"mapFilterId":null}' https://mpvnet.cz/zlin/map/mapData | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin); t=[v for v in d.get('transmitters',[]) if v.get('cat')==1]
+          print(len(t)); [print(json.dumps(v,ensure_ascii=False)) for v in t[:8]]"
+          echo "== DSZO JDF lines"
+          node -e "
+          import('fflate').then(async ({unzipSync})=>{
+            const h=await (await fetch('https://www.dszo.cz/cestujici/jizdni-rady/')).text();
+            const m=[...h.matchAll(/[\"'(]([^\"'()\s]*\/jr\/dszo_jr_[\d-]+\.zip[^\"'()\s]*)/g)].map(x=>new URL(x[1],'https://www.dszo.cz/cestujici/jizdni-rady/').href);
+            console.log(m[0]);
+            let files=unzipSync(new Uint8Array(await (await fetch(m[0])).arrayBuffer()));
+            for (const [n,d] of Object.entries(files)) if (n.toLowerCase().endsWith('.zip')) for (const [i,c] of Object.entries(unzipSync(d))) files[n+'/'+i]=c;
+            const dec=new TextDecoder('windows-1250');
+            for (const [n,d] of Object.entries(files)) if (/linky\.txt$/i.test(n)) console.log(n, dec.decode(d).split('\n').map(l=>l.split(',').slice(0,3).join(',')).join(' | ').slice(0,1500));
+          })"
+          echo "== GTFS route names with letters"
+          curl -sL https://hoermalmeister.github.io/gtfs-rehost/idzk/id-zk-all.zip -o /tmp/g.zip; unzip -o -q /tmp/g.zip routes.txt -d /tmp/g; python3 -c "
+          import csv,re
+          for r in csv.DictReader(open('/tmp/g/routes.txt',encoding='utf-8-sig')):
+            if re.search(r'\d[a-zA-Z]\b', r['route_short_name']+' '+r['route_long_name']): print(r['route_id'],r['route_short_name'],r['route_long_name'])" | head -30
