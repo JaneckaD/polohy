@@ -9,8 +9,9 @@ jobs:
     steps:
       - run: |
           set +e
-          curl -sL -m 30 https://wimr-ui.gis.flix.tech/track/assets/index-DglT1Uph.js -o f.js
-          echo "=== zl usage"; grep -oE '.{0,150}zl\.[A-Z_]+.{0,250}' f.js | head -20
-          echo "=== templates"; grep -oE '`[^`]{0,60}(ride|station|trip|vehicle|position|timetable|departure)[^`]{0,100}`' f.js | sort -u | head -60
-          echo "=== quoted paths"; grep -oE '"[^" ]{0,40}/(rides?|stations?|trips?|vehicles?|positions?|timetables?|departures?)[^" ]{0,80}"' f.js | sort -u | head -60
-          echo "=== x-api-key"; grep -oE '.{0,200}(X-API-Key|x-api-key|apikey|api_key|X-Api-Key).{0,200}' f.js | head -6
+          B=https://wimr-ui.gis.flix.tech/track/assets
+          curl -sL -m 30 $B/index-DglT1Uph.js -o f.js
+          for c in $(grep -oE '"\./[A-Za-z0-9_-]+\.js"' f.js | tr -d '"' | sort -u | grep -v -E '^\./[a-z]{2}(_[A-Z]{2})?-' ); do
+            curl -sL -m 20 "$B/${c#./}" -o c.js
+            if grep -qE 'WIMB|WIMR_API_KEY|/gis' c.js; then echo "-- $c $(wc -c < c.js)"; grep -oE '.{0,250}(WIMB_API_URL|WIMR_API_KEY).{0,350}' c.js | head -12; fi
+          done
