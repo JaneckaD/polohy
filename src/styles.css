@@ -136,8 +136,60 @@ input:focus-visible {
   bottom: var(--chrome-bottom);
 }
 
-.maplibregl-ctrl-attrib {
-  font-size: 10px;
+/* Ikonka „i“ vlevo dole: zdroje dat a autorská práva v okně Informace. */
+.info-btn {
+  position: absolute;
+  left: 12px;
+  bottom: calc(var(--chrome-bottom) + 6px);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-2);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.info-lead,
+.info-foot {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--label-2);
+  margin: 4px 4px 14px;
+}
+
+.info-foot {
+  margin-top: 14px;
+}
+
+.info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+}
+
+.info-row + .info-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.info-row b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.info-row small {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--label-2);
+}
+
+.info-row a {
+  color: var(--tint);
+  text-decoration: none;
 }
 
 /* Horní ovládání nad mapou */
@@ -880,6 +932,12 @@ input:focus-visible {
 }
 
 /* Časová osa spoje v panelu vozu */
+.trip-note {
+  color: var(--label-2);
+  font-size: 13px;
+  padding: 4px 0 12px 44px;
+}
+
 .trip-empty {
   color: var(--label-2);
   font-size: 15px;

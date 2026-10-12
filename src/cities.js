@@ -200,19 +200,20 @@ const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).pad
 const dayIndex = (start, date) => Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
 
 /**
- * Spoj, kterým vůz městské MHD právě jede (z dat vyhledávání spojení): stejná linka a cíl,
+ * Spoj, kterým vůz MHD (i DSZO, když jeho stránka spoj nevrátí) právě jede (z dat vyhledávání spojení): stejná linka a cíl,
  * a u poslední zastávky má být podle jízdního řádu (+ zpoždění) zhruba teď.
  * Vrací [{ name, time, lat, lon }] nebo [].
  */
 export function cityTrip(P, v, date, now) {
-  if (!P || !v.city) return [];
+  if (!P) return [];
+  const net = v.city ?? null;
   const di = dayIndex(P.startDate, date);
   const delay = Math.max(0, Math.round((v.delay ?? 0) / 60));
   let best = null;
   // Podle čísla spoje (z mapy IDZK): ze dnešních jízd ta, která teď jede (nebo je časově nejblíž).
   for (const trip of P.trips) {
     const pat = trip.pattern;
-    if (!v.tripNo || trip.no !== v.tripNo || pat.c !== v.city || pat.r !== v.line || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
+    if (!v.tripNo || trip.no !== v.tripNo || (pat.c ?? null) !== net || pat.y === 'v' || pat.r !== v.line || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
     const first = trip.times[0];
     const last = trip.times.at(-1) + delay;
     const gap = now < first - 30 ? first - now : now > last ? now - last : 0;
@@ -222,10 +223,12 @@ export function cityTrip(P, v, date, now) {
   // Jinak podle linky, cíle a poslední zastávky.
   for (const trip of best ? [] : P.trips) {
     const pat = trip.pattern;
-    if (pat.c !== v.city || pat.r !== v.line || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
-    if (v.rawHeadsign && nameSimilarity(v.rawHeadsign, P.stops[pat.s.at(-1)].name) < 0.6) continue;
+    if ((pat.c ?? null) !== net || pat.y === 'v' || pat.r !== String(v.line) || di < 0 || di >= P.days || trip.mask[di] !== '1') continue;
+    const head = v.rawHeadsign ?? v.headsign;
+    const at = v.rawStop ?? v.stop;
+    if (head && nameSimilarity(head, P.stops[pat.s.at(-1)].name) < 0.6) continue;
     pat.s.forEach((si, k) => {
-      if (!v.rawStop || nameSimilarity(v.rawStop, P.stops[si].name) < 0.8) return;
+      if (!at || nameSimilarity(at, P.stops[si].name) < 0.8) return;
       const diff = now - (trip.times[k] + delay);
       if (diff < -5 || diff > 15) return;
       const score = Math.abs(diff - 1);

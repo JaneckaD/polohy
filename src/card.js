@@ -186,12 +186,13 @@ const toMinutes = (t) => {
  */
 /** Vlak: výchozí stanice, kde právě je, příští zastávka a cíl (celý jízdní řád vlaku nemáme). */
 function renderTrainTrip(v) {
+  const train = v.type === 'train';
   const box = h('div', 'trip');
   const list = h('ol', 'timeline');
   const delayMin = v.delay > 0 ? Math.round(v.delay / 60) : 0;
   const row = (cls, name, sub, time, puck = false) => {
     const li = h('li', `tl-stop ${cls}`);
-    li.append(puck ? h('span', 'tl-puck', v.code) : h('span', 'tl-dot'));
+    li.append(puck ? h('span', 'tl-puck', train ? v.code : v.line) : h('span', 'tl-dot'));
     const text = h('div', 'tl-text');
     text.append(h('span', 'tl-name', name));
     if (sub) text.append(h('span', 'tl-sub', sub));
@@ -202,17 +203,18 @@ function renderTrainTrip(v) {
     list.append(li);
   };
   const same = (a, b) => a && b && a.trim() === b.trim();
-  if (v.from && !same(v.from, v.stop)) row('passed', v.from, 'výchozí stanice', null);
+  if (v.from && !same(v.from, v.stop)) row('passed', v.from, train ? 'výchozí stanice' : 'výchozí zastávka', null);
   if (v.stop) {
     const at = v.stopReal && v.stopPlanned && v.stopReal !== v.stopPlanned ? `${v.stopPlanned} → ${v.stopReal}` : v.stopReal ?? v.stopPlanned;
-    row('current', v.stop, 'naposledy projel', at, true);
+    row('current', v.stop, train ? 'naposledy projel' : 'poslední zastávka', at, true);
   }
   if (v.next && !same(v.next, v.stop)) {
     const left = v.nextArr ? toMinutes(v.nextArr) + delayMin - nowMinutes() : null;
     row(`next${same(v.next, v.headsign) ? ' terminus' : ''}`, v.next, left != null && left >= 0 && left < 120 ? `příští zastávka · ${left === 0 ? 'teď' : `za ${left} min`}` : 'příští zastávka', v.nextArr);
   }
-  if (v.headsign && !same(v.headsign, v.next) && !same(v.headsign, v.stop)) row('upcoming terminus', v.headsign, 'cílová stanice', null);
+  if (v.headsign && !same(v.headsign, v.next) && !same(v.headsign, v.stop)) row('upcoming terminus', v.headsign, train ? 'cílová stanice' : 'konečná', null);
   box.append(list);
+  if (!train) box.append(h('div', 'trip-note', 'Celý jízdní řád tohoto spoje se nepodařilo dohledat.'));
   return box;
 }
 
@@ -226,6 +228,8 @@ export function renderTrip(trip, v, { scroll = false, showPassed = false, onTogg
     return box;
   }
   if (!trip.length) {
+    // Spoj v jízdních řádech nenajdeme (mimořádná linka, výluka): aspoň kde vůz je a kam jede.
+    if (v.stop || v.headsign) return renderTrainTrip(v);
     box.append(h('div', 'trip-empty', 'Zastávky spoje nejsou k dispozici.'));
     return box;
   }

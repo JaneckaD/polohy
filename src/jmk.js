@@ -47,12 +47,18 @@ const sameStop = (P, a, b) => a === b || (a != null && b != null && P.stops[a].n
 
 /**
  * Spoj, kterým vůz jede: stejná linka a cíl, poslední projetá zastávka je ve spoji a vůz u ní podle
- * jízdního řádu a zpoždění byl před chvílí. Vrací { trip, k, shift } nebo null.
+ * jízdního řádu a zpoždění byl před chvílí. Vůz na výchozí zastávce může čekat na odjezd až hodinu.
+ * Když cíl nesedí na žádný spoj (výluka, mimořádný cíl), vezme se spoj stejné linky jen podle zastávky a času.
+ * Vrací { trip, k, shift } nebo null.
  */
 export function matchJmkTrip(P, a, date, min) {
   const last = stopOfNode(P, a.LastStopID);
   if (!P || last == null) return null;
   const final = stopOfNode(P, a.FinalStopID);
+  return findTrip(P, a, date, min, last, final, 10) ?? (final != null ? findTrip(P, a, date, min, last, null, 3) : null);
+}
+
+function findTrip(P, a, date, min, last, final, maxScore) {
   const di = dayIndex(P.startDate, date);
   const delay = Number.isFinite(a.Delay) ? a.Delay : 0;
   let best = null;
@@ -62,14 +68,17 @@ export function matchJmkTrip(P, a, date, min) {
     for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
       if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
       const t = min + shift;
-      if (t < trip.arr[0] - 30 || t > trip.times.at(-1) + delay + 30) continue;
+      if (t < trip.arr[0] - 70 || t > trip.times.at(-1) + delay + 30) continue;
       for (let k = 0; k < s.length; k++) {
         if (!sameStop(P, s[k], last)) continue;
         // Minuty od (zpožděného) odjezdu z poslední zastávky; vůz má být na cestě k další.
         const diff = t - (trip.times[k] + delay);
         const span = k + 1 < s.length ? trip.arr[k + 1] - trip.times[k] : 2;
-        const score = diff < -1 ? -1 - diff : diff > span + 2 ? diff - span - 2 : 0;
-        if (score <= 10 && (!best || score < best.score)) best = { score, trip, k, shift };
+        const early = k === 0 ? 60 : 1; // na výchozí zastávce čeká na odjezd
+        const score = diff < -early ? -early - diff : diff > span + 2 ? diff - span - 2 : 0;
+        // Při shodě vyhraje spoj, jehož odjezd je nejblíž (čekající vůz pojede nejbližším spojem).
+        const rank = score + Math.abs(diff) / 1000;
+        if (score <= maxScore && (!best || rank < best.rank)) best = { score, rank, trip, k, shift, waiting: diff < 0 };
       }
     }
   }
@@ -140,7 +149,7 @@ export function parseJmk(a, { P = null, region = null, date, min } = {}) {
     const k = match.k;
     const at = calls[k];
     // U poslední projeté zastávky (do 70 m), nebo už na cestě k další.
-    const atStop = k === calls.length - 1 || (at.lat != null && distM(a.Lat, a.Lng, at.lat, at.lon) < 70);
+    const atStop = k === calls.length - 1 || match.waiting || (at.lat != null && distM(a.Lat, a.Lng, at.lat, at.lon) < 70);
     const ni = atStop ? k : k + 1;
     Object.assign(v, {
       tripId: match.trip.id,

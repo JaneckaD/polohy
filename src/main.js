@@ -1,6 +1,6 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
-import { Map, Marker, AttributionControl, setWorkerUrl } from 'maplibre-gl';
+import { Map, Marker, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
@@ -22,6 +22,7 @@ import { store, matchesFilter } from './store.js';
 import { setFilterRegion } from './filtering.js';
 import { initFilter } from './filter.js';
 import { initLegend } from './legend.js';
+import { initInfo } from './info.js';
 import { vehicleMark } from './dszo-marks.js';
 import { initPlanner, loadPlanner } from './plannerview.js';
 import { trainTrip, trainPosition, completeTrains } from './train-trip.js';
@@ -47,8 +48,7 @@ map.touchZoomRotate.disableRotation();
 // Pro automatické testy vzhledu (?debug).
 if (new URLSearchParams(location.search).has('debug')) window.__map = map;
 map.keyboard.disableRotation();
-// Živé polohy IDS JMK jsou otevřená data pod licencí CC BY: uvádíme zdroj.
-map.addControl(new AttributionControl({ compact: true, customAttribution: 'Polohy IDS JMK: <a href="https://data.brno.cz" target="_blank">KORDIS JMK</a> (CC BY)' }), 'bottom-left');
+// Autorská práva a zdroje dat (i licence CC BY poloh IDS JMK) jsou v okně Informace (ikonka i vlevo dole).
 
 const statusEl = document.getElementById('status');
 function setStatus(text, isError = false) {
@@ -335,7 +335,9 @@ async function select(v) {
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.calls || isCoach(v.city) ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
+  let trip = v.type === 'train' ? await fetchTrainTrip(v) : v.calls || isCoach(v.city) ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
+  // DSZO: když stránka spoje neodpoví, spoj z jízdních řádů (data vyhledávání).
+  if (!trip?.length && v.type !== 'train' && !v.city) trip = await fetchCityTrip(v).catch(() => []);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   selected.tripId = v.tripId ?? null;
@@ -562,6 +564,7 @@ map.on('load', () => {
 
 initFilter();
 initLegend();
+initInfo();
 initInstall();
 
 // Obnovit: stáhne novou verzi aplikace (i na ploše) a čerstvé jízdní řády, pak stránku načte znovu,

@@ -61,3 +61,17 @@ test('živý vůz IDS JMK: MHD jiného města, bez dat, vlak a neaktivní', () =
   assert.equal(parseJmk(msg({ VType: 5 })), null, 'vlaky jsou z jiného zdroje');
   assert.equal(parseJmk(msg({ IsInactive: 'true' })), null);
 });
+
+test('živý vůz IDS JMK čeká na výchozí zastávce dlouho před odjezdem: spoj se najde', () => {
+  // 9:45, tramvaj stojí na Hlavním nádraží, odjíždí až v 10:00.
+  const m = matchJmkTrip(P, msg({ Delay: 0, Lat: 49.1906, Lng: 16.6126 }), '2026-10-12', 585);
+  assert.equal(m?.trip.times[0], 600);
+  const v = parseJmk(msg({ Delay: 0, Lat: 49.1906, Lng: 16.6126 }), { P, date: '2026-10-12', min: 585 });
+  assert.equal(v.atStop, true);
+  assert.equal(v.calls.length, 3);
+});
+
+test('živý vůz IDS JMK s cílem mimo jízdní řád (výluka): spoj podle poslední zastávky', () => {
+  const v = parseJmk(msg({ FinalStopID: 99999 }), { P, date: '2026-10-12', min: 612 });
+  assert.equal(v.calls?.length, 3);
+});
