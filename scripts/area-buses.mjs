@@ -194,6 +194,9 @@ export function knownEvents(rawTrips) {
 const NATIONAL_TYPES = new Set(['701', '202', '201', '704', '800', '900']);
 const MHD_TYPES = { 704: 'bus', 800: 'trolleybus', 900: 'tram' };
 const MHD_KRAJE = new Set(['olk', 'msk']);
+// Městské dopravní podniky: jejich MHD (i tramvaje a trolejbusy) je ze Spojenky, ostatní MHD a regionální
+// linky z celostátních dat (licence a čísla spojů sedí na živé polohy ODIS).
+const CITY_DP = /dopravní podnik/i;
 
 /** Síť dálkového spoje podle dopravce (FlixBus a RegioJet mají na mapě vlastní vozy). */
 function coachNetwork(agency) {
@@ -218,21 +221,28 @@ export function mhdTown(longName, towns) {
  * zastavení) se čte proudově: spoje se drží jen, pokud mají aspoň dvě zastávky v oblasti.
  * Spoje se zkrátí na zastávky v oblasti, cíl (headsign) zůstane skutečný.
  */
-export function nationalTrips(zipBytes, { startDate, days, region, known = new Set(), skipKraje = null, log = () => {} }) {
+export function nationalTrips(zipBytes, { startDate, days, region, known = new Set(), skipKraje = null, coords = null, log = () => {} }) {
   const agencies = new Map();
   const routes = new Map();
   const trips = new Map();
   const stops = new Map();
+  let filled = 0;
   const cal = calendars(startDate, days);
   readGtfsFiles(zipBytes, {
     'agency.txt': (r) => agencies.set(r.agency_id, r.agency_name),
     'routes.txt': (r) => NATIONAL_TYPES.has(r.route_type) && routes.set(r.route_id, r),
     'stops.txt': (r) => {
-      const lat = Number(r.stop_lat);
-      const lon = Number(r.stop_lon);
+      const name = jdfStopName(r.stop_name);
+      let lat = Number(r.stop_lat);
+      let lon = Number(r.stop_lon);
+      // Zastávky bez polohy (část Olomouckého kraje) podle stejně pojmenované zastávky Spojenky.
+      if ((!Number.isFinite(lat) || lat === 0) && coords?.has(name)) {
+        [lat, lon] = coords.get(name);
+        filled++;
+      }
       const ok = Number.isFinite(lat) && lat !== 0;
       const inside = ok && regionContains(region, lon, lat);
-      stops.set(r.stop_id, { name: jdfStopName(r.stop_name), lat: ok ? lat : null, lon: ok ? lon : null, in: inside, kraj: inside ? krajOf(region, lon, lat) : null });
+      stops.set(r.stop_id, { name, lat: ok ? lat : null, lon: ok ? lon : null, in: inside, kraj: inside ? krajOf(region, lon, lat) : null });
     },
     ...cal.handlers,
   });
@@ -270,6 +280,7 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
   let duplicates = 0;
   let otherMhd = 0;
   let skipped = 0;
+  const skippedBy = {};
   const kinds = { 701: 0, 202: 0, 201: 0, 704: 0, 800: 0, 900: 0 };
   const routeTowns = new Map(); // route_id → četnost obcí zastávek (MHD: „MHD Ostrava“)
   for (const [id, list] of kept) {
@@ -284,9 +295,11 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
     const idx = all.map((s, i) => (s?.in ? i : -1)).filter((i) => i >= 0);
     if (idx.length < 2) continue;
     const mhd = MHD_TYPES[route.route_type];
-    // Regionální linky a MHD krajů, které jsou z dat Spojenky (spojenkaTrips), tady přeskočíme.
-    if (skipKraje && route.route_type !== '202' && route.route_type !== '201' && idx.filter((i) => skipKraje.has(all[i].kraj)).length * 2 >= idx.length) {
+    const agency = agencies.get(route.agency_id) ?? '';
+    // MHD dopravních podniků (Ostrava, Olomouc, Opava) je z dat Spojenky (spojenkaTrips) i s tramvajemi.
+    if (skipKraje && mhd && CITY_DP.test(agency) && idx.filter((i) => skipKraje.has(all[i].kraj)).length * 2 >= idx.length) {
       skipped++;
+      skippedBy[agency] = (skippedBy[agency] ?? 0) + 1;
       continue;
     }
     if (mhd) {
@@ -309,7 +322,6 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
         continue;
       }
     }
-    const agency = agencies.get(route.agency_id) ?? '';
     const regional = route.route_type === '701';
     kinds[route.route_type]++;
     out.push({
@@ -335,7 +347,7 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
     if (town) t.operator = `MHD ${town}`;
     delete t.route;
   }
-  log(`Celostátní data: regionální ${kinds[701]}, dálkové ${kinds[202]}, mezinárodní ${kinds[201]} spojů v oblasti; už v datech (přeskočeno) ${duplicates}${regrouped ? `, rozdělené spoje ${regrouped}` : ''}${skipKraje ? `, v krajích ze Spojenky přeskočeno ${skipped}` : ''}.`);
+  log(`Celostátní data: regionální ${kinds[701]}, dálkové ${kinds[202]}, mezinárodní ${kinds[201]} spojů v oblasti; už v datech (přeskočeno) ${duplicates}${regrouped ? `, rozdělené spoje ${regrouped}` : ''}${skipKraje ? `, MHD dopravních podniků ze Spojenky přeskočeno ${skipped} (${Object.entries(skippedBy).map(([a, n]) => `${a} ${n}`).join(', ')})` : ''}${coords ? `, polohy zastávek ze Spojenky ${filled}` : ''}.`);
   const mhdOut = out.filter((t) => t.city === 'town');
   log(`MHD Olomouckého a Moravskoslezského kraje: ${mhdOut.length} spojů (autobusy ${kinds[704]}, trolejbusy ${kinds[800]}, tramvaje ${kinds[900]}); MHD jinde přeskočeno ${otherMhd}. Města: ${[...new Set(mhdOut.map((t) => t.operator))].join(', ')}`);
   const byOperator = {};
@@ -365,7 +377,7 @@ const spojenkaStopName = (name) => jdfStopName(String(name ?? '').replace(/\s*,\
  * Bere spoje, jejichž zastávky v oblasti jsou většinou v krajích `kraje`; spoje, které už v datech jsou
  * (dálkové linky z celostátních dat, linky IDZK do kraje), se poznají podle časů a míst a přeskočí.
  */
-export function spojenkaTrips(zipBytes, { startDate, days, region, kraje = MHD_KRAJE, known = new Set(), log = () => {} }) {
+export function spojenkaTrips(zipBytes, { startDate, days, region, kraje = MHD_KRAJE, log = () => {} }) {
   const agencies = new Map();
   const routes = new Map();
   const trips = new Map();
@@ -413,7 +425,7 @@ export function spojenkaTrips(zipBytes, { startDate, days, region, kraje = MHD_K
 
   const out = [];
   const routeTowns = new Map();
-  let duplicates = 0;
+  let others = 0;
   let outside = 0;
   for (const [id, list] of rows) {
     const trip = trips.get(id);
@@ -429,59 +441,60 @@ export function spojenkaTrips(zipBytes, { startDate, days, region, kraje = MHD_K
       outside++;
       continue;
     }
-    const same = idx.filter((i) => known.has(eventKey(dep[i] % 1440, all[i].lat, all[i].lon))).length;
-    if (same >= idx.length * 0.6) {
-      duplicates++;
+    const type = SPOJENKA_TYPES[route.route_type];
+    const agency = agencies.get(route.agency_id) ?? '';
+    // Jen MHD dopravních podniků (tramvaje, trolejbusy, autobusy DPO, DPMO, MDPO); ostatní linky jsou
+    // z celostátních dat (příznak is_regional má Spojenka u všech linek 0, k rozlišení nejde použít).
+    if (type === 'bus' && !CITY_DP.test(agency) && !/(?:^|\|)DPO:/.test(trip.relations ?? '')) {
+      others++;
       continue;
     }
-    const type = SPOJENKA_TYPES[route.route_type];
     const [licence, number] = cisRelation(trip.relations);
-    const towns = new Set(all.filter(Boolean).map((st) => st.name.split(',')[0]));
-    // MHD: tramvaje a trolejbusy, autobusy podle příznaku linky (is_regional), jinak když jezdí v jedné obci.
-    const mhd = type !== 'bus' || (route.is_regional === '0' ? true : route.is_regional === '1' ? false : towns.size === 1);
-    if (mhd) {
-      if (!routeTowns.has(route.route_id)) routeTowns.set(route.route_id, new Map());
-      const counts = routeTowns.get(route.route_id);
-      for (const i of idx) {
-        const town = all[i].name.split(',')[0].trim();
-        counts.set(town, (counts.get(town) ?? 0) + 1);
-      }
+    if (!routeTowns.has(route.route_id)) routeTowns.set(route.route_id, new Map());
+    const counts = routeTowns.get(route.route_id);
+    for (const i of idx) {
+      const town = all[i].name.split(',')[0].trim();
+      counts.set(town, (counts.get(town) ?? 0) + 1);
     }
     out.push({
       route: route.route_id,
       ref: licence ?? route.route_short_name.trim(),
       type,
-      city: mhd ? 'town' : 'other',
+      city: 'town',
       number: number ?? ((trip.trip_short_name ?? '').trim() || null),
       mask,
       times: idx.map((i) => dep[i]),
       stops: idx.map((i) => [all[i].name, all[i].lat, all[i].lon]),
       headsign: (trip.trip_headsign ? spojenkaStopName(trip.trip_headsign) : null) ?? all.at(-1)?.name ?? null,
-      operator: shortAgency(agencies.get(route.agency_id) ?? ''),
+      operator: shortAgency(agency),
     });
   }
   for (const t of out) {
-    if (t.city === 'town') {
-      const towns = [...(routeTowns.get(t.route) ?? [])].sort((a, b) => b[1] - a[1]).map(([n]) => n);
-      const town = mhdTown(routes.get(t.route)?.route_long_name, towns);
-      if (town) t.operator = `MHD ${town}`;
-    }
+    // Město podle nejčastější obce zastávek linky (linky DPO mají v názvu jen části Ostravy).
+    const towns = [...(routeTowns.get(t.route) ?? [])].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+    if (towns[0]) t.operator = `MHD ${towns[0]}`;
     delete t.route;
   }
   const count = (f) => out.filter(f).length;
-  log(`Spojenka (Olomoucký a Moravskoslezský kraj): ${out.length} spojů – regionální ${count((t) => t.city === 'other')}, MHD ${count((t) => t.city === 'town')} (tramvaje ${count((t) => t.type === 'tram')}, trolejbusy ${count((t) => t.type === 'trolleybus')}); už v datech ${duplicates}, mimo kraje ${outside}; s číslem spoje CIS JŘ ${count((t) => /^\d{6}$/.test(t.ref))}.`);
+  log(`Spojenka (MHD dopravních podniků Olomouckého a Moravskoslezského kraje): ${out.length} spojů (tramvaje ${count((t) => t.type === 'tram')}, trolejbusy ${count((t) => t.type === 'trolleybus')}); ostatní linky (z celostátních dat) ${others}, mimo kraje ${outside}; s číslem spoje CIS JŘ ${count((t) => /^\d{6}$/.test(t.ref))}.`);
   const byOp = {};
   for (const t of out) byOp[t.operator] = (byOp[t.operator] ?? 0) + 1;
   log(`Spojenka dopravci a města: ${Object.entries(byOp).sort((a, b) => b[1] - a[1]).map(([o, n]) => `${o} ${n}`).join(', ')}`);
   return out;
 }
 
-/** Zastavení spojů z celostátních dat a regionálních sítí (pro vynechání duplicit ve Spojence). */
-export function allEvents(rawTrips) {
-  const set = new Set();
-  for (const t of rawTrips) {
-    if (t.type === 'train') continue;
-    t.stops.forEach(([, lat, lon], i) => lat != null && set.add(eventKey(t.times[i] % 1440, lat, lon)));
-  }
-  return set;
+/** Polohy zastávek Spojenky v oblasti podle názvu (průměr nástupišť) pro zastávky celostátních dat bez polohy. */
+export function spojenkaStopCoords(zipBytes, region) {
+  const sum = new Map();
+  readGtfsFiles(zipBytes, {
+    'stops.txt': (r) => {
+      const lat = Number(r.stop_lat);
+      const lon = Number(r.stop_lon);
+      if (!Number.isFinite(lat) || lat === 0 || !regionContains(region, lon, lat)) return;
+      const name = spojenkaStopName(r.stop_name);
+      const e = sum.get(name) ?? [0, 0, 0];
+      sum.set(name, [e[0] + lat, e[1] + lon, e[2] + 1]);
+    },
+  });
+  return new Map([...sum].map(([name, [la, lo, n]]) => [name, [Math.round((la / n) * 1e6) / 1e6, Math.round((lo / n) * 1e6) / 1e6]]));
 }

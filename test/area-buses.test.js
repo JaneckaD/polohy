@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
-import { kordisTrips, nationalTrips, knownEvents, jdfStopName, shortAgency, spojenkaTrips, mhdTown, allEvents } from '../scripts/area-buses.mjs';
+import { kordisTrips, nationalTrips, knownEvents, jdfStopName, shortAgency, spojenkaTrips, spojenkaStopCoords, mhdTown } from '../scripts/area-buses.mjs';
 import { buildPlannerFromTrips } from '../scripts/planner-data.mjs';
 
 const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
@@ -88,7 +88,7 @@ test('celostátní data: dálkový spoj zkrácený na oblast, duplicita a MHD vy
   assert.deepEqual(P.patterns[0], { r: '000032', y: 'b', h: 'Wien,Erdberg', s: [0, 1], c: 'rj', o: 'STUDENT AGENCY', i: 1 });
 });
 
-test('Spojenka: tramvaje, trolejbusy, MHD a regionální linky Olomouckého a Moravskoslezského kraje', () => {
+test('Spojenka: MHD dopravních podniků (tramvaje, trolejbusy), regionální linky ne', () => {
   const bytes = zip({
     'agency.txt': ['agency_id,agency_name', 'A1,"Dopravní podnik města Olomouce, a.s."', 'A2,Transdev Slezsko a.s.', 'A3,"Městský dopravní podnik Opava, a.s."'],
     'routes.txt': ['agency_id,route_id,route_short_name,route_long_name,route_type,is_night,is_regional', 'A1,R1,2,Neředín - Hlavní nádraží,0,0,0', 'A2,R2,533,Havířov - Karviná,3,0,1', 'A3,R3,201,Opava - Kylešovice,11,0,0', 'A1,R9,S1,Vlak,2,0,1'],
@@ -105,20 +105,18 @@ test('Spojenka: tramvaje, trolejbusy, MHD a regionální linky Olomouckého a Mo
   });
   const trips = spojenkaTrips(bytes, { startDate: '2026-10-12', days: 2, region });
   const by = Object.fromEntries(trips.map((t) => [t.ref, t]));
-  assert.deepEqual(Object.keys(by).sort(), ['201', '895002', '912533'], 'vlaky ne');
+  assert.deepEqual(Object.keys(by).sort(), ['201', '895002'], 'regionální linky a vlaky ne');
   assert.equal(by['895002'].type, 'tram');
   assert.equal(by['895002'].city, 'town');
   assert.equal(by['895002'].operator, 'MHD Olomouc');
   assert.equal(by['895002'].number, '12');
   assert.equal(by['895002'].headsign, 'Olomouc,Hlavní nádraží');
   assert.deepEqual(by['895002'].stops[0], ['Olomouc,Neředín,krematorium', 49.5953, 17.2272]);
-  assert.equal(by['912533'].city, 'other');
-  assert.equal(by['912533'].operator, 'Transdev Slezsko');
-  assert.equal(by['912533'].number, '48');
   assert.equal(by['201'].type, 'trolleybus');
   assert.equal(by['201'].operator, 'MHD Opava');
-  // Spoj, který už v datech je (stejné časy a místa), se přeskočí.
-  assert.equal(spojenkaTrips(bytes, { startDate: '2026-10-12', days: 2, region, known: allEvents([by['912533']]) }).length, 2);
+  // Polohy zastávek podle názvu pro celostátní data.
+  const coords = spojenkaStopCoords(bytes, region);
+  assert.deepEqual(coords.get('Olomouc,Hlavní nádraží'), [49.5925, 17.277]);
 });
 
 test('město linky MHD', () => {
