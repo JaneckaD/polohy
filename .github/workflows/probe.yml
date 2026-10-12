@@ -9,24 +9,25 @@ jobs:
     steps:
       - run: |
           set +e
-          echo "=== FLIX bundle"
+          K='{"key":"09658f18-0f8c-4909-a571-0bc6b4acfbec"}'
+          echo "=== KM api paths"
+          for c in pages/index-31e3abfe68ec7327 pages/lines-57dc27618a5275a8 pages/_app-42380175bb600331 640.eac086ac6c393903 193-6f7a862efb691661 956-834afb9af9e0f443 675-f5bb6e9a9044bfd5; do
+            curl -s -m 20 "https://kromeriz.mhdonline.cz/_next/static/chunks/$c.js" -o c.js; echo "-- $c $(wc -c < c.js)"
+            grep -oE '.{0,80}/api/[a-zA-Z_/]+.{0,200}' c.js | head -12
+          done
+          echo "-- buses no key"; curl -s -m 20 -X POST https://kromeriz.mhdonline.cz/api/buses -H 'Content-Type: application/json' -d '{}' | head -c 300; echo
+          echo "-- buses GET"; curl -s -m 20 https://kromeriz.mhdonline.cz/api/buses | head -c 300; echo
+          echo "-- buses CORS"; curl -s -m 20 -i -X POST https://kromeriz.mhdonline.cz/api/buses -H 'Origin: https://example.org' -H 'Content-Type: application/json' -d "$K" | head -c 1500; echo
+          for p in lines connections timetable; do echo "-- $p"; curl -s -m 20 -X POST "https://kromeriz.mhdonline.cz/api/$p" -H 'Content-Type: application/json' -d "$K" | head -c 1500; echo; done
+          curl -s -m 20 -X POST "https://kromeriz.mhdonline.cz/api/stations" -H 'Content-Type: application/json' -d "$K" | python3 -c "import json,sys; d=json.load(sys.stdin); print('stations',len(d)); [print(s['number'],s['name']) for s in d]" | head -90
+          echo "=== FLIX gis"
           curl -sL -m 30 https://wimr-ui.gis.flix.tech/track/assets/index-DglT1Uph.js -o f.js
-          grep -oE '[`"][^`"]{0,30}(https?://[^`"]{3,120}|/api/[^`"]{0,120}|/gis/[^`"]{0,120}|/v[0-9]/[^`"]{0,120})[`"]' f.js | grep -viE 'w3\.org|mapbox|reactjs|github|mozilla|sentry' | sort -u | head -80
-          grep -oE '.{0,120}(rides?/\$\{|ride_id|rideId|trip_uid).{0,160}' f.js | head -20
-          echo "=== RJ restapi paths"
-          curl -sL -m 30 https://regiojet.cz/_next/static/chunks/pages/_app-0cf9cc9f45c0ab6a.js -o rj.js
-          grep -oE '"/[a-zA-Z]+/[^"]{0,80}"' rj.js | grep -iE 'route|vehicle|position|gps|delay|track|station|timetable' | sort -u | head -80
-          grep -oE '"(https?:)?//[^"]{5,100}"' rj.js | sort -u | head -30
-          echo "=== KM playwright"
-          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
-          cat > s.mjs <<'J'
-          import { chromium } from 'playwright';
-          const b = await chromium.launch(); const p = await b.newPage();
-          p.on('request', r => { const t = r.resourceType(); if (!['image','font','stylesheet'].includes(t)) console.log('REQ', t, r.method(), r.url().slice(0,200), (r.postData()||'').slice(0,300)); });
-          p.on('response', async r => { const t = r.request().resourceType(); if (['xhr','fetch'].includes(t)) { let s=''; try { s = (await r.text()).slice(0,1500); } catch {} console.log('RES', r.status(), r.url().slice(0,200), '\n', s); } });
-          p.on('websocket', ws => { console.log('WS', ws.url()); let n=0; ws.on('framereceived', f => { if (n++ < 6) console.log('WSF', String(f.payload).slice(0,1500)); }); ws.on('framesent', f => console.log('WSS', String(f.payload).slice(0,300))); });
-          await p.goto('https://kromeriz.mhdonline.cz/', { waitUntil: 'networkidle', timeout: 45000 }).catch(e => console.log('goto', e.message));
-          await p.waitForTimeout(15000);
-          await b.close();
-          J
-          node s.mjs
+          grep -oE '.{0,250}global\.api\.flixbus\.com/gis.{0,250}' f.js | head -5
+          grep -oE '[`"]/(v[0-9]+|rides?|trips?|vehicles?|positions?|tracking|stations?)[^`"]{0,120}[`"]' f.js | sort -u | head -60
+          grep -oE '.{0,100}(\$\{[a-zA-Z]+\}/(rides?|trips?|positions?|vehicles?)|/rides/|/trips/|rideUuid|ride_uuid).{0,160}' f.js | head -25
+          echo "=== RJ single route"
+          curl -s -m 20 -H 'X-Lang: cs' -H 'X-Currency: CZK' "https://brn-ybus-pubapi.sa.cz/restapi/routes/8756608526/simple?fromStationId=10204003&toStationId=17655001" | head -c 2500; echo
+          curl -s -m 20 -H 'X-Lang: cs' "https://brn-ybus-pubapi.sa.cz/restapi/routes/8756608526/positions" | head -c 300; echo
+          curl -s -m 20 -H 'X-Lang: cs' "https://brn-ybus-pubapi.sa.cz/restapi/routes/8756608526" | head -c 2500; echo
+          curl -sL -m 30 -A 'Mozilla/5.0' 'https://regiojet.cz/stations/17655001' -o st.html; wc -c st.html; grep -oE '/_next/static/chunks/pages/[^"]+' st.html | sort -u
+          for c in $(grep -oE '/_next/static/chunks/pages/[^"]+' st.html | sort -u | grep -i station); do curl -s -m 20 "https://regiojet.cz$c" -o s.js; echo "-- $c"; grep -oE '"/[a-zA-Z]+/[^"]{0,80}"' s.js | sort -u | head -30; grep -oE '.{0,80}(restapi|timetable|departures|delay).{0,120}' s.js | head -10; done
