@@ -1,0 +1,22 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -sL 'https://www.dszo.cz/jr/dszo_jr_2026-10-01.zip?foo=20260930' -o /tmp/jr.zip; mkdir -p /tmp/jr; cd /tmp/jr; unzip -o -q /tmp/jr.zip; ls -la | head -20
+          for z in *.zip; do mkdir -p "x_$z"; unzip -o -q "$z" -d "x_$z"; done 2>/dev/null
+          find . -type f | head -40; find . -type f | wc -l
+          D=$(find . -iname 'linky.txt' | head -1 | xargs dirname); echo "DIR $D"
+          for f in $(ls $D); do echo "=== $f"; iconv -f cp1250 -t utf-8 "$D/$f" | head -6; done
+          echo "=== depo stops"; for f in $(find . -iname 'zastavky.txt'); do iconv -f cp1250 -t utf-8 $f | grep -iE 'vozovn|depo|garáž|garaz' ; done | sort -u | head
+          echo "=== spoje line 8"; iconv -f cp1250 -t utf-8 $D/Spoje.txt | head -3
+          echo "=== Caskody"; iconv -f cp1250 -t utf-8 $D/Caskody.txt 2>/dev/null | head -5
+          echo "=== Pevnykod"; iconv -f cp1250 -t utf-8 $D/Pevnykod.txt 2>/dev/null | head -40
+          echo "=== Udaje/poznamky"; ls $D | grep -iE 'udaj|pozn|lin'; for f in $(ls $D | grep -iE 'udaj|pozn'); do iconv -f cp1250 -t utf-8 $D/$f | head -40; done
+          echo "=== letters"; grep -rlaE '"[0-9]+[a-z]"' $D | head
