@@ -9,14 +9,11 @@ jobs:
     steps:
       - run: |
           set +e
-          echo "=== IDS JMK"
-          curl -s -m 20 -D - 'https://mapa.idsjmk.cz/api/vehicles.json' -H 'User-Agent: Mozilla/5.0' -H 'Referer: https://mapa.idsjmk.cz/' -o /tmp/jmk.json | head -15
-          head -c 1500 /tmp/jmk.json; echo
-          jq -r '.Vehicles | length' /tmp/jmk.json
-          jq -c '[.Vehicles[] | {RouteType: .RouteType, VType: .VType}] | group_by(.) | map({k: .[0], n: length})' /tmp/jmk.json
-          jq -c '.Vehicles[] | select(.LineName|test("^(S|R|[0-9]{3,})")) ' /tmp/jmk.json | head -8
-          jq -c '[.Vehicles[] | .LineName] | unique' /tmp/jmk.json | cut -c1-2000
-          echo "=== SZ"
-          curl -s -m 20 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load' -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' -o /tmp/sz.json
-          jq -c '[.result[].properties | .d] | group_by(.) | map({k: .[0], n: length})' /tmp/sz.json
-          jq -c '.result[0]' /tmp/sz.json
+          mkdir /tmp/j; cd /tmp/j
+          curl -s -m 20 'https://mapa.idsjmk.cz/' -H 'User-Agent: Mozilla/5.0' -o index.html
+          head -c 3000 index.html; echo
+          for u in $(grep -oE '(src|href)="[^"]+\.js[^"]*"' index.html | sed -E 's/.*="([^"]+)"/\1/'); do
+            case $u in http*) url=$u;; /*) url="https://mapa.idsjmk.cz$u";; *) url="https://mapa.idsjmk.cz/$u";; esac
+            echo "=== $url"; curl -s -m 20 "$url" -o b.js; wc -c b.js
+            grep -oE '.{150}(api/|Authorization|apikey|apiKey|X-Api|token|vehicles)[^;]{0,200}' b.js | head -25
+          done
