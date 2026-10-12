@@ -67,8 +67,9 @@ const STACK_GRID = 0.0004; // ~40 m
 const STACK_STEP_PX = 30;
 
 // Značky vozů jsou prvky stránky (HTML) a mapa je při každém posunu přepočítává všechny. Na mapě proto
-// držíme jen značky v okolí výřezu (s rezervou), ostatní se přidají, až k nim mapa dojede.
-const VIEW_MARGIN = 0.6; // rezerva kolem výřezu (podíl jeho šířky/výšky)
+// držíme jen značky v okolí výřezu (s malou rezervou), ostatní se přidávají průběžně během posunu.
+const VIEW_MARGIN = 0.25; // rezerva kolem výřezu (podíl jeho šířky/výšky)
+const CULL_MS = 200; // jak často během posunu mapy přepočítat, které značky patří na mapu
 
 export class VehicleLayer {
   /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
@@ -80,6 +81,14 @@ export class VehicleLayer {
     this.animating = new Set();
     this.frame = null;
     this.view = null;
+    let last = 0;
+    map.on('move', () => {
+      const now = performance.now();
+      if (now - last < CULL_MS) return;
+      last = now;
+      this.view = null;
+      this.cull();
+    });
     map.on('moveend', () => {
       this.view = null;
       this.cull();
