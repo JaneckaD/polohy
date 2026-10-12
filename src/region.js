@@ -40,6 +40,14 @@ export function krajOf(region, lon, lat) {
   for (const [key, ring] of Object.entries(parts)) if (ringContains(ring, lon, lat)) return key;
   return null;
 }
+/**
+ * Jde do mapy přidávat zdroje a vrstvy? map.isStyleLoaded() čeká i na všechny dlaždice, a na velké
+ * obrazovce (počítač) se dlaždice načítají skoro pořád, takže by se koleje a trasy nenakreslily.
+ */
+export function styleReady(map) {
+  return Boolean(map.style?._loaded ?? map.isStyleLoaded());
+}
+
 let railsPromise = null;
 
 /** Tratě s osobní dopravou (rails.json), načtené jednou. */
@@ -87,8 +95,8 @@ let retry = null;
 
 export function drawRegion(map) {
   if (map.getSource('rails')) return;
-  if (!map.isStyleLoaded()) {
-    // Styl ještě není (nebo se nenačetly dlaždice a 'load' nepřijde): zkusíme to za chvíli znovu.
+  if (!styleReady(map)) {
+    // Styl mapy ještě není načtený: zkusíme to za chvíli znovu.
     retry ??= setTimeout(() => {
       retry = null;
       drawRegion(map);

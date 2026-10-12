@@ -25,7 +25,17 @@ let region = null;
 export function setFilterRegion(r) {
   region = r;
 }
-const krajAt = (v) => (region && Number.isFinite(v.lon) && Number.isFinite(v.lat) ? (krajOf(region, v.lon, v.lat) ?? 'zlk') : 'zlk');
+// Kraj se počítá jednou pro každou polohu vozu (filtr se vyhodnocuje při každém překreslení).
+const krajCache = new WeakMap();
+function krajAt(v) {
+  if (!region || !Number.isFinite(v.lon) || !Number.isFinite(v.lat)) return 'zlk';
+  let k = krajCache.get(v);
+  if (k === undefined) {
+    k = krajOf(region, v.lon, v.lat) ?? 'zlk';
+    krajCache.set(v, k);
+  }
+  return k;
+}
 
 /** Města s MHD: Zlín–Otrokovice (DSZO) a ostatní podle IDZK. */
 export const NETWORK_NAMES = { zl: 'Zlín–Otrokovice', ...Object.fromEntries(Object.entries(CITIES).map(([k, c]) => [k, c.name])) };

@@ -2,13 +2,14 @@
 // 1) Na trasu jeho linky (z routes.json), když je do 40 m.
 // 2) Jinak na nejbližší silnici z mapových dlaždic, když je do 25 m.
 import { findRoute, projectOnLine } from './route-match.js';
+import { styleReady } from './region.js';
 
 const ROUTE_SNAP_M = 40;
 const ROAD_SNAP_M = 25;
 const ROAD_LAYERS = ['roads-major', 'roads-minor'];
 
 function snapToRoads(map, v) {
-  if (!map.isStyleLoaded() || map.getZoom() < 13) return null;
+  if (!styleReady(map) || map.getZoom() < 13) return null;
   const p = map.project([v.lon, v.lat]);
   const box = [
     [p.x - 30, p.y - 30],

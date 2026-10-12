@@ -104,6 +104,22 @@ function plannedPosition(P, trip, t) {
   return null;
 }
 
+// Jízdy vlaků podle linky (S3, R12…), spočítané jednou pro data vyhledávání.
+const byLine = new WeakMap();
+function trainsOfLine(P, line) {
+  if (!byLine.has(P)) {
+    const index = new Map();
+    for (const trip of P.trips) {
+      if (trip.pattern.y !== 'v' || !trip.pattern.l) continue;
+      const key = trip.pattern.l.split(' ')[0];
+      if (!index.has(key)) index.set(key, []);
+      index.get(key).push(trip);
+    }
+    byLine.set(P, index);
+  }
+  return byLine.get(P).get(line) ?? [];
+}
+
 /**
  * Vlak z mapy IDS JMK (jen linka, cíl, zpoždění a poloha) → číslo, druh a dopravce z jízdního řádu:
  * ze dnešních jízd stejné linky ta, která má podle jízdního řádu (se zpožděním) být nejblíž polohy vlaku.
@@ -114,9 +130,8 @@ export function identifyTrain(P, v, date, now) {
   const di = dayIndex(P.startDate, date);
   const t0 = now - Math.max(0, Math.round((v.delay ?? 0) / 60));
   let best = null;
-  for (const trip of P.trips) {
+  for (const trip of trainsOfLine(P, v.lineName)) {
     const pat = trip.pattern;
-    if (pat.y !== 'v' || (pat.l ?? '').split(' ')[0] !== v.lineName) continue;
     for (const shift of [0, 1440]) {
       const d = di - shift / 1440;
       if (d < 0 || d >= P.days || trip.mask[d] !== '1') continue;

@@ -4,7 +4,7 @@ import { isCarrier } from './cities.js';
 import { trainKind } from './trains.js';
 import { findRoute, splitRoute, attachTimes, tripGeometry, splitTrip, currentTripIndex } from './route-match.js';
 import { RailNetwork, railGeometry } from './railroute.js';
-import { loadRails } from './region.js';
+import { loadRails, styleReady } from './region.js';
 
 let railNetPromise = null;
 /** Síť tratí pro trasy vlaků (z rails.json), postavená jednou. */
@@ -42,7 +42,7 @@ const SRC_FILTER = 'filter-routes';
 
 /** Trasy linek vybraných ve filtru: tenká čára v barvě linky pod vozy. */
 export function drawLineRoutes(map, routes) {
-  if (!map.isStyleLoaded()) return;
+  if (!styleReady(map)) return;
   if (!map.getSource(SRC_FILTER)) {
     map.addSource(SRC_FILTER, { type: 'geojson', data: empty });
     map.addLayer(
@@ -265,7 +265,7 @@ export async function computeRoute(vehicle, trip, current) {
 }
 
 export function drawRoute(map, route, type, colors = null) {
-  if (!map.isStyleLoaded()) return; // podklad mapy ještě není (nebo se nenačetl), trasu nakreslíme při další obnově
+  if (!styleReady(map)) return; // styl mapy ještě není načtený, trasu nakreslíme při další obnově
   ensureLayers(map);
   const { main, passed, casing, stop, stopPassed } = colors ?? TYPE_COLORS[type] ?? TYPE_COLORS.bus;
   const lines = [];
@@ -358,7 +358,7 @@ const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).pad
 
 /** Nakreslí spojení (jízdy po trasách linek, pěší přestupy tečkovaně). Vrací hranice pro přiblížení. */
 export async function drawJourney(map, journey, P) {
-  if (!map.isStyleLoaded()) return null;
+  if (!styleReady(map)) return null;
   ensureJourneyLayers(map);
   const features = [];
   const pts = [];

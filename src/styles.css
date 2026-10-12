@@ -184,7 +184,7 @@ input:focus-visible {
   min-width: 0;
 }
 
-/* Logo IDZK (vektorově, ostré v každém rozlišení), svisle i vodorovně vystředěné v pilulce. */
+/* Logo: česká vlajka v kolečku (vektorově, ostrá v každém rozlišení), vystředěná v pilulce. */
 .brand-logo {
   display: block;
   width: 32px;
