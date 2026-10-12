@@ -33,12 +33,28 @@ export function preparePlanner(data) {
     // mark: písmeno spoje DSZO z papírového jízdního řádu (8d = končí v zast. Baťova nem.).
     return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr, no: data.tripNo?.[id] ?? null, mark: data.marks?.[id] ?? null };
   });
-  // Pěší přestupy: dvojice různých zastávek do 10 minut chůze.
+  // Pěší přestupy: dvojice různých zastávek do 10 minut chůze. Zastávky rozdělíme do čtverců
+  // větších než nejdelší pěší přestup a porovnáváme jen sousední čtverce (všechny dvojice
+  // tisíců zastávek by na mobilu zdržely start o vteřinu).
   const walks = stops.map(() => []);
+  const cellLat = (MAX_WALK_MIN * WALK_M_PER_MIN) / DETOUR / 111000 + 0.0005;
+  const cellLon = cellLat * 1.6; // délka stupně zeměpisné délky je na Moravě asi 0,65 stupně šířky
+  const cellKey = (x, y) => `${x}:${y}`;
+  const cells = new Map();
+  for (const s of stops) {
+    if (s.lat == null) continue;
+    const key = cellKey(Math.floor(s.lon / cellLon), Math.floor(s.lat / cellLat));
+    if (!cells.has(key)) cells.set(key, []);
+    cells.get(key).push(s);
+  }
   for (const a of stops) {
     if (a.lat == null) continue;
-    for (const b of stops) {
-      if (b.i <= a.i || b.lat == null) continue;
+    const x = Math.floor(a.lon / cellLon);
+    const y = Math.floor(a.lat / cellLat);
+    const near = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const b of cells.get(cellKey(x + dx, y + dy)) ?? []) if (b.i > a.i) near.push(b);
+    near.sort((p, q) => p.i - q.i);
+    for (const b of near) {
       const m = distanceMeters(a.lat, a.lon, b.lat, b.lon);
       const min = walkMinutes(m);
       if (min > MAX_WALK_MIN) continue;

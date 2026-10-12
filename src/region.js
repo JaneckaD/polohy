@@ -73,7 +73,8 @@ function hatchImage() {
   const size = 16;
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  const g = c.getContext('2d');
+  // Obrázek se hned čte zpátky: kreslení bez grafické karty je tu rychlejší.
+  const g = c.getContext('2d', { willReadFrequently: true });
   g.fillStyle = 'rgba(232, 232, 236, 0.72)';
   g.fillRect(0, 0, size, size);
   g.strokeStyle = 'rgba(120, 120, 128, 0.32)';
