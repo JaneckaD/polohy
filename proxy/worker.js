@@ -166,7 +166,7 @@ const MPV_BODY = JSON.stringify({ w: 15.5, s: 48.55, e: 18.7, n: 49.7, zoom: 13,
 // Městské linky podle čísla licence: 775 = MHD Kroměříž, 946 = Valašské Meziříčí, 805 = Uherské Hradiště, 945 = Vsetín.
 const CITY_LICENCES = ['775', '946', '805', '945'];
 // Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
-const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA|Transdev|TQM/i;
+const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA|Transdev|TQM|Psota/i;
 
 // MHD Kroměříž (Kroměřížské technické služby): mapa na kromeriz.mhdonline.cz posílá klíč v těle
 // a server chce tělo jako prostý text (s Content-Type JSON vrací chybu 500).
