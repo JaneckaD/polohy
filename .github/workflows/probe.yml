@@ -5,15 +5,65 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - run: |
           set +e
           cd /tmp
-          for u in https://portal.cisjr.cz/pub/jdf/ https://portal.cisjr.cz/pub/jdf/JDF.zip https://portal.cisjr.cz/pub/ https://portal.cisjr.cz/pub/jdf/celostatni/ \
-            https://hoermalmeister.github.io/gtfs-rehost/ https://hoermalmeister.github.io/gtfs-rehost/czbus/ https://hoermalmeister.github.io/gtfs-rehost/czbus/jdf.zip \
-            https://github.com/hoermalmeister/gtfs-rehost ; do
-            echo "=== $u"; curl -sIL -m 30 "$u" | grep -iE '^(HTTP|content-length|content-type|location)'
-          done
-          curl -sL -m 30 https://portal.cisjr.cz/pub/jdf/ | head -c 2000; echo
-          curl -sL -m 30 https://github.com/hoermalmeister/gtfs-rehost | grep -oE 'gtfs-rehost/tree/main/[a-zA-Z0-9_-]+' | sort -u
+          curl -sL -m 300 -o jdf.zip https://portal.cisjr.cz/pub/jdf/JDF.zip; ls -la jdf.zip
+          curl -sL -m 120 -o jmk.zip https://kordis-jmk.cz/gtfs/gtfs.zip
+          unzip -o -q jmk.zip stops.txt -d jmk
+          python3 - <<'P'
+          import zipfile, io, csv, re, collections
+          z = zipfile.ZipFile('jdf.zip')
+          names = z.namelist()
+          print('entries', len(names), names[:5])
+          def rows(data):
+              t = data.decode('cp1250', errors='replace')
+              out = []
+              for line in t.splitlines():
+                  f = re.findall(r'"([^"]*)"', line)
+                  if f: out.append(f)
+              return out
+          # obce IDS JMK podle názvů zastávek („Obec, místo“)
+          obce = set()
+          for r in csv.DictReader(open('jmk/stops.txt', encoding='utf-8-sig')):
+              obce.add(r['stop_name'].split(',')[0].strip().lower())
+          print('obci IDS JMK', len(obce))
+          lines = []
+          def handle(files):
+              f = {k.split('/')[-1].lower(): v for k, v in files.items()}
+              if 'linky.txt' not in f: return
+              L = rows(f['linky.txt']); D = {r[0]: r[2] for r in rows(f.get('dopravci.txt', b''))}
+              Z = rows(f.get('zastavky.txt', b''))
+              stops = [r[1].strip().lower() for r in Z]
+              for l in L:
+                  lines.append((l[0], l[1], D.get(l[2], l[2]), l[3], l[4], stops))
+          sample = True
+          for n in names:
+              data = z.read(n)
+              if n.lower().endswith('.zip'):
+                  try:
+                      iz = zipfile.ZipFile(io.BytesIO(data))
+                      if sample:
+                          print('inner', n, iz.namelist()); sample = False
+                          for k in iz.namelist():
+                              if k.lower().endswith(('linky.txt','dopravci.txt')): print(k, rows(iz.read(k))[:2])
+                      handle({k: iz.read(k) for k in iz.namelist()})
+                  except Exception as e: print('err', n, e)
+          print('linek', len(lines))
+          print('typy', collections.Counter(l[3] for l in lines))
+          car = collections.defaultdict(lambda: collections.Counter())
+          for no, name, dop, typ, prost, stops in lines:
+              inn = [s for s in stops if s in obce]
+              if not inn: continue
+              out = [s for s in stops if s not in obce]
+              kind = 'mesto' if typ == 'A' else ('dalkova' if (typ in ('N','P','D','V') or len(out) >= 3) else 'regionalni')
+              car[dop][kind + '/' + typ] += 1
+          for d, c in sorted(car.items(), key=lambda x: -sum(x[1].values())):
+              print(f'{d} | {dict(c)}')
+          # ukázky dálkových linek
+          for no, name, dop, typ, prost, stops in lines:
+              if any(s in obce for s in stops) and typ in ('N','P','D','V'):
+                  print('D', no, typ, dop, name[:80])
+          P
