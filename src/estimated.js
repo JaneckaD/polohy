@@ -16,6 +16,14 @@ const JMK_FALLBACK = new Set(['jmk', 'brno', 'jmkmhd']);
 const OWN_SOURCE = new Set(['flix', 'rj']);
 let jmkDown = false;
 let liveTrips = new Set();
+let odisUp = false;
+/**
+ * Mapa ODIS posílá vozy: regionální linky a MHD v Moravskoslezském kraji se pak neodhadují (jedou živě,
+ * jako linky IDZK ve Zlínském kraji); vůz, ke kterému se spoj nenašel, by se jinak ukázal dvakrát.
+ */
+export function setOdisUp(up) {
+  odisUp = !!up;
+}
 /** Spoje (id spoje v datech vyhledávání), které právě jedou živě: jejich odhad se neukáže. */
 export function setLiveTrips(ids) {
   liveTrips = ids instanceof Set ? ids : new Set(ids);
@@ -108,6 +116,7 @@ export function estimatedVehicles(P, region, date, min) {
         pos = line?.length > 1 ? along(line, f) : along([[a.lon, a.lat], [b.lon, b.lat]], f);
       }
       if (region && !regionContains(region, pos.lon, pos.lat)) continue;
+      if (odisUp && region && (pattern.c === 'town' || pattern.c === 'other') && krajOf(region, pos.lon, pos.lat) === 'msk') continue;
       // FlixBus a RegioJet uvnitř Zlínského kraje ukazují vlastní zdroje.
       if (OWN_SOURCE.has(pattern.c) && (!region || krajOf(region, pos.lon, pos.lat) === 'zlk')) continue;
       const calls = callsOf(P, trip);

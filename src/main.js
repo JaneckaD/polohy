@@ -8,7 +8,7 @@ import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRe
 import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
 import { cityTrip, timeTripPosition, isCoach } from './cities.js';
 import { loadRegioJet, regioJetVehicles } from './regiojet.js';
-import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown, setLiveTrips } from './estimated.js';
+import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown, setLiveTrips, setOdisUp } from './estimated.js';
 import { setOdisSegments } from './odis.js';
 import { JmkLive, setJmkSegments } from './jmk.js';
 import { currentTripIndex } from './route-match.js';
@@ -445,9 +445,11 @@ async function refreshTrains() {
 
 async function refreshCities() {
   try {
-    const list = await fetchCityVehicles({ P: jmkPlanner, ...pragueNow() });
+    const list = await fetchCityVehicles({ P: jmkPlanner, region: jmkRegion, ...pragueNow() });
     // Spoje ODIS, které jedou živě, se neukážou ještě jednou odhadem podle jízdního řádu.
-    setLiveTrips(new Set(list.filter((v) => v.live === 'odis' && v.tripId != null).map((v) => v.tripId)));
+    const odis = list.filter((v) => v.live === 'odis');
+    setLiveTrips(new Set(odis.filter((v) => v.tripId != null).map((v) => v.tripId)));
+    setOdisUp(odis.length > 20);
     store.setCityBuses(list);
   } catch (err) {
     // MHD dalších měst je doplněk (starší proxy bez /mhd): Zlín funguje dál.

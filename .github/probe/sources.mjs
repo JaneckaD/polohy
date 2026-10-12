@@ -1,6 +1,6 @@
 import { preparePlanner } from '../../src/planner.js';
 import { parseOdis } from '../../src/odis.js';
-import { estimatedVehicles } from '../../src/estimated.js';
+import { estimatedVehicles, setLiveTrips, setOdisUp } from '../../src/estimated.js';
 import { krajOf } from '../../src/region.js';
 const SITE = 'https://janeckad.github.io/polohy/';
 const UA = { 'User-Agent': 'Mozilla/5.0 Chrome/129' };
@@ -16,7 +16,7 @@ console.log(`planner ${(text.length / 1e6).toFixed(1)} MB fetch ${Math.round(t1 
 const region = await (await fetch(SITE + 'region.json')).json();
 const r = await fetch('https://mpvnet.cz/odis/map/mapData', { method: 'POST', headers: { ...UA, 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz' }, body: JSON.stringify({ w: 16.8, s: 49.3, e: 18.95, n: 50.5, zoom: 13, showStops: false, mapFilterId: null }) });
 const tr = (await r.json()).transmitters;
-const vs = tr.map((x) => parseOdis(x, { P, date, min })).filter(Boolean);
+const vs = tr.map((x) => parseOdis(x, { P, region, date, min })).filter(Boolean);
 const by = (f, list) => { const c = {}; for (const v of list) { const k = f(v); c[k] = (c[k] ?? 0) + 1; } return JSON.stringify(Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 30)); };
 console.log(`ODIS ${tr.length} → vozů ${vs.length}, se spojem ${vs.filter((v) => v.calls).length}`);
 console.log('city/type', by((v) => `${v.city}/${v.type}/${v.calls ? 'spoj' : 'BEZ'}`, vs));
@@ -24,6 +24,12 @@ console.log('bez spoje podle dopravce', by((v) => v.operatorName, vs.filter((v) 
 for (const v of vs.filter((v) => !v.calls).slice(0, 15)) console.log('  bez spoje', v.licence, v.line, v.tripNo, v.operatorName, v.stop, '→', v.headsign);
 for (const v of vs.filter((v) => v.calls).slice(0, 6)) console.log('  ok', v.licence, v.line, v.tripNo, v.type, v.operatorName, 'next', v.next, v.nextIndex, v.atStop, 'calls', v.calls.length, 'delay', v.delay);
 // Pozice: jak daleko je vůz od úseku spoje podle nextIndex
+setLiveTrips(new Set(vs.filter((v) => v.tripId != null).map((v) => v.tripId)));
+setOdisUp(vs.length > 20);
+console.log('ODIS podle kraje', by((v) => krajOf(region, v.lon, v.lat), vs));
+setLiveTrips(new Set(vs.filter((v) => v.tripId != null).map((v) => v.tripId)));
+setOdisUp(vs.length > 20);
+console.log('ODIS podle kraje', by((v) => krajOf(region, v.lon, v.lat), vs));
 const est = estimatedVehicles(P, region, date, min);
 console.log(`odhad: ${est.length} vozů`, by((v) => `${v.city}/${krajOf(region, v.lon, v.lat)}`, est));
 const pats = {}; for (const tr of P.trips) pats[tr.pattern.c ?? 'dszo'] = (pats[tr.pattern.c ?? 'dszo'] ?? 0) + 1; console.log('spoje podle sítě', JSON.stringify(pats));

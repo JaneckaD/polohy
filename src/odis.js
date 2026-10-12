@@ -5,6 +5,7 @@
 import { formatDelay } from './dszo.js';
 import { cityStopName, lineLabel, parseDelay, carrierName } from './cities.js';
 import { nameSimilarity } from './names.js';
+import { krajOf } from './region.js';
 
 const NETS = new Set(['other', 'town', 'coach']);
 // Licence linek MHD Ostrava (DPO) začínají 915: linka 12 = 915012.
@@ -125,8 +126,13 @@ function dpoType(line) {
  * cn: licence|linka|spoj|poslední zastávka|…|příští zastávka|…|…|odkud|cíl|nízkopodlažní|SPZ (MHD Ostrava:
  * linka|linka|spoj|…, ev. číslo vozu místo SPZ).
  */
-export function parseOdis(t, { P = null, date, min } = {}) {
+export function parseOdis(t, { P = null, region = null, date, min } = {}) {
   if (t.cat === 1 || t.t !== 'H' || !Number.isFinite(t.x) || !Number.isFinite(t.y)) return null;
+  // Na mapě ODIS jsou i linky Zlínského kraje (Valašsko): ty ukazuje mapa IDZK.
+  if (region) {
+    const kraj = krajOf(region, t.y, t.x);
+    if (!kraj || kraj === 'zlk' || kraj === 'jmk') return null;
+  }
   const f = String(t.cn ?? '').split('|');
   if (!f[1]) return null;
   const dpo = t.cat === 3 || /^DPO\b/.test(t.cr ?? '');
