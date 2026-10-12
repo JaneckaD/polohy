@@ -1,5 +1,4 @@
 import json, urllib.request, time, collections, subprocess, sys
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", "websocket-client"], check=True)
 import websocket
 def get(u):
     req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 polohy-probe"})

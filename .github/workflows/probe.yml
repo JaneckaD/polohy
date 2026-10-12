@@ -8,4 +8,4 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - run: python3 .github/probe/jmk.py
+      - run: pip install websocket-client && python3 .github/probe/jmk.py
