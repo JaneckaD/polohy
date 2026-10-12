@@ -19,6 +19,7 @@ import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
 import { initFilter } from './filter.js';
 import { initLegend } from './legend.js';
+import { vehicleMark } from './dszo-marks.js';
 import { initPlanner, loadPlanner } from './plannerview.js';
 import { trainTrip, trainPosition } from './train-trip.js';
 import { initInstall } from './install.js';
@@ -369,11 +370,31 @@ function render() {
   }
 }
 
+// Písmena spojů DSZO (8d…) potřebují data vyhledávání: načteme je chvíli po startu, ať nebrzdí mapu.
+let marksPlanner = null;
+setTimeout(() => {
+  loadPlanner()
+    .then((P) => {
+      marksPlanner = P;
+      if (store.vehicles.length) store.setVehicles(withMarks(store.vehicles));
+    })
+    .catch(() => {});
+}, 3000);
+
+function withMarks(list) {
+  if (!marksPlanner?.notes) return list;
+  const { date, min } = pragueNow();
+  return list.map((v) => {
+    const m = vehicleMark(marksPlanner, v, date, min);
+    return { ...v, mark: m?.mark ?? null, markNote: m?.note ?? null };
+  });
+}
+
 async function refresh() {
   try {
     const list = await fetchVehicles();
     lastUpdate = new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-    store.setVehicles(list.map((v) => snapVehicle(map, routes, v)));
+    store.setVehicles(withMarks(list.map((v) => snapVehicle(map, routes, v))));
   } catch (err) {
     console.error(err);
     setStatus(navigator.onLine ? 'Data DSZO se nepodařilo načíst' : 'Bez připojení', true);

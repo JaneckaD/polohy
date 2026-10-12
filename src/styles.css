@@ -2685,3 +2685,10 @@ input:focus-visible {
   border-radius: 10px;
   font-weight: 600;
 }
+
+/* Písmeno spoje DSZO (8d…) a jeho vysvětlení v detailu vozu. */
+.card-mark {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--label-2);
+}

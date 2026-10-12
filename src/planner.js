@@ -30,7 +30,8 @@ export function preparePlanner(data) {
     // Příjezdy: vlaky ve stanici stojí, jinde je příjezd = odjezd.
     const dwell = data.dwell?.[id];
     const arr = dwell ? times.map((t, i) => t - (dwell[i] ?? 0)) : times;
-    return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr, no: data.tripNo?.[id] ?? null };
+    // mark: písmeno spoje DSZO z papírového jízdního řádu (8d = končí v zast. Baťova nem.).
+    return { id, pattern: data.patterns[p], mask: data.masks[m], times, arr, no: data.tripNo?.[id] ?? null, mark: data.marks?.[id] ?? null };
   });
   // Pěší přestupy: dvojice různých zastávek do 10 minut chůze.
   const walks = stops.map(() => []);
@@ -61,7 +62,7 @@ export function preparePlanner(data) {
     s.full = `Zlín, ${s.name}`;
     s.norm = normalizeName(s.full);
   }
-  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, stops, trips, walks, walkMin, towns, connCache: new Map() };
+  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, notes: data.notes ?? {}, stops, trips, walks, walkMin, towns, connCache: new Map() };
 }
 
 /**

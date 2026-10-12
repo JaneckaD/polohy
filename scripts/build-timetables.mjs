@@ -7,6 +7,7 @@ import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
 import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
+import { dszoMarks, applyMarks } from './dszo-notes.mjs';
 import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
@@ -118,11 +119,14 @@ function withStopNames(part) {
 // --- 1. Jízdní řády ------------------------------------------------------------
 const zipUrl = await findZipUrl();
 let tt = null;
+// PDF jízdní řády DSZO: jen kvůli písmenům u spojů (8d, 38g…).
+let dszoPdf = null;
 if (zipUrl) {
   console.log(`Balík jízdních řádů: ${zipUrl}`);
   try {
     const bytes = new Uint8Array(await (await fetch(zipUrl, { headers: UA })).arrayBuffer());
     let files = unzipSync(bytes);
+    dszoPdf = files;
     // Některé balíky mají uvnitř další ZIP pro každou linku.
     const nested = Object.entries(files).filter(([n]) => n.toLowerCase().endsWith('.zip'));
     if (nested.length) {
@@ -238,6 +242,7 @@ mkdirSync(TT_DIR, { recursive: true });
 if (tt) {
   // Data pro vyhledávání spojení a seznam linek (filtr).
   const planner = tt.rawTrips ? buildPlannerFromTrips(tt) : buildPlannerData(tt);
+  if (dszoPdf) applyMarks(planner, dszoMarks(dszoPdf));
   // Výbava vlaků z celostátních jízdních řádů SŽ.
   const numbers = new Set(planner.patterns.filter((p) => p.y === 'v').map((p) => p.n));
   if (numbers.size) {

@@ -128,7 +128,7 @@ export function renderDetails(v, trip = null) {
   const card = applyVehicleColors(h('div', 'card'), v);
 
   const head = h('div', 'card-head');
-  const badge = h('div', 'card-line', v.line);
+  const badge = h('div', 'card-line', `${v.line}${v.mark ?? ''}`);
   const title = h('div', 'card-title');
   title.append(h('div', 'card-headsign', v.headsign ? `→ ${v.headsign}` : `Linka ${v.line}`));
   const type = h('div', 'card-type');
@@ -149,6 +149,8 @@ export function renderDetails(v, trip = null) {
     if (ago) pills.append(h('span', 'card-ago', `poloha ${ago}`));
   }
   card.append(pills);
+  // Písmeno spoje z jízdního řádu DSZO: co znamená.
+  if (v.mark && v.markNote) card.append(h('div', 'card-mark', `${v.line}${v.mark}: ${v.markNote}`));
   // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
   if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));
 

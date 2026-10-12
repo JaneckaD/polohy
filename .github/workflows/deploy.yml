@@ -43,6 +43,9 @@ jobs:
       - name: Vlastní OSRM
         run: scripts/osrm-local.sh
         continue-on-error: true
+      - name: pdftotext (písmena spojů DSZO z PDF jízdních řádů)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+        continue-on-error: true
       - run: npm run timetables
         env:
           PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/

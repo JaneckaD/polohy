@@ -55,7 +55,7 @@ const durationText = (min) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)
 // Vlak ve vyhledávání: druh, číslo a dopravce (barvy jako značka vlaku na mapě).
 const trainOf = (pat) => ({ type: 'train', code: pat.k, number: pat.n, kind: trainKind(pat.k), operator: trainOperator(pat.o) });
 
-function lineBadge(pat) {
+function lineBadge(pat, trip = null) {
   if (pat.y === 'v') {
     const t = trainOf(pat);
     const badge = applyVehicleColors(h('span', 'line-badge train-badge'), t);
@@ -63,7 +63,8 @@ function lineBadge(pat) {
     badge.append(k, h('span', null, t.number));
     return badge;
   }
-  return colorRide(h('span', 'line-badge', pat.r), pat);
+  // Spoj DSZO s písmenem z jízdního řádu (8d, 38g…).
+  return colorRide(h('span', 'line-badge', `${pat.r}${trip?.mark ?? ''}`), pat);
 }
 
 // MHD jiného města (Kroměříž, Valašské Meziříčí) má barvu města.
@@ -451,7 +452,7 @@ function legRows(j, P) {
     let end = l;
     for (let k = i + 1; k < j.legs.length && j.legs[k].stay; k++) end = j.legs[k];
     const row = h('div', 'rleg');
-    row.append(lineBadge(l.trip.pattern));
+    row.append(lineBadge(l.trip.pattern, l.trip));
     const text = h('span', 'rleg-text');
     text.append(h('b', 'rleg-time', fmt(l.dep)), ` ${P.stops[l.from].full} `, h('span', 'rleg-arrow', '→'), ` ${P.stops[end.to].full}`);
     row.append(text);
@@ -543,9 +544,11 @@ function renderDetail(j, P, date) {
     const stops = rideStops(P, l);
     const card = colorRide(h('div', 'leg-ride'), l.trip.pattern);
     const lh = h('div', 'leg-head');
-    lh.append(lineBadge(l.trip.pattern));
+    lh.append(lineBadge(l.trip.pattern, l.trip));
     const lt = h('div');
     lt.append(h('div', 'leg-dir', `směr ${l.trip.pattern.h}`), h('div', 'muted small', `${rideKind(l.trip.pattern)} · ${durationText(l.arr - l.dep)}`));
+    const note = l.trip.mark && P.notes?.[l.trip.pattern.r]?.[l.trip.mark];
+    if (note) lt.append(h('div', 'muted small', `${l.trip.pattern.r}${l.trip.mark}: ${note}`));
     lh.append(lt);
     card.append(lh);
     const ol = h('ol', 'leg-stops');
