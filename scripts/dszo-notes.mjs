@@ -28,25 +28,26 @@ export function parsePage(text) {
   const notes = {};
   let inNotes = false;
   for (const row of rows) {
-    // Zastávka, pro kterou je stránka: jízdní doba 0.
-    const s = /^\s{0,3}0\s+(\S.*?)(?:\s{2,}|$)/.exec(row);
-    if (s && !stop) stop = s[1].trim();
+    // Zastávka, pro kterou je stránka: jízdní doba 0 (sloupců jízdních dob může být víc: „0 0 Jaroslavice,náves“).
+    const s = /^\s*((?:(?:\d+|<)\s+){1,3})(\p{L}.*?)(?=\s{2,}|$)/u.exec(row);
+    if (s && !stop && s[1].trim().split(/\s+/).includes('0')) stop = s[2].trim();
     if (/Poznámky u spojů/.test(row)) inNotes = true;
     if (inNotes || /\s[a-zA-Z] - \S/.test(row)) {
-      for (const m of row.matchAll(/(?:^|\s)([a-zA-Z]) - (\S.*?)(?=\s{3,}|$)/g)) {
+      for (const m of row.matchAll(/(?:^|\s)(\p{L}) - (\S.*?)(?=\s{3,}|$)/gu)) {
         // Vlevo jsou poznámky u zastávek (x = na znamení), ty nechceme.
         if (m[1] === 'x' || m.index < 25) continue;
         notes[m[1]] = m[2].trim();
       }
     }
-    // Řádek hodin: dvoumístná hodina zhruba ve 36.–44. sloupci, za ní minuty (v pravém sloupci jsou informace).
-    const hour = /^(.{34,44}?)\s(\d{2})(?=\s)/.exec(row);
+    // Řádek hodin: dvoumístná hodina zhruba ve 30.–60. sloupci (podle šířky názvů), za ní minuty
+    // (v pravém sloupci jsou informace pro cestující).
+    const hour = /^(.{30,60}?)\s(\d{2})(?=\s|$)/.exec(row);
     if (!hour) continue;
     const h = Number(hour[2]);
     if (h > 24) continue;
     const start = hour[1].length + 3;
-    for (const m of row.slice(start).matchAll(/(\d{2})([a-zA-Z]?)(?=\s|$)/g)) {
-      if (start + m.index > 108) break;
+    for (const m of row.slice(start).matchAll(/(?<=\s|^)(\d{2})(\p{L}?)(?=\s|$)/gu)) {
+      if (start + m.index > 120) break;
       if (m[2]) marks.push([hhmm(h, Number(m[1])), m[2]]);
     }
   }

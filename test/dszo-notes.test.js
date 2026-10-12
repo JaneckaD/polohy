@@ -26,6 +26,24 @@ test('písmena spojů DSZO z textu PDF', () => {
   assert.equal(normStop('Zlín, Jižní Svahy, Kocanda'), normStop('Jižní Svahy,Kocanda'));
 });
 
+test('písmena spojů: víc sloupců jízdní doby, písmena s diakritikou, širší sloupec názvů', () => {
+  const page = [
+    '  38                                                                                                       Platnost od 1.9.2026',
+    ' Čas   Název zastávky a tarifní pásmo                     Pracovní dny              Školní prázdniny        Víkend',
+    '      Lešná,zoo                           B      00',
+    '0    0     Kostelec,střed                      B x',
+    '                                                        06    14 26 40 54š                 14 26 40 54            16',
+    '< 17 Zlín,střed                         x',
+    ' Poznámky u zastávek:                         Poznámky u spojů:',
+    '  x - na znamení                             š - ze zast. U Zámku jede na Školní           DSZO24Z - 50 Kč',
+  ].join('\n');
+  const p = parsePage(page);
+  assert.equal(p.line, '38');
+  assert.equal(p.stop, 'Kostelec,střed');
+  assert.deepEqual(p.marks, [['06:54', 'š']]);
+  assert.deepEqual(p.notes, { š: 'ze zast. U Zámku jede na Školní' });
+});
+
 test('písmena se přiřadí spojům podle zastávky a času', () => {
   const planner = {
     stops: [['Česká'], ['Dlouhá'], ['Baťova nem.']],
