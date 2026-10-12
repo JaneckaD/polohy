@@ -9,9 +9,32 @@ jobs:
     steps:
       - run: |
           set +e
-          B=https://wimr-ui.gis.flix.tech/track/assets
-          curl -sL -m 30 $B/index-DglT1Uph.js -o f.js
-          for c in $(grep -oE '"\./[A-Za-z0-9_-]+\.js"' f.js | tr -d '"' | sort -u | grep -v -E '^\./[a-z]{2}(_[A-Z]{2})?-' ); do
-            curl -sL -m 20 "$B/${c#./}" -o c.js
-            if grep -qE 'WIMB|WIMR_API_KEY|/gis' c.js; then echo "-- $c $(wc -c < c.js)"; grep -oE '.{0,250}(WIMB_API_URL|WIMR_API_KEY).{0,350}' c.js | head -12; fi
-          done
+          mkdir pw && cd pw && npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > s.mjs <<'J'
+          import { chromium } from 'playwright';
+          const ac = async (q) => (await (await fetch(`https://global.api.flixbus.com/search/autocomplete/cities?q=${encodeURIComponent(q)}&lang=cs&country=cz&flixbus_cities_only=false`)).json())[0];
+          const zl = await ac('Zlín'), pr = await ac('Praha'), br = await ac('Brno');
+          console.log('cities', zl.id, pr.id, br.id);
+          const d = new Date(); const date = `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}.${d.getUTCFullYear()}`;
+          let rides = [];
+          for (const [a,b] of [[pr.id, zl.id],[zl.id, pr.id],[br.id, zl.id]]) {
+            const u = `https://global.api.flixbus.com/search/service/v4/search?from_city_id=${a}&to_city_id=${b}&departure_date=${date}&products=${encodeURIComponent('{"adult":1}')}&currency=CZK&locale=cs&search_by=cities&include_after_midnight_rides=1`;
+            const r = await fetch(u); const t = await r.text(); console.log('search', r.status, t.slice(0, 1500));
+            try { const j = JSON.parse(t); for (const [k, v] of Object.entries(j.trips?.[0]?.results || {})) { rides.push(v); } } catch (e) { console.log(e.message); }
+          }
+          console.log('rides', rides.length);
+          for (const v of rides.slice(0, 3)) console.log(JSON.stringify(v).slice(0, 1500));
+          const leg = rides.map(v => v.legs?.[0]).find(Boolean);
+          const rideId = leg?.ride_id || leg?.ride?.id || leg?.uid;
+          console.log('leg', JSON.stringify(leg)?.slice(0, 800));
+          const b = await chromium.launch(); const p = await b.newPage();
+          p.on('request', r => { const t = r.resourceType(); if (['xhr','fetch'].includes(t)) console.log('REQ', r.method(), r.url().slice(0,300), JSON.stringify(r.headers()).slice(0,400)); });
+          p.on('response', async r => { const t = r.request().resourceType(); if (['xhr','fetch'].includes(t) && /flix/.test(r.url()) && !/cms|configcat|datadog/.test(r.url())) { let s=''; try { s = (await r.text()).slice(0,2500); } catch {} console.log('RES', r.status(), r.url().slice(0,300), '\n', s); } });
+          for (const url of [rideId && `https://www.flixbus.cz/track/ride/${rideId}`, `https://www.flixbus.cz/track/station`]) {
+            if (!url) continue; console.log('=== OPEN', url);
+            await p.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(e => console.log('goto', e.message));
+            await p.waitForTimeout(8000);
+          }
+          await b.close();
+          J
+          node s.mjs
