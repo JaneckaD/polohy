@@ -1,0 +1,15 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          set +e
+          W=https://dszo-proxy.djanecka6.workers.dev
+          for p in /trains /mhd /flix; do echo "== $p"; curl -s -m 40 -w '\nHTTP %{http_code} %{size_download}\n' "$W$p" | tail -c 700; done
+          echo "== SŽ direct"
+          curl -s -m 40 -w '\nHTTP %{http_code} %{size_download}\n' -H 'Referer: https://mapy.spravazeleznic.cz/vlaky' 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load' | tail -c 500
