@@ -17,7 +17,8 @@ import { TRAIN_REFRESH_MS } from './trains.js';
 import { matchJourneyVehicles } from './journey-vehicles.js';
 import { snapVehicle } from './snap.js';
 import { store, matchesFilter } from './store.js';
-import { initFilter, setKnownLines } from './filter.js';
+import { initFilter } from './filter.js';
+import { initLegend } from './legend.js';
 import { initPlanner, loadPlanner } from './plannerview.js';
 import { trainTrip, trainPosition } from './train-trip.js';
 import { initInstall } from './install.js';
@@ -418,16 +419,7 @@ async function refreshRegioJet() {
   store.setCoaches([...flixBuses, ...regioJetVehicles(data, region, date, min + now.getSeconds() / 60)]);
 }
 
-let lastFilter = '';
-store.subscribe(() => {
-  render();
-  const key = JSON.stringify(store.filter);
-  if (key !== lastFilter) {
-    lastFilter = key;
-    // Vybrané linky ukážeme na mapě i s trasou.
-    if (map.isStyleLoaded()) drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
-  }
-});
+store.subscribe(render);
 
 function start() {
   if (!proxyConfigured) {
@@ -466,19 +458,16 @@ if (cached) store.setVehicles(cached);
 start();
 loadRoutes().then((data) => {
   routes = data.routes;
-  if (map.isStyleLoaded()) drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
 });
 map.on('load', () => {
-  drawLineRoutes(map, routes.filter((r) => store.filter.lines.includes(r.ref)));
+  // Vrstva tras linek zůstává (prázdná): podle ní se řadí vrstvy oblasti a tratí.
+  drawLineRoutes(map, []);
   drawRegion(map);
 });
 
 initFilter();
+initLegend();
 initInstall();
-fetch('./tt/index.json')
-  .then((r) => (r.ok ? r.json() : { lines: [] }))
-  .catch(() => ({ lines: [] }))
-  .then((index) => setKnownLines(index.lines ?? []));
 
 // Obnovit: stáhne novou verzi aplikace (i na ploše) a čerstvé jízdní řády, pak stránku načte znovu,
 // takže se obnoví i polohy všech vozů.

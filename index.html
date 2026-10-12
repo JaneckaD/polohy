@@ -43,6 +43,9 @@
         <div id="journey-bar" class="active-filter glass" hidden></div>
 
         <div class="fab-stack">
+          <button id="legend-open" class="round-btn glass" type="button" title="Legenda" aria-label="Legenda mapy: co znamenají barvy a značky">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5.5" cy="7" r="1.6" fill="currentColor" stroke="none"/><circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="5.5" cy="17" r="1.6" fill="currentColor" stroke="none"/><path d="M10 7h9M10 12h9M10 17h9"/></svg>
+          </button>
           <button id="locate" class="round-btn glass tinted" type="button" title="Moje poloha" aria-label="Moje poloha">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20.9 3.1a.8.8 0 0 0-.86-.17L3.5 9.6a.8.8 0 0 0 .06 1.5l6.9 2.4 2.4 6.9a.8.8 0 0 0 1.5.06l6.66-16.5a.8.8 0 0 0-.17-.86z"/></svg>
           </button>
@@ -86,31 +89,42 @@
           <h2>Filtr</h2>
           <button class="text-btn bold" type="button" data-close>Hotovo</button>
         </div>
-        <p class="filter-hint">V každé skupině nic nevybráno = všechno. Filtr si aplikace pamatuje.</p>
+        <p class="filter-hint">Nic nevybráno = vše. Filtr si aplikace pamatuje.</p>
         <div class="filter-section">
           <div class="filter-label">Druh dopravy</div>
-          <div id="filter-kinds" class="chip-row"></div>
+          <div id="filter-kinds" class="kind-row"></div>
         </div>
-        <div class="filter-section" id="filter-trains">
-          <div class="filter-label">Druh vlaku</div>
-          <div id="filter-train-kinds" class="chip-row"></div>
+        <details class="filter-fold" id="filter-trains" data-fold="trains">
+          <summary><span>Druh vlaku</span><span class="fold-value"></span></summary>
+          <div id="filter-train-kinds" class="check-list"></div>
+        </details>
+        <details class="filter-fold" data-fold="regions">
+          <summary><span>Kraj</span><span class="fold-value"></span></summary>
+          <div id="filter-regions" class="check-list"></div>
+        </details>
+        <details class="filter-fold" data-fold="more">
+          <summary><span>Další možnosti</span><span class="fold-value"></span></summary>
+          <div class="fold-body">
+            <div class="filter-label">Město · MHD</div>
+            <div id="filter-networks" class="chip-row"></div>
+            <div class="filter-label">Dopravce</div>
+            <div id="filter-carriers" class="chip-row"></div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Legenda mapy -->
+    <div id="legend-sheet" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel glass" role="dialog" aria-label="Legenda mapy">
+        <div class="sheet-grip"></div>
+        <div class="modal-head">
+          <span></span>
+          <h2>Legenda</h2>
+          <button class="text-btn bold" type="button" data-close>Hotovo</button>
         </div>
-        <div class="filter-section">
-          <div class="filter-label">Kraj</div>
-          <div id="filter-regions" class="chip-row"></div>
-        </div>
-        <div class="filter-section">
-          <div class="filter-label">Město · MHD</div>
-          <div id="filter-networks" class="chip-row"></div>
-        </div>
-        <div class="filter-section">
-          <div class="filter-label">Dopravce</div>
-          <div id="filter-carriers" class="chip-row"></div>
-        </div>
-        <div class="filter-section">
-          <div class="filter-label">Linky Zlín–Otrokovice</div>
-          <div id="filter-lines" class="line-grid"></div>
-        </div>
+        <div id="legend-body"></div>
       </div>
     </div>
 

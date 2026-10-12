@@ -1,4 +1,4 @@
-// Filtr vozidel: druh dopravy, druh vlaku, kraj, město (MHD), dopravce a linky DSZO.
+// Filtr vozidel: druh dopravy, druh vlaku, kraj, město (MHD) a dopravce.
 // V každé skupině nic nevybráno = všechno; vůz se ukáže, když vyhoví všem skupinám, které se ho týkají.
 import { CITIES, CARRIERS, COACHES, isCoach } from './cities.js';
 import { TRAIN_KINDS } from './trains.js';
@@ -30,7 +30,7 @@ export const BUS_CARRIERS = [
   ...Object.values(COACHES).map((c) => ({ name: c.short, color: c.main, text: c.text })),
 ];
 
-export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], networks: [], carriers: [], lines: [] };
+export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], networks: [], carriers: [] };
 
 /** Druh dopravy, město, dopravce a kraj vozu. */
 export function describe(v) {
@@ -52,10 +52,10 @@ export function normalizeFilter(raw) {
   return f;
 }
 
-/** Druhy dopravy, které filtr ukazuje: vybrané, nebo jen MHD, když je vybrané město či linka. */
+/** Druhy dopravy, které filtr ukazuje: vybrané, nebo jen MHD, když je vybrané město. */
 export function effectiveKinds(f) {
   if (f.kinds.length) return f.kinds;
-  return f.networks.length || f.lines.length ? MHD_KINDS : [];
+  return f.networks.length ? MHD_KINDS : [];
 }
 
 export function filterActive(f) {
@@ -73,23 +73,17 @@ export function matchesFilter(v, f) {
   if (f.regions.length && !f.regions.includes(d.region)) return false;
   if (f.carriers.length && !f.carriers.includes(d.carrier)) return false;
   if (d.kind === 'train' && f.trainKinds.length && !f.trainKinds.includes(v.kind)) return false;
-  if (d.network) {
-    // Linky DSZO: vybrané linky platí jen pro Zlín, když je k tomu vybrané jiné město, jeho MHD zůstane.
-    const networks = f.networks.length ? f.networks : f.lines.length ? ['zl'] : [];
-    if (networks.length && !networks.includes(d.network)) return false;
-    if (d.network === 'zl' && f.lines.length && !f.lines.includes(v.line)) return false;
-  }
+  if (d.network && f.networks.length && !f.networks.includes(d.network)) return false;
   return true;
 }
 
 /** Krátký popis filtru do lišty nad mapou. */
-export function describeFilter(f, sortLines) {
+export function describeFilter(f) {
   const parts = [];
   if (f.kinds.length) parts.push(f.kinds.map((k) => KINDS[k]?.label.toLowerCase() ?? k).join(', '));
   if (f.trainKinds.length) parts.push(f.trainKinds.map((k) => TRAIN_KINDS[k]?.label.toLowerCase() ?? k).join(', '));
   if (f.regions.length) parts.push(f.regions.map((k) => REGIONS[k]?.name ?? k).join(', '));
   if (f.networks.length) parts.push(`MHD ${f.networks.map((k) => NETWORK_NAMES[k] ?? k).join(', ')}`);
   if (f.carriers.length) parts.push(f.carriers.join(', '));
-  if (f.lines.length) parts.push(`linky ${sortLines(f.lines).join(', ')}`);
   return parts.join(' · ');
 }

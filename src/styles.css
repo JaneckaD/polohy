@@ -2404,3 +2404,284 @@ input:focus-visible {
   font-size: 10.5px;
   letter-spacing: -0.04em;
 }
+
+/* --- Filtr: druhy dopravy jako kulatá tlačítka, sbalitelné skupiny ----------------- */
+.kind-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.kind-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--label);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kind-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill-2);
+  color: var(--kind-ink, var(--kind-color));
+  box-shadow: inset 0 0 0 2px var(--kind-color);
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+}
+
+.kind-btn:active .kind-icon {
+  transform: scale(0.94);
+}
+
+.kind-btn.on .kind-icon {
+  background: var(--kind-color);
+  color: var(--kind-text);
+}
+
+.kind-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--label-2);
+}
+
+.kind-btn.on .kind-label {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.filter-fold {
+  margin-top: 14px;
+  background: var(--fill-2);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.filter-fold summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 16px;
+  font-size: 17px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.filter-fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-fold summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--label-3, #c7c7cc);
+  border-bottom: 2px solid var(--label-3, #c7c7cc);
+  transform: rotate(-45deg);
+  transition: transform 0.2s;
+  margin-left: 4px;
+}
+
+.filter-fold[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.fold-value {
+  margin-left: auto;
+  color: var(--label-2);
+  font-size: 15px;
+}
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 17px;
+  cursor: pointer;
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+.check-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--dot, var(--label-2));
+  flex: none;
+}
+
+.check-row span:nth-of-type(2) {
+  flex: 1;
+}
+
+.check-row input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--label-3, #c7c7cc);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.check-row input:checked {
+  background: var(--tint, #007aff);
+  box-shadow: none;
+}
+
+.check-row input:checked::after {
+  content: '';
+  width: 6px;
+  height: 11px;
+  border-right: 2.5px solid #fff;
+  border-bottom: 2.5px solid #fff;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.fold-body {
+  padding: 4px 12px 14px;
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+.fold-body .filter-label {
+  margin-top: 12px;
+}
+
+/* --- Legenda mapy ------------------------------------------------------------------ */
+.legend-group {
+  margin-top: 18px;
+}
+
+.legend-list {
+  background: var(--fill-2);
+  border-radius: 14px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  font-size: 15px;
+}
+
+.legend-row + .legend-row {
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+.legend-samples {
+  flex: none;
+  width: 76px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.legend-text b {
+  display: block;
+  font-weight: 600;
+}
+
+.legend-text small {
+  display: block;
+  color: var(--label-2);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.legend-samples .vehicle {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.legend-samples .vehicle-dot {
+  line-height: 22px;
+  font-size: 11px;
+}
+
+.legend-samples .vehicle.long-label .vehicle-dot {
+  font-size: 9px;
+}
+
+.legend-samples .vehicle-arrow {
+  inset: -8px;
+}
+
+.legend-line {
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+.legend-line.rail {
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #ffffff 0 6px, transparent 6px 12px) center / 100% 2px no-repeat, #48484f;
+}
+
+.legend-line.route {
+  background: linear-gradient(90deg, #8e8e93 0 50%, #0a66d8 50%);
+  position: relative;
+}
+
+.legend-line.route::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border-radius: 50%;
+  background: #063f86;
+  border: 2px solid #fff;
+}
+
+.legend-line.border {
+  height: 0;
+  border-top: 2px dashed #6e6e73;
+  border-radius: 0;
+}
+
+.legend-area {
+  width: 64px;
+  height: 30px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, rgba(120, 120, 128, 0.32) 0 1.5px, rgba(232, 232, 236, 0.9) 1.5px 8px);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.legend-samples .me {
+  width: 12px;
+  height: 12px;
+}
+
+.legend-pill {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}

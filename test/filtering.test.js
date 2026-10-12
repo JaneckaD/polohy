@@ -37,9 +37,7 @@ test('filtr: nic nevybráno = vše, skupiny se kombinují', () => {
   // Město: jen MHD toho města (ostatní druhy, jen když jsou výslovně vybrané).
   assert.deepEqual(shown({ networks: ['vm'] }), ['vm-1']);
   assert.deepEqual(shown({ networks: ['vm'], kinds: ['mhd', 'train'] }), ['vm-1', 'vlak-Os-1', 'vlak-RJ-2']);
-  // Linky DSZO: jen ty linky, MHD jiných měst se stejnými čísly ne.
-  assert.deepEqual(shown({ lines: ['31', '4'] }), ['301']);
-  assert.deepEqual(shown({ lines: ['3'], networks: ['zl', 'km'] }), ['101', 'km-1']);
+  assert.deepEqual(shown({ networks: ['zl', 'km'] }), ['101', '301', 'km-1']);
   assert.equal(shown({ regions: ['zlk'] }).length, all.length);
   // Druh vlaku nechá ostatní druhy být.
   assert.equal(shown({ trainKinds: ['os'] }).length, all.length - 1);
@@ -47,10 +45,10 @@ test('filtr: nic nevybráno = vše, skupiny se kombinují', () => {
 
 test('filtr: převod uloženého filtru ze starší verze', () => {
   assert.deepEqual(normalizeFilter({ type: 'train', lines: [], trainKinds: ['os'], operators: ['ČD'], delayed: false }), { ...EMPTY_FILTER, kinds: ['train'], trainKinds: ['os'], carriers: ['ČD'] });
-  assert.deepEqual(normalizeFilter({ type: 'all', lines: ['3'] }).lines, ['3']);
+  assert.equal(normalizeFilter({ type: 'all', lines: ['3'] }).lines, undefined);
   assert.deepEqual(normalizeFilter({ type: 'bus' }).kinds, ['mhd', 'regional', 'coach']);
   assert.deepEqual(normalizeFilter(null ?? {}), EMPTY_FILTER);
-  const f = { ...EMPTY_FILTER, kinds: ['coach'], carriers: ['FlixBus'], lines: ['3'] };
-  assert.equal(filterCount(f), 3);
-  assert.equal(describeFilter(f, (x) => x), 'dálkové autobusy · FlixBus · linky 3');
+  const f = { ...EMPTY_FILTER, kinds: ['coach'], carriers: ['FlixBus'] };
+  assert.equal(filterCount(f), 2);
+  assert.equal(describeFilter(f), 'dálkové autobusy · FlixBus');
 });
