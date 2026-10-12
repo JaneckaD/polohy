@@ -1221,6 +1221,16 @@ input:focus-visible {
   color: var(--chip-text, #ffffff);
 }
 
+.filter-section .chip-row {
+  margin-bottom: 0;
+}
+
+.filter-hint {
+  margin: 6px 4px 0;
+  font-size: 13px;
+  color: var(--label-2);
+}
+
 .filter-empty {
   font-size: 15px;
   color: var(--label-2);

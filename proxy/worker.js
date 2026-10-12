@@ -1,7 +1,8 @@
 // Cloudflare Worker: malá proxy, přes kterou si aplikace na GitHub Pages čte data DSZO.
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
-// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje.
+// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje;
+//          když mapa vlaků neodpoví, poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
@@ -20,13 +21,34 @@ const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?modul
 const ZK_BOX = { minX: -570000, maxX: -457000, minY: -1206000, maxY: -1125000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
 
+// Mapa vlaků SŽ občas neodpoví nebo vrátí chybu. Proto čekáme jen chvíli, zkusíme to dvakrát
+// a když to nevyjde, pošleme poslední úspěšnou odpověď (max. 10 minut starou) z cache workeru.
+const TRAINS_LAST = 'https://dszo-proxy.internal/trains-last';
+
+async function fetchTrains() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const upstream = await fetch(TRAINS_URL, {
+        headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)', Referer: 'https://mapy.spravazeleznic.cz/vlaky' },
+        cf: { cacheTtl: 15, cacheEverything: true },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (upstream.ok) return await upstream.json();
+    } catch {
+      /* zkusíme znovu */
+    }
+  }
+  return null;
+}
+
 async function trains() {
-  const upstream = await fetch(TRAINS_URL, {
-    headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)', Referer: 'https://mapy.spravazeleznic.cz/vlaky' },
-    cf: { cacheTtl: 15, cacheEverything: true },
-  });
-  if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
-  const data = await upstream.json();
+  const cache = globalThis.caches?.default;
+  const data = await fetchTrains();
+  if (!data) {
+    const last = await cache?.match(TRAINS_LAST);
+    if (last) return new Response(last.body, { headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store', 'X-Stale': '1' } });
+    return new Response('Upstream error', { status: 502, headers: CORS });
+  }
   const list = [];
   for (const f of data.result ?? []) {
     const [x, y] = f.geometry?.coordinates ?? [];
@@ -35,7 +57,11 @@ async function trains() {
     for (const k of TRAIN_FIELDS) t[k] = f.properties?.[k];
     list.push(t);
   }
-  return new Response(JSON.stringify({ trains: list }), {
+  const body = JSON.stringify({ trains: list, at: new Date().toISOString() });
+  if (cache) {
+    await cache.put(TRAINS_LAST, new Response(body, { headers: { 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'max-age=600' } })).catch(() => {});
+  }
+  return new Response(body, {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });
 }

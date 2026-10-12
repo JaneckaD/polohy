@@ -6,7 +6,7 @@ import { formatDelay } from './dszo.js';
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
 const MHD = { main: '#0a66d8', text: '#ffffff', stop: '#063f86' };
 const REGIONAL = { main: '#e8710a', text: '#ffffff', stop: '#9c4a00' };
-// Dálkové autobusy (FlixBus) tyrkysové: zelenou už má spěšný vlak.
+// Dálkové autobusy (FlixBus, RegioJet) tyrkysové: zelenou už má spěšný vlak.
 const COACH = { main: '#00838f', text: '#ffffff', stop: '#005a62' };
 
 export const CITIES = {
@@ -32,9 +32,10 @@ export const CARRIERS = {
   reg: { name: 'IDZK', short: 'IDZK', code: null, ...REGIONAL },
 };
 
-/** Dálkové autobusy (nejsou v IDZK, polohy z jejich vlastního sledování spojů). */
+/** Dálkové autobusy (nejsou v IDZK): FlixBus ze sledování spojů, RegioJet odhadem podle jízdního řádu. */
 export const COACHES = {
   flix: { name: 'FlixBus', short: 'FlixBus', ...COACH },
+  rj: { name: 'RegioJet', short: 'RegioJet', ...COACH },
 };
 
 /** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */
@@ -49,6 +50,13 @@ export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : 
 export function carrierOfRoute(routeId) {
   const code = /^BUS[^:]*:\d+_(\d+)_/.exec(routeId ?? '')?.[1];
   return Object.keys(CARRIERS).find((k) => CARRIERS[k].code === code) ?? 'reg';
+}
+
+/** Krátký název dopravce z mapy IDZK („TQM–MHDVM“ → „TQM“, „ZDS-Psota“). */
+export function carrierName(cr) {
+  if (!cr) return null;
+  for (const c of Object.values(CARRIERS)) if (c.code && (c.live ?? new RegExp(c.short, 'i')).test(cr)) return c.short;
+  return cr.replace(/,.*$/, '').trim() || null;
 }
 
 const cityOfLicence = (cn) => Object.keys(CITIES).find((c) => cn.startsWith(CITIES[c].licence)) ?? null;
@@ -99,6 +107,7 @@ export function parseCityBus(t) {
     lowFloor: f[10] === '1' ? true : f[10] === '0' ? false : null,
     features: f[10] === '1' ? ['lowlevel'] : [],
     plate: plate || null,
+    operator: carrierName(t.cr),
     delay,
     delayText: formatDelay(delay),
     updated: null,

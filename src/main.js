@@ -6,7 +6,8 @@ import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
 import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRegionCoaches, fetchCoachRoute, proxyConfigured, REFRESH_MS } from './data.js';
 import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
-import { cityTrip, timeTripPosition } from './cities.js';
+import { cityTrip, timeTripPosition, isCoach } from './cities.js';
+import { loadRegioJet, regioJetVehicles } from './regiojet.js';
 import { currentTripIndex } from './route-match.js';
 import { renderDetails, renderTrip } from './card.js';
 import { applyVehicleColors, trainColors, TYPE_COLORS } from './colors.js';
@@ -207,10 +208,10 @@ async function fetchCityTrip(v) {
   return cityTrip(P, v, date, min);
 }
 
-/** Dálkový autobus: zastávky nese už vůz, trasu po silnicích stáhneme. */
+/** Dálkový autobus: zastávky nese už vůz, trasu po silnicích stáhneme (RegioJet ji má s jízdním řádem). */
 async function fetchCoachTrip(v) {
   const trip = coachTrip(v);
-  const segments = await fetchCoachRoute(v);
+  const segments = v.segments ?? (await fetchCoachRoute(v));
   if (segments) trip.segments = segments;
   return trip;
 }
@@ -230,7 +231,7 @@ async function updateSelected(first = false) {
     ? null
     : v.type === 'train'
       ? trainPosition(selected.trip, v, pragueNow().min)
-      : v.city === 'flix'
+      : isCoach(v.city)
         ? coachPosition(v)
         : v.city && currentTripIndex(selected.trip, v.stop) < 0
           ? timeTripPosition(selected.trip, v.delay, pragueNow().min)
@@ -320,7 +321,7 @@ async function select(v) {
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.city === 'flix' ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
+  const trip = v.type === 'train' ? await fetchTrainTrip(v) : isCoach(v.city) ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   updateSelected(true);
@@ -384,6 +385,8 @@ async function refreshTrains() {
   } catch (err) {
     // Vlaky jsou doplněk: bez nich mapa MHD funguje dál (např. starší proxy bez /trains).
     console.warn('Vlaky se nepodařilo načíst:', err.message);
+    // Ještě žádné vlaky na mapě: zkusíme to brzy znovu, ne až s další obnovou.
+    if (!store.trains.length && trainTimer) setTimeout(refreshTrains, 5000);
   }
 }
 
@@ -396,13 +399,23 @@ async function refreshCities() {
   }
 }
 
+// FlixBus: polohy ze sledování spojů. RegioJet: odhad podle jízdního řádu, přepočítáme s každou obnovou.
+let flixBuses = [];
 async function refreshCoaches() {
   try {
-    store.setCoaches(await fetchRegionCoaches(await loadRegion()));
+    flixBuses = await fetchRegionCoaches(await loadRegion());
   } catch (err) {
     // Dálkové autobusy jsou doplněk (starší proxy bez /flix).
     console.warn('Dálkové autobusy se nepodařilo načíst:', err.message);
   }
+  await refreshRegioJet();
+}
+
+async function refreshRegioJet() {
+  const [data, region] = await Promise.all([loadRegioJet(), loadRegion()]);
+  const now = new Date();
+  const { date, min } = pragueNow();
+  store.setCoaches([...flixBuses, ...regioJetVehicles(data, region, date, min + now.getSeconds() / 60)]);
 }
 
 let lastFilter = '';
@@ -429,6 +442,7 @@ function start() {
   timer = setInterval(() => {
     refresh();
     refreshCities();
+    refreshRegioJet();
   }, REFRESH_MS);
   trainTimer = setInterval(refreshTrains, TRAIN_REFRESH_MS);
   coachTimer = setInterval(refreshCoaches, COACH_REFRESH_MS);

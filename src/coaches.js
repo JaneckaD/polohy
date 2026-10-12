@@ -53,7 +53,7 @@ export async function fetchCoaches(proxy, region) {
 
 /** Zastávky spoje pro časovou osu: [{ name, lat, lon, time }] (čas odjezdu, v cíli příjezdu). */
 export function coachTrip(v) {
-  return (v.calls ?? []).map((c) => ({ name: c.name, lat: c.lat, lon: c.lon, time: pragueTime(c.dep ?? c.arr) }));
+  return (v.calls ?? []).map((c) => ({ name: c.name, lat: c.lat, lon: c.lon, time: c.time ?? pragueTime(c.dep ?? c.arr) }));
 }
 
 /** Kde je vůz vůči zastávkám: index zastávky (v ní nebo naposledy projeté) a jestli v ní stojí. */

@@ -36,6 +36,37 @@ test('proxy /trains: vlaky Správy železnic jen z okolí Zlínského kraje, jen
   fetchMock.mock.restore();
 });
 
+test('proxy /trains: když mapa vlaků neodpoví, zkusí to znovu a pak pošle poslední úspěšnou odpověď', async () => {
+  const store = new Map();
+  globalThis.caches = {
+    default: {
+      put: async (key, res) => store.set(String(key), await res.text()),
+      match: async (key) => (store.has(String(key)) ? new Response(store.get(String(key))) : undefined),
+    },
+  };
+  const feature = { type: 'Feature', geometry: { type: 'Point', coordinates: [-524630, -1187194] }, properties: { tt: 'Os', tn: '891' } };
+  let calls = 0;
+  let ok = true;
+  const fetchMock = mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return ok ? Response.json({ result: [feature] }) : new Response('busy', { status: 503 });
+  });
+  const first = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
+  assert.equal((await first.json()).trains.length, 1);
+  ok = false;
+  calls = 0;
+  const stale = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
+  assert.equal(calls, 2);
+  assert.equal(stale.status, 200);
+  assert.equal(stale.headers.get('X-Stale'), '1');
+  assert.equal((await stale.json()).trains[0].tn, '891');
+  store.clear();
+  const none = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/trains'));
+  assert.equal(none.status, 502);
+  fetchMock.mock.restore();
+  delete globalThis.caches;
+});
+
 test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců z mapy IDZK', async () => {
   let req = null;
   let km = null;

@@ -140,9 +140,14 @@ export function renderDetails(v, trip = null) {
   card.append(head);
 
   const pills = h('div', 'card-pills');
-  pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
-  const ago = agoLabel(v.updated);
-  if (ago) pills.append(h('span', 'card-ago', `poloha ${ago}`));
+  if (v.estimated) {
+    // RegioJet polohy ani zpoždění nezveřejňuje.
+    pills.append(h('span', 'card-ago', 'poloha odhadem podle jízdního řádu'));
+  } else {
+    pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));
+    const ago = agoLabel(v.updated);
+    if (ago) pills.append(h('span', 'card-ago', `poloha ${ago}`));
+  }
   card.append(pills);
   // V plovoucí kartě (bez seznamu zastávek) aspoň aktuální zastávka.
   if (v.stop) card.append(h('div', 'card-now', `U zastávky ${v.stop}`));

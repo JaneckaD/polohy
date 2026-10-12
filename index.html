@@ -86,23 +86,29 @@
           <h2>Filtr</h2>
           <button class="text-btn bold" type="button" data-close>Hotovo</button>
         </div>
+        <p class="filter-hint">V každé skupině nic nevybráno = všechno. Filtr si aplikace pamatuje.</p>
         <div class="filter-section">
-          <div class="filter-label">Typ</div>
-          <div class="segmented" id="filter-type">
-            <button type="button" data-type="all">Vše</button>
-            <button type="button" data-type="trolleybus">Trolejbusy</button>
-            <button type="button" data-type="bus">Autobusy</button>
-            <button type="button" data-type="train">Vlaky</button>
-          </div>
+          <div class="filter-label">Druh dopravy</div>
+          <div id="filter-kinds" class="chip-row"></div>
         </div>
         <div class="filter-section" id="filter-trains">
-          <div class="filter-label">Druh vlaku · nic nevybráno = všechny</div>
-          <div id="filter-kinds" class="chip-row"></div>
-          <div class="filter-label">Dopravce</div>
-          <div id="filter-operators" class="chip-row"></div>
+          <div class="filter-label">Druh vlaku</div>
+          <div id="filter-train-kinds" class="chip-row"></div>
         </div>
         <div class="filter-section">
-          <div class="filter-label">Linky · nic nevybráno = všechny</div>
+          <div class="filter-label">Kraj</div>
+          <div id="filter-regions" class="chip-row"></div>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label">Město · MHD</div>
+          <div id="filter-networks" class="chip-row"></div>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label">Dopravce</div>
+          <div id="filter-carriers" class="chip-row"></div>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label">Linky Zlín–Otrokovice</div>
           <div id="filter-lines" class="line-grid"></div>
         </div>
       </div>

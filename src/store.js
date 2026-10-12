@@ -1,4 +1,7 @@
 // Malý sdílený stav aplikace s ukládáním do localStorage (filtr, poslední polohy vozů).
+import { normalizeFilter } from './filtering.js';
+
+export { filterActive, matchesFilter } from './filtering.js';
 
 function load(key, fallback) {
   try {
@@ -20,14 +23,15 @@ function save(key, value) {
 const listeners = new Set();
 
 export const store = {
-  filter: { type: 'all', lines: [], trainKinds: [], operators: [], ...load('mhd.filter', {}), delayed: false },
+  // Filtr se pamatuje v prohlížeči (i po zavření aplikace).
+  filter: normalizeFilter(load('mhd.filter', {})),
   vehicles: [],
   trains: [],
   cityBuses: [],
   coaches: [],
 
   setFilter(patch) {
-    this.filter = { ...this.filter, ...patch };
+    this.filter = normalizeFilter({ ...this.filter, ...patch });
     save('mhd.filter', this.filter);
     this.emit();
   },
@@ -68,28 +72,6 @@ export const store = {
     for (const fn of listeners) fn(this);
   },
 };
-
-export function filterActive(f) {
-  return f.type !== 'all' || f.lines.length > 0 || f.trainKinds?.length > 0 || f.operators?.length > 0;
-}
-
-export function matchesFilter(v, f) {
-  if (v.type === 'train') {
-    // Vybrané linky MHD: vlaky schováme, ať je vidět jen to, co hledám.
-    if (f.type !== 'all' && f.type !== 'train') return false;
-    if (f.type !== 'train' && f.lines.length) return false;
-    if (f.trainKinds?.length && !f.trainKinds.includes(v.kind)) return false;
-    if (f.operators?.length && !f.operators.includes(v.operator.short)) return false;
-    return true;
-  }
-  if (f.type === 'train') return false;
-  if (f.type !== 'all' && v.type !== f.type) return false;
-  // Vybrané linky (Zlín a Otrokovice): MHD jiných měst schováme, mají stejná čísla linek.
-  if (v.city && f.lines.length) return false;
-  if (f.lines.length && !f.lines.includes(v.line)) return false;
-  // Filtr druhů vlaků nebo dopravců bez výběru linek: MHD necháme.
-  return true;
-}
 
 export function sortLines(refs) {
   return [...refs].sort((a, b) => (parseInt(a, 10) || 999) - (parseInt(b, 10) || 999) || String(a).localeCompare(String(b)));
