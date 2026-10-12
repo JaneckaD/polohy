@@ -16,4 +16,4 @@ jobs:
         env:
           VITE_DSZO_PROXY: ${{ vars.DSZO_PROXY }}
       - run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
-      - run: node .github/probe/perf2.mjs
+      - run: node .github/probe/perf.mjs

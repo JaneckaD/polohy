@@ -27,6 +27,9 @@ async function run(label, viewport, dpr, throttle, mobile) {
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push(e.duration); }).observe({ type: 'longtask', buffered: true });
   });
   const t0 = Date.now();
+  await cdp.send('Profiler.enable');
+  await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+  await cdp.send('Profiler.start');
   await p.goto(LIVE, { waitUntil: 'domcontentloaded' });
   await p.waitForTimeout(20000);
   const info = await p.evaluate(() => ({ markers: document.querySelectorAll('.maplibregl-marker').length, nodes: document.getElementsByTagName('*').length, status: document.getElementById('status')?.textContent }));
@@ -38,9 +41,7 @@ async function run(label, viewport, dpr, throttle, mobile) {
     console.log(`${name}: frames ${f.length} p50 ${q(0.5)} p90 ${q(0.9)} p99 ${q(0.99)} max ${f.at(-1)?.toFixed(0)} | >50ms ${f.filter((x) => x > 50).length} | longtasks ${r.l.length} sum ${r.l.reduce((a, b) => a + b, 0).toFixed(0)}ms max ${Math.max(0, ...r.l).toFixed(0)}`);
   };
   await stats('load');
-  await cdp.send('Profiler.enable');
-  await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
-  const phases = [];
+  const phases = [['load', (await cdp.send('Profiler.stop')).profile]];
   async function phase(name, fn) {
     await cdp.send('Profiler.start');
     await fn();
@@ -51,22 +52,6 @@ async function run(label, viewport, dpr, throttle, mobile) {
   const box = await p.locator('.maplibregl-canvas').boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
   await phase('idle 20s', () => p.waitForTimeout(20000));
-  await phase('pan', async () => {
-    for (let i = 0; i < 6; i++) {
-      await p.mouse.move(cx, cy); await p.mouse.down();
-      for (let k = 1; k <= 20; k++) await p.mouse.move(cx + (i % 2 ? -1 : 1) * k * 12, cy + k * 4);
-      await p.mouse.up(); await p.waitForTimeout(400);
-    }
-  });
-  await phase('zoom out + pan', async () => {
-    for (let i = 0; i < 6; i++) { await p.mouse.move(cx, cy); await p.mouse.wheel(0, 300); await p.waitForTimeout(250); }
-    await p.waitForTimeout(1500);
-    for (let i = 0; i < 6; i++) {
-      await p.mouse.move(cx, cy); await p.mouse.down();
-      for (let k = 1; k <= 20; k++) await p.mouse.move(cx + (i % 2 ? -1 : 1) * k * 15, cy - k * 3);
-      await p.mouse.up(); await p.waitForTimeout(400);
-    }
-  });
   await phase('zoomed out idle 15s', () => p.waitForTimeout(15000));
   const info2 = await p.evaluate(() => ({ markers: document.querySelectorAll('.maplibregl-marker').length, zoom: window.__map?.getZoom?.() }));
   console.log('after', JSON.stringify(info2));
@@ -89,7 +74,7 @@ async function run(label, viewport, dpr, throttle, mobile) {
       const seen = new Set();
       for (let cur = id; cur != null; cur = parent.get(cur)) {
         const cf = byId.get(cur).callFrame; const key = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop()}:${cf.lineNumber + 1}`;
-        if (!/index-.*\.js|main|vehicles|filter/.test(cf.url) || seen.has(key)) continue;
+        if (!/index-.*\.js/.test(cf.url) && !/maplibre/.test(cf.url) || seen.has(key)) continue;
         seen.add(key); incl.set(key, (incl.get(key) ?? 0) + d);
       }
     }
