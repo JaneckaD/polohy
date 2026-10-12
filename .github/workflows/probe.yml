@@ -12,19 +12,15 @@ jobs:
         with:
           node-version: 22
       - run: |
-          curl -s -H 'X-Lang: cs' https://brn-ybus-pubapi.sa.cz/restapi/consts/locations | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin); c=d[0]['cities'][0]; print(json.dumps(c,ensure_ascii=False)[:800])
-          for co in d:
-            for c in co['cities']:
-              if c['name'] in ('Olomouc','Ostrava','Přerov','Karviná','Frýdek-Místek'): print(c['id'], c['name'])"
-          node scripts/build-regiojet.mjs; head -c 600 public/rj.json; echo
-          python3 -c "
-          import json; d=json.load(open('public/rj.json')); print('conns',len(d['conns']),'stations',len(d['stations']),'size',len(json.dumps(d)))
-          for c in d['conns'][:40]: print(c['id'],c['line'],c['from'],'->',c['to'],c['sym'],c['codes'][:3],[(d['stations'][str(s)][0],a,b) for s,a,b in c['stops']])"
-          D=$(date -u +%Y-%m-%d)
-          for p in "17653000 10202002" "10202002 17653000"; do set -- $p
-            curl -s -H 'X-Lang: cs' -H 'X-Currency: CZK' "https://brn-ybus-pubapi.sa.cz/restapi/routes/search/simple?tariffs=REGULAR&toLocationType=CITY&toLocationId=$2&fromLocationType=CITY&fromLocationId=$1&departureDate=$D" | python3 -c "
-          import json,sys
-          for r in json.load(sys.stdin).get('routes',[]): print(r['id'], r['departureTime'], r.get('predictedDepartureTime'), r['arrivalTime'], r.get('predictedArrivalTime'), r.get('delay'))"
+          U=https://brn-ybus-pubapi.sa.cz/restapi
+          for path in consts/lines/17655001 consts/timetables/WEB/721311; do
+            echo "== $path"
+            curl -s -o /dev/null -w "bare %{http_code}\n" "$U/$path"
+            curl -s -o /dev/null -w "lang %{http_code}\n" -H 'X-Lang: cs' "$U/$path"
+            curl -s -o /dev/null -w "lang+cur %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' "$U/$path"
+            curl -s -o /dev/null -w "lang+cur+ua %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -A 'mhd-zlin-live (github.com/JaneckaD/polohy)' "$U/$path"
+            curl -s -o /dev/null -w "web %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -H 'X-Application-Origin: WEB' -H 'Origin: https://regiojet.cz' -H 'Referer: https://regiojet.cz/' -A 'Mozilla/5.0' "$U/$path"
+            curl -s -o /dev/null -w "web-noua %{http_code}\n" -H 'X-Lang: cs' -H 'X-Currency: CZK' -H 'X-Application-Origin: WEB' "$U/$path"
+            curl -s -H 'X-Lang: cs' -H 'X-Currency: CZK' "$U/$path" | head -c 400; echo
           done
+          node -e "fetch('$U/consts/lines/17655001',{headers:{'X-Lang':'cs','X-Currency':'CZK'}}).then(r=>r.text().then(t=>console.log('node',r.status,t.slice(0,300))))"
