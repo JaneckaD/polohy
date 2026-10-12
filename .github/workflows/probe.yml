@@ -11,9 +11,10 @@ jobs:
           set +e
           mkdir /tmp/j; cd /tmp/j
           curl -s -m 20 'https://mapa.idsjmk.cz/' -H 'User-Agent: Mozilla/5.0' -o index.html
-          head -c 3000 index.html; echo
-          for u in $(grep -oE '(src|href)="[^"]+\.js[^"]*"' index.html | sed -E 's/.*="([^"]+)"/\1/'); do
+          grep -n '<script' index.html | cut -c1-250
+          for u in $(grep -oE '<script[^>]+src="[^"]+"' index.html | sed -E 's/.*src="([^"]+)"/\1/' | grep -v '/lib/'); do
             case $u in http*) url=$u;; /*) url="https://mapa.idsjmk.cz$u";; *) url="https://mapa.idsjmk.cz/$u";; esac
             echo "=== $url"; curl -s -m 20 "$url" -o b.js; wc -c b.js
-            grep -oE '.{150}(api/|Authorization|apikey|apiKey|X-Api|token|vehicles)[^;]{0,200}' b.js | head -25
+            grep -oE '.{0,160}(api/|Authorization|apikey|apiKey|ApiKey|X-Api|token|Token|vehicles|signalr|hub)[^;]{0,200}' b.js | head -40
           done
+          grep -n -iE 'key|token|api' index.html | cut -c1-250 | head -20
