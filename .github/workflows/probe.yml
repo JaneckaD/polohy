@@ -12,8 +12,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx vite build --minify false
+      - run: sed -i '43s/^});/}); window.__map = map;/' src/main.js && npx vite build --minify false
         env:
           VITE_DSZO_PROXY: ${{ vars.DSZO_PROXY }}
       - run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
-      - run: node .github/probe/perf.mjs
+      - run: node .github/probe/perf2.mjs
