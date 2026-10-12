@@ -10,17 +10,10 @@ jobs:
       - run: |
           set +e
           cd /tmp
-          echo "=== IDS JMK GTFS"
-          curl -sL -m 120 -o jmk.zip https://kordis-jmk.cz/gtfs/gtfs.zip; ls -la jmk.zip
-          unzip -o -q jmk.zip agency.txt routes.txt -d jmk; cat jmk/agency.txt | cut -c1-160
-          python3 - <<'P'
-          import csv, collections
-          ag = {r['agency_id']: r['agency_name'] for r in csv.DictReader(open('jmk/agency.txt', encoding='utf-8-sig'))}
-          c = collections.Counter()
-          for r in csv.DictReader(open('jmk/routes.txt', encoding='utf-8-sig')):
-              c[(ag.get(r['agency_id'], r['agency_id']), r['route_type'])] += 1
-          for (a, t), n in sorted(c.items()): print(f'{a} | type {t} | {n} linek')
-          P
-          echo "=== JDF dir"
-          curl -s -m 60 https://portal.cisjr.cz/pub/jdf/ | grep -oE 'href="[^"]+"' | head -40
-          curl -s -m 60 https://portal.cisjr.cz/pub/ | grep -oE 'href="[^"]+"' | head -40
+          for u in https://portal.cisjr.cz/pub/jdf/ https://portal.cisjr.cz/pub/jdf/JDF.zip https://portal.cisjr.cz/pub/ https://portal.cisjr.cz/pub/jdf/celostatni/ \
+            https://hoermalmeister.github.io/gtfs-rehost/ https://hoermalmeister.github.io/gtfs-rehost/czbus/ https://hoermalmeister.github.io/gtfs-rehost/czbus/jdf.zip \
+            https://github.com/hoermalmeister/gtfs-rehost ; do
+            echo "=== $u"; curl -sIL -m 30 "$u" | grep -iE '^(HTTP|content-length|content-type|location)'
+          done
+          curl -sL -m 30 https://portal.cisjr.cz/pub/jdf/ | head -c 2000; echo
+          curl -sL -m 30 https://github.com/hoermalmeister/gtfs-rehost | grep -oE 'gtfs-rehost/tree/main/[a-zA-Z0-9_-]+' | sort -u
