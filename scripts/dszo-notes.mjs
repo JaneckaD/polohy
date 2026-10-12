@@ -19,7 +19,9 @@ const hhmm = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0
 
 /** Jedna stránka textu → { line, stop, marks: [[čas, písmeno]], notes: { písmeno: text } }. */
 export function parsePage(text) {
-  const rows = text.split('\n');
+  // Piktogramy (bezbariérová zastávka, automat…) jsou znaky ze soukromé oblasti Unicode: místo nich mezera,
+  // ať sedí sloupce.
+  const rows = text.replace(/[\uE000-\uF8FF]/g, ' ').split('\n');
   const line = /^\s*(\S+)\s{5,}Platnost/.exec(rows.find((r) => /Platnost/.test(r)) ?? '')?.[1] ?? null;
   let stop = null;
   const marks = [];

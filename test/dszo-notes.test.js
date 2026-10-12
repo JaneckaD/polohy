@@ -4,14 +4,14 @@ import { parsePage, normStop, applyMarks } from '../scripts/dszo-notes.mjs';
 
 // Výřez textu z PDF jízdního řádu DSZO (pdftotext -layout), linka 8.
 const PAGE = [
-  '       8                                                                                                 Platnost od 1.9.2026 do 12.12.2026',
+  '       8                                            \uF000                                                     Platnost od 1.9.2026 do 12.12.2026',
   '                 Zlín,Jižní Svahy,Kocanda - Zlín,Jižní Svahy,Kocanda',
   ' Čas   Název zastávky                                 Pracovní dny                    Školní prázdniny       Víkend      INFORMACE PRO CESTUJÍCÍ:',
   '        Valachův žleb                   00                                                                                Všechny spoje jsou zajištěny',
   ' 0     Česká                      ',
   ' 9     U Zámku                                                                                                      SMS jízdenka: číslo 902 06',
-  ' 13    Dlouhá                         07    00 10 13L 24 36 53d                 08 23 38 53            08 33 53     DSZO - 30 Kč / 70 min.',
-  '                                       16    03 18 29d 33 48                     04 19 34 49            12 32 52',
+  ' 13    Dlouhá                    \uF000\uF079    07    00 10 13L 24 36 53d                 08 23 38 53            08 33 53     DSZO - 30 Kč / 70 min.',
+  '                                  \uF000\uF079    16    03 18 29d 33 48                     04 19 34 49            12 32 52',
   ' Poznámky u zastávek:                   Poznámky u spojů:                                                             Na lince platí tarif a smluvní přepravní',
   '   - automat na jízdenky                d - končí v zast. Baťova nem.                                                     podmínky MHD Zlín-Otrokovice',
   '  x - na znamení                         L - ze zast. Školní jede na Lesní Čtvrť',
