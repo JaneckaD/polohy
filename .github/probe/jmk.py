@@ -12,15 +12,15 @@ except Exception as e: print("ERR", e)
 urls = []
 for su in d.get("streamUrls", []):
     for u in su.get("urls", []):
-        urls.append(u + ("?token=" + su["token"] if su.get("token") else ""))
+        urls.append(u + "/subscribe" + ("?token=" + su["token"] if su.get("token") else ""))
 urls.append("wss://gis.brno.cz/ags4/rest/services/Kordis_stream/StreamServer/subscribe")
 seen = {}; n = 0
-for u in urls[:2]:
+for u in urls[:1] + ["wss://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe?outSR=4326"]:
     print("WS", u)
     try:
-        ws = websocket.create_connection(u, timeout=10, header=["User-Agent: Mozilla/5.0"], origin="https://data.brno.cz")
+        ws = websocket.create_connection(u, timeout=40, header=["User-Agent: Mozilla/5.0"], origin="https://data.brno.cz")
         t0 = time.time(); first = None; sizes = 0
-        while time.time() - t0 < 30:
+        while time.time() - t0 < 45:
             try: m = ws.recv()
             except Exception as e: print("recv", e); break
             n += 1; sizes += len(m)
@@ -34,7 +34,7 @@ for u in urls[:2]:
             except Exception: pass
         ws.close()
         print("messages", n, "bytes", sizes, "first after", first, "s, distinct vehicles", len(seen))
-        break
+        if seen: break
     except Exception as e:
         print("ERR ws", e)
 types = collections.Counter((a.get("vtype"), a.get("ltype")) for a in seen.values())
