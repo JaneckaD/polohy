@@ -1,0 +1,19 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml', '.github/probe/**']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx vite build --minify false
+        env:
+          VITE_DSZO_PROXY: ${{ vars.DSZO_PROXY }}
+      - run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - run: node .github/probe/perf.mjs
