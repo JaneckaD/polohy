@@ -1,0 +1,26 @@
+name: Probe MHD
+on:
+  push:
+    paths: ['.github/workflows/probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: |
+          set +e
+          cd /tmp
+          echo "=== IDS JMK GTFS"
+          curl -sL -m 120 -o jmk.zip https://kordis-jmk.cz/gtfs/gtfs.zip; ls -la jmk.zip
+          unzip -o -q jmk.zip agency.txt routes.txt -d jmk; cat jmk/agency.txt | cut -c1-160
+          python3 - <<'P'
+          import csv, collections
+          ag = {r['agency_id']: r['agency_name'] for r in csv.DictReader(open('jmk/agency.txt', encoding='utf-8-sig'))}
+          c = collections.Counter()
+          for r in csv.DictReader(open('jmk/routes.txt', encoding='utf-8-sig')):
+              c[(ag.get(r['agency_id'], r['agency_id']), r['route_type'])] += 1
+          for (a, t), n in sorted(c.items()): print(f'{a} | type {t} | {n} linek')
+          P
+          echo "=== JDF dir"
+          curl -s -m 60 https://portal.cisjr.cz/pub/jdf/ | grep -oE 'href="[^"]+"' | head -40
+          curl -s -m 60 https://portal.cisjr.cz/pub/ | grep -oE 'href="[^"]+"' | head -40
