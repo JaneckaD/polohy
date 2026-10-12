@@ -4,8 +4,10 @@ import { Map, Marker, AttributionControl, setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { mapStyle } from './style.js';
 import { VehicleLayer } from './vehicles.js';
-import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, proxyConfigured, REFRESH_MS } from './data.js';
-import { cityTrip } from './cities.js';
+import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRegionCoaches, fetchCoachRoute, proxyConfigured, REFRESH_MS } from './data.js';
+import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
+import { cityTrip, timeTripPosition } from './cities.js';
+import { currentTripIndex } from './route-match.js';
 import { renderDetails, renderTrip } from './card.js';
 import { applyVehicleColors, trainColors, TYPE_COLORS } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
@@ -85,7 +87,7 @@ function journeyVehicleIds() {
   const { journey, P, date } = journeyFocus;
   const now = pragueNow();
   // Vozy hledáme jen pro dnešní spojení, které už brzy jede nebo právě jede.
-  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.cityBuses, ...store.trains], now.min) : [];
+  const ids = date === now.date && now.min >= journey.dep - 60 && now.min <= journey.arr + 5 ? matchJourneyVehicles(journey, P, [...store.vehicles, ...store.cityBuses, ...store.coaches, ...store.trains], now.min) : [];
   journeyFocus.ids = ids;
   return new Set(ids.filter(Boolean));
 }
@@ -205,6 +207,14 @@ async function fetchCityTrip(v) {
   return cityTrip(P, v, date, min);
 }
 
+/** Dálkový autobus: zastávky nese už vůz, trasu po silnicích stáhneme. */
+async function fetchCoachTrip(v) {
+  const trip = coachTrip(v);
+  const segments = await fetchCoachRoute(v);
+  if (segments) trip.segments = segments;
+  return trip;
+}
+
 async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
@@ -214,7 +224,17 @@ async function updateSelected(first = false) {
   const tripEl = sheetEl.querySelector('.sheet-trip');
   const keep = tripEl.scrollTop;
   // Vlak: kde je vůči zastávkám, podle posledního projetého bodu a jízdního řádu.
-  const pos = v.type === 'train' && selected.trip?.length ? trainPosition(selected.trip, v, pragueNow().min) : null;
+  // Dálkový autobus: dopravce hlásí příští zastávku a jestli v ní stojí.
+  // MHD jiných měst, když název zastávky ve spoji nenajdeme: podle jízdního řádu a zpoždění.
+  const pos = !selected.trip?.length
+    ? null
+    : v.type === 'train'
+      ? trainPosition(selected.trip, v, pragueNow().min)
+      : v.city === 'flix'
+        ? coachPosition(v)
+        : v.city && currentTripIndex(selected.trip, v.stop) < 0
+          ? timeTripPosition(selected.trip, v.delay, pragueNow().min)
+          : null;
   tripEl.replaceChildren(
     renderTrip(selected.trip, v, {
       scroll: first,
@@ -300,7 +320,7 @@ async function select(v) {
   // Vůz posuneme do volné části mapy vedle panelu.
   map.easeTo({ center: [v.lon, v.lat], padding: sheetPadding() });
   updateSelected(true);
-  const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
+  const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.city === 'flix' ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
   updateSelected(true);
@@ -325,11 +345,12 @@ const vehicles = new VehicleLayer(map, { onHover: showHover, onLeave: hideHover,
 let routes = [];
 let timer = null;
 let trainTimer = null;
+let coachTimer = null;
 
 let lastUpdate = null;
 function render() {
   const mine = journeyVehicleIds();
-  const all = [...store.vehicles, ...store.cityBuses, ...store.trains];
+  const all = [...store.vehicles, ...store.cityBuses, ...store.coaches, ...store.trains];
   const shown = mine ? all.filter((v) => mine.has(v.id)) : all.filter((v) => matchesFilter(v, store.filter));
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...all.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
@@ -337,7 +358,7 @@ function render() {
   updateSelected();
   drawRegion(map);
   if (lastUpdate) {
-    const total = store.vehicles.length + store.cityBuses.length;
+    const total = store.vehicles.length + store.cityBuses.length + store.coaches.length;
     const buses = shown.filter((v) => v.type !== 'train').length;
     const trains = shown.length - buses;
     const parts = [buses === total ? `${total} vozů` : `${buses} z ${total} vozů`];
@@ -375,6 +396,15 @@ async function refreshCities() {
   }
 }
 
+async function refreshCoaches() {
+  try {
+    store.setCoaches(await fetchRegionCoaches(await loadRegion()));
+  } catch (err) {
+    // Dálkové autobusy jsou doplněk (starší proxy bez /flix).
+    console.warn('Dálkové autobusy se nepodařilo načíst:', err.message);
+  }
+}
+
 let lastFilter = '';
 store.subscribe(() => {
   render();
@@ -395,18 +425,22 @@ function start() {
   refresh();
   refreshTrains();
   refreshCities();
+  refreshCoaches();
   timer = setInterval(() => {
     refresh();
     refreshCities();
   }, REFRESH_MS);
   trainTimer = setInterval(refreshTrains, TRAIN_REFRESH_MS);
+  coachTimer = setInterval(refreshCoaches, COACH_REFRESH_MS);
 }
 
 function stop() {
   clearInterval(timer);
   clearInterval(trainTimer);
+  clearInterval(coachTimer);
   timer = null;
   trainTimer = null;
+  coachTimer = null;
 }
 
 // Když je aplikace na pozadí, data nestahujeme.

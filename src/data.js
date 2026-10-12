@@ -1,6 +1,7 @@
 import { parseVehiclesPage, parseTable, mergeVehicles, parseTrip } from './dszo.js';
 import { fetchTrains } from './trains.js';
 import { fetchCityBuses } from './cities.js';
+import { fetchCoaches, fetchCoachSegments } from './coaches.js';
 
 // DSZO obnovuje data zhruba každých 15 s.
 export const REFRESH_MS = 15000;
@@ -48,6 +49,18 @@ export async function fetchTrip(v) {
 export function fetchCityVehicles() {
   if (!PROXY) return Promise.resolve([]);
   return fetchCityBuses(PROXY);
+}
+
+/** Dálkové autobusy (FlixBus) uvnitř kraje. */
+export function fetchRegionCoaches(region) {
+  if (!PROXY) return Promise.resolve([]);
+  return fetchCoaches(PROXY, region);
+}
+
+/** Trasa dálkového autobusu po silnicích po úsecích mezi zastávkami (null, když není). */
+export function fetchCoachRoute(v) {
+  if (!PROXY) return Promise.resolve(null);
+  return fetchCoachSegments(PROXY, v);
 }
 
 /** Vlaky uvnitř kraje (region = hranice kraje z region.json). */

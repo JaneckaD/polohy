@@ -6,6 +6,8 @@ import { formatDelay } from './dszo.js';
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
 const MHD = { main: '#0a66d8', text: '#ffffff', stop: '#063f86' };
 const REGIONAL = { main: '#e8710a', text: '#ffffff', stop: '#9c4a00' };
+// Dálkové autobusy (FlixBus) tyrkysové: zelenou už má spěšný vlak.
+const COACH = { main: '#00838f', text: '#ffffff', stop: '#005a62' };
 
 export const CITIES = {
   km: { name: 'Kroměříž', licence: '775', ...MHD },
@@ -30,12 +32,18 @@ export const CARRIERS = {
   reg: { name: 'IDZK', short: 'IDZK', code: null, ...REGIONAL },
 };
 
-/** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */
-export const NETWORKS = { ...CITIES, ...CARRIERS };
-export const isCarrier = (key) => key in CARRIERS;
+/** Dálkové autobusy (nejsou v IDZK, polohy z jejich vlastního sledování spojů). */
+export const COACHES = {
+  flix: { name: 'FlixBus', short: 'FlixBus', ...COACH },
+};
 
-/** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“. */
-export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : CARRIERS[key]?.short ?? '');
+/** Všechny sítě (města i dopravci) podle klíče, jak je nese vůz (v.city) i spoj (pattern.c). */
+export const NETWORKS = { ...CITIES, ...CARRIERS, ...COACHES };
+export const isCarrier = (key) => key in CARRIERS;
+export const isCoach = (key) => key in COACHES;
+
+/** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“, „FlixBus“. */
+export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
 
 /** Dopravce podle route_id z GTFS IDZK (null u MHD měst a linek DSZO). */
 export function carrierOfRoute(routeId) {
@@ -97,11 +105,66 @@ export function parseCityBus(t) {
   };
 }
 
+/** Rozdíl proti jízdnímu řádu z mapy MHD Kroměříž: „-00:05:55“ = 355 s zpoždění, kladný = náskok. */
+export function parseKmDelay(text) {
+  const m = /^([+-])?(\d+):(\d+):(\d+)$/.exec(text ?? '');
+  if (!m) return null;
+  const s = Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]);
+  return s === 0 ? 0 : m[1] === '-' ? s : -s;
+}
+
+/** Vůz MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz) → vůz pro mapu, nebo null. */
+export function parseKmBus(b) {
+  if (!Number.isFinite(b.gps_latitude) || !Number.isFinite(b.gps_longitude) || b.line_number == null) return null;
+  const delay = parseKmDelay(b.time_difference);
+  return {
+    id: `km-${b.vid}`,
+    type: 'bus',
+    city: 'km',
+    line: String(b.line_number),
+    licence: CITIES.km.licence,
+    lat: b.gps_latitude,
+    lon: b.gps_longitude,
+    bearing: null,
+    stop: b.current_stop_name || null,
+    next: null,
+    from: null,
+    headsign: b.destination_name || null,
+    rawStop: b.current_stop_name ? `Kroměříž, ${b.current_stop_name}` : null,
+    rawHeadsign: b.destination_name ? `Kroměříž, ${b.destination_name}` : null,
+    // Číslo spoje odpovídá číslu spoje v jízdním řádu (GTFS IDZK).
+    tripNo: b.connection_no != null ? String(b.connection_no) : null,
+    lowFloor: null,
+    aircon: typeof b.air_conditioning === 'boolean' ? b.air_conditioning : null,
+    features: b.air_conditioning ? ['ac'] : [],
+    plate: null,
+    delay,
+    delayText: formatDelay(delay),
+    updated: b.state_dtime ?? null,
+  };
+}
+
 export async function fetchCityBuses(proxy) {
   const res = await fetch(`${proxy}/mhd`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`/mhd: HTTP ${res.status}`);
   const data = await res.json();
-  return (data.vehicles ?? []).map(parseCityBus).filter(Boolean);
+  return [...(data.vehicles ?? []).map(parseCityBus), ...(data.km ?? []).map(parseKmBus)].filter(Boolean);
+}
+
+/**
+ * Kde je vůz podle jízdního řádu a zpoždění, když název jeho zastávky ve spoji nenajdeme
+ * (mapa MHD Kroměříž píše „Nádraží“, jízdní řád „aut.nádr.“): poslední zastávka, kterou už měl projet.
+ */
+export function timeTripPosition(trip, delaySec, now) {
+  if (!trip?.length) return null;
+  const delay = Math.max(0, Math.round((delaySec ?? 0) / 60));
+  const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  let i = -1;
+  trip.forEach((s, k) => {
+    if (s.time && toMin(s.time) + delay <= now) i = k;
+  });
+  if (i < 0) return { current: 0, atStop: true };
+  return { current: i, atStop: i === trip.length - 1 };
 }
 
 const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, '0')}:${String(((m % 60) + 60) % 60).padStart(2, '0')}`;

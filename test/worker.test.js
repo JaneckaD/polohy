@@ -38,7 +38,12 @@ test('proxy /trains: vlaky Správy železnic jen z okolí Zlínského kraje, jen
 
 test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců z mapy IDZK', async () => {
   let req = null;
+  let km = null;
   const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
+    if (String(url).includes('kromeriz')) {
+      km = { url: String(url), init };
+      return Response.json({ success: true, data: [{ vid: 2702678, line_number: 4, connection_no: 23, time_difference: '-00:05:55', gps_latitude: 49.29, gps_longitude: 17.38, current_stop_name: 'Hygienická stanice', destination_name: 'Nádraží' }] });
+    }
     req = { url: String(url), init };
     return Response.json({
       transmitters: [
@@ -60,5 +65,66 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   assert.deepEqual(data.vehicles.map((v) => v.cn.split('|')[0]), ['946001', '805302', '802371', '773165']);
   assert.equal(data.vehicles[2].cn, '802371|371|202|Tupesy|-19|Velehrad,náměstí|0|1317|Buchlovice,náměstí|Uherské Hradiště,aut.nádr.|1|7Z50806');
   assert.equal(data.vehicles[2].cr, 'ČSAD BUS UH');
+  // MHD Kroměříž z vlastní mapy: klíč v těle, tělo jako prostý text.
+  assert.equal(km.url, 'https://kromeriz.mhdonline.cz/api/buses');
+  assert.equal(km.init.method, 'POST');
+  assert.match(km.init.headers['Content-Type'], /^text\/plain/);
+  assert.equal(JSON.parse(km.init.body).key.length, 36);
+  assert.equal(data.km.length, 1);
+  assert.equal(data.km[0].line_number, 4);
+  fetchMock.mock.restore();
+});
+
+test('proxy /mhd: výpadek mapy Kroměříže neshodí ostatní města', async () => {
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) =>
+    String(url).includes('kromeriz') ? new Response('Internal Server Error', { status: 500 }) : Response.json({ transmitters: [] }),
+  );
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/mhd'));
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { vehicles: [], km: [] });
+  fetchMock.mock.restore();
+});
+
+test('proxy /flix: jen jedoucí spoje FlixBusu, které jsou v kraji', async () => {
+  const ride = (id, lat, lon, progress = 'IN_PROGRESS') => ({
+    id,
+    status: { progress, next_stop_sequence: 2, has_arrived_at_next_stop: false, deviation: { deviation_seconds: 300 } },
+    line: { code: '856', direction: 'Zlín', name: 'Brno - Zlín', trip_number: 3, brand: null },
+    location: { coordinates: { latitude: lat, longitude: lon }, updated_at: '2026-10-12T08:00:00Z' },
+    calls: [
+      { sequence: 1, stop: { name: 'Brno', location: { latitude: 49.19, longitude: 16.61 } }, arrival: null, departure: { scheduled: '2026-10-12T06:50:00Z' } },
+      { sequence: 2, stop: { name: 'Kroměříž', location: { latitude: 49.29, longitude: 17.39 } }, arrival: { scheduled: '2026-10-12T07:40:00Z' }, departure: { scheduled: '2026-10-12T07:40:00Z' } },
+    ],
+  });
+  const a = '11111111-1111-1111-1111-111111111111';
+  const b = '22222222-2222-2222-2222-222222222222';
+  const c = '33333333-3333-3333-3333-333333333333';
+  const urls = [];
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.includes('/v2/timetable/')) return Response.json({ rides: [{ id: a }, { id: b }, { id: c }, { id: 'nesmysl' }] });
+    if (u.includes(a)) return Response.json(ride(a, 49.3, 17.2));
+    if (u.includes(b)) return Response.json(ride(b, 50.08, 14.43)); // Praha
+    return Response.json(ride(c, 49.2, 17.6, 'BEFORE_DEPARTURE'));
+  });
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/flix'));
+  const data = await res.json();
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+  assert.deepEqual(data.buses.map((x) => x.id), [a]);
+  assert.equal(data.buses[0].code, '856');
+  assert.equal(data.buses[0].dev, 300);
+  assert.deepEqual(data.buses[0].calls[1], { seq: 2, name: 'Kroměříž', lat: 49.29, lon: 17.39, arr: '2026-10-12T07:40:00Z', dep: '2026-10-12T07:40:00Z' });
+  assert.equal(urls.filter((u) => u.includes('/v2/timetable/')).length, 12);
+  assert.ok(!urls.some((u) => u.includes('nesmysl')));
+  fetchMock.mock.restore();
+});
+
+test('proxy /flix/route: trasa spoje jen pro platné id', async () => {
+  const bad = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/flix/route?id=../../x'));
+  assert.equal(bad.status, 400);
+  const fetchMock = mock.method(globalThis, 'fetch', async () => Response.json({ segments: [{ segment_sequence: 1, polyline: '_p~iF~ps|U_ulLnnqC' }] }));
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/flix/route?id=11111111-1111-1111-1111-111111111111'));
+  assert.deepEqual(await res.json(), { segments: [{ seq: 1, line: '_p~iF~ps|U_ulLnnqC' }] });
   fetchMock.mock.restore();
 });

@@ -24,6 +24,7 @@ export const store = {
   vehicles: [],
   trains: [],
   cityBuses: [],
+  coaches: [],
 
   setFilter(patch) {
     this.filter = { ...this.filter, ...patch };
@@ -39,6 +40,11 @@ export const store = {
 
   setCityBuses(list) {
     this.cityBuses = list;
+    this.emit();
+  },
+
+  setCoaches(list) {
+    this.coaches = list;
     this.emit();
   },
 

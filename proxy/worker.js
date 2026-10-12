@@ -2,7 +2,9 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí Zlínského kraje.
-// /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz).
+// /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
+//       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
+// /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
 
 const UPSTREAM = 'https://www.dszo.cz';
 const ALLOWED_PATHS = new Set(['/online/', '/online/tabs2.php', '/online/spoj.php']);
@@ -46,21 +48,130 @@ const CITY_LICENCES = ['775', '946', '805', '945'];
 // Regionální autobusy těchto dopravců (podle názvu dopravce na mapě IDZK).
 const CARRIERS = /ČSAD BUS U|Z-Group|ARRIVA|Transdev|TQM/i;
 
+// MHD Kroměříž (Kroměřížské technické služby): mapa na kromeriz.mhdonline.cz posílá klíč v těle
+// a server chce tělo jako prostý text (s Content-Type JSON vrací chybu 500).
+const KM_URL = 'https://kromeriz.mhdonline.cz/api/buses';
+const KM_BODY = JSON.stringify({ key: '09658f18-0f8c-4909-a571-0bc6b4acfbec' });
+
+async function kromerizBuses() {
+  try {
+    const res = await fetch(KM_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
+      body: KM_BODY,
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.success ? (data.data ?? []) : [];
+  } catch {
+    return []; // výpadek Kroměříže nesmí shodit ostatní města
+  }
+}
+
 async function cityBuses() {
-  const upstream = await fetch(MPV_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
-    body: MPV_BODY,
-  });
+  const [upstream, km] = await Promise.all([
+    fetch(MPV_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
+      body: MPV_BODY,
+    }),
+    kromerizBuses(),
+  ]);
   if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
   const data = await upstream.json();
   const vehicles = (data.transmitters ?? [])
     .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)) || (t.cat === 2 && CARRIERS.test(t.cr ?? '')))
     // Z kódu stačí prvních 12 polí (linka, spoj, zastávky, cíl, nízkopodlažnost, SPZ), zbytek jsou nuly.
     .map(({ cn, x, y, ico, ds, tm, cr }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, tm, cr }));
-  return new Response(JSON.stringify({ vehicles }), {
+  return new Response(JSON.stringify({ vehicles, km }), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });
+}
+
+// FlixBus: veřejné sledování spojů (flixbus.cz/track) se stejným klíčem jako jejich web.
+const FLIX = 'https://global.api.flixbus.com/gis';
+const FLIX_KEY = 'apiKey=7781b8fa-07cf-4ab7-8b62-1f3178523ba0';
+// Zastávky FlixBusu v kraji: Zlín AN a Malenovice, Uherské Hradiště, Uherský Brod, Kroměříž AN a Milíčovo nám.
+const FLIX_STATIONS = [
+  'dcc3cb3d-9603-11e6-9066-549f350fcb0c',
+  'dcc3d0c6-9603-11e6-9066-549f350fcb0c',
+  'ef348d14-f2ed-4ea3-a8f4-0e39bb858ffb',
+  'dc20e5be-2dfc-4894-9784-4dea7d942fbe',
+  '28d94a3b-cfe4-4dc4-86a5-b3e484cc326c',
+  '0dca7499-d85a-41f6-ab4b-7377f25f795f',
+];
+// Obdélník kolem kraje (WGS84), přesně ořízne aplikace.
+const ZK_WGS = { s: 48.8, n: 49.75, w: 16.9, e: 18.7 };
+const FLIX_UUID = /^[0-9a-f-]{36}$/;
+
+async function flixJson(url, ttl) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)', 'Accept-Language': 'cs' },
+    cf: { cacheTtl: ttl, cacheEverything: true },
+  });
+  if (!res.ok) throw new Error(`FlixBus ${res.status}`);
+  return res.json();
+}
+
+/** Spoje FlixBusu, které jsou právě v kraji: zjistí je z odjezdů a příjezdů zastávek v kraji. */
+async function flixBuses() {
+  // Okno ±3 h kolem teď, zaokrouhlené na 5 minut, ať se seznamy spojů dají krátce cachovat.
+  const step = 5 * 60e3;
+  const t = Math.floor(Date.now() / step) * step;
+  const iso = (ms) => new Date(ms).toISOString();
+  const lists = await Promise.allSettled(
+    FLIX_STATIONS.flatMap((st) =>
+      ['departures', 'arrivals'].map((kind) => flixJson(`${FLIX}/v2/timetable/${st}/${kind}?from=${iso(t - 3 * 3600e3)}&to=${iso(t + 3 * 3600e3)}&${FLIX_KEY}`, 300)),
+    ),
+  );
+  const ids = new Set();
+  for (const l of lists) for (const r of l.value?.rides ?? []) if (FLIX_UUID.test(r.id ?? '')) ids.add(r.id);
+  const rides = await Promise.allSettled([...ids].slice(0, 30).map((id) => flixJson(`${FLIX}/v3/ride/${id}?${FLIX_KEY}`, 15)));
+  const buses = [];
+  for (const r of rides) {
+    const d = r.value;
+    const c = d?.location?.coordinates;
+    if (!c || d.status?.progress !== 'IN_PROGRESS') continue;
+    if (!(c.latitude >= ZK_WGS.s && c.latitude <= ZK_WGS.n && c.longitude >= ZK_WGS.w && c.longitude <= ZK_WGS.e)) continue;
+    buses.push({
+      id: d.id,
+      code: d.line?.code,
+      name: d.line?.name,
+      dir: d.line?.direction,
+      no: d.line?.trip_number,
+      brand: d.line?.brand?.name ?? 'FlixBus',
+      lat: c.latitude,
+      lon: c.longitude,
+      at: d.location.updated_at,
+      dev: d.status?.deviation?.deviation_seconds ?? null,
+      next: d.status?.next_stop_sequence ?? null,
+      arrived: d.status?.has_arrived_at_next_stop ?? null,
+      calls: (d.calls ?? []).map((k) => ({
+        seq: k.sequence,
+        name: k.stop?.name,
+        lat: k.stop?.location?.latitude,
+        lon: k.stop?.location?.longitude,
+        arr: k.arrival?.scheduled ?? null,
+        dep: k.departure?.scheduled ?? null,
+      })),
+    });
+  }
+  return new Response(JSON.stringify({ buses }), {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+  });
+}
+
+/** Trasa spoje FlixBusu po silnicích (úseky mezi zastávkami jako zakódované lomené čáry). */
+async function flixRoute(id) {
+  if (!FLIX_UUID.test(id ?? '')) return new Response('Bad id', { status: 400, headers: CORS });
+  try {
+    const data = await flixJson(`${FLIX}/v3/ride/${id}/route?${FLIX_KEY}`, 3600);
+    return new Response(JSON.stringify({ segments: (data.segments ?? []).map((s) => ({ seq: s.segment_sequence, line: s.polyline })) }), {
+      headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'max-age=3600' },
+    });
+  } catch {
+    return new Response('Upstream error', { status: 502, headers: CORS });
+  }
 }
 
 export default {
@@ -70,6 +181,8 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/trains') return trains();
     if (request.method === 'GET' && url.pathname === '/mhd') return cityBuses();
+    if (request.method === 'GET' && url.pathname === '/flix') return flixBuses();
+    if (request.method === 'GET' && url.pathname === '/flix/route') return flixRoute(url.searchParams.get('id'));
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {
       return new Response('Not found', { status: 404, headers: CORS });
     }
