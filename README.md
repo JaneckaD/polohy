@@ -30,10 +30,10 @@ a jízdní řád spoje s časy.
 - **Moravskoslezský kraj (ODIS) živě:** veřejná mapa poloh vozidel ODIS ([mpvnet.cz/odis](https://mpvnet.cz/odis/map))
   přes proxy `/mhd` (pole `odis`): regionální autobusy a MHD měst včetně tramvají a trolejbusů Ostravy. Spoj se dohledá
   v celostátních jízdních řádech podle licence linky a čísla spoje ([`src/odis.js`](src/odis.js)).
-- **Olomoucký a Moravskoslezský kraj, jízdní řády:** GTFS [Spojenky](https://www.spojenka.cz/jrdata) (MFF UK,
-  CIS JŘ spojené s daty dopravních podniků, volně pro nekomerční užití) – regionální linky a MHD měst
-  (autobusy, trolejbusy, tramvaje Ostravy a Olomouce) s polohami zastávek. Celostátní data CIS JŘ v GTFS
-  (data.jr.ggu.cz) tam polohy části zastávek nemají a tramvaje vůbec; jsou jen náhradou, když Spojenka nejde.
+- **Olomoucký a Moravskoslezský kraj, jízdní řády:** regionální linky a MHD menších měst z celostátních dat
+  CIS JŘ v GTFS (data.jr.ggu.cz; licence a čísla spojů sedí na polohy ODIS). MHD dopravních podniků Ostravy,
+  Olomouce a Opavy (i tramvaje a trolejbusy, které celostátní data nemají) a polohy zastávek, které tam chybí,
+  jsou z GTFS [Spojenky](https://www.spojenka.cz/jrdata) (MFF UK, volně pro nekomerční užití).
   Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou zatím jen ve Zlínském
   a Jihomoravském kraji (`properties.rail` v `region.json`).
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
