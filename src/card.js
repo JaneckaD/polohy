@@ -27,6 +27,7 @@ const ICONS = {
   bed: svg('<path d="M3 6v14M3 16h18v4M21 16v-3a3 3 0 0 0-3-3h-7v6"/><circle cx="7" cy="12.5" r="1.8"/>'),
   wc: svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m6 9 1.3 6L9 10.5 10.7 15 12 9M18 10a2.4 2.4 0 1 0 0 4"/>'),
   trolleybus: svg('<rect x="4" y="7" width="16" height="11" rx="2"/><path d="M4 12h16M9 7 7 2M15 7l2-5"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
+  tram: svg('<path d="M9 3h6M12 3v3"/><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M6 12h12M8 21l1.5-3M16 21l-1.5-3"/>'),
   bus: svg('<rect x="4" y="4" width="16" height="14" rx="2"/><path d="M4 11h16M8 4v7M16 4v7"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
   train: svg('<rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 10h14M9 21l1.5-4M15 21l-1.5-4"/><circle cx="9" cy="13.5" r="1" fill="currentColor"/><circle cx="15" cy="13.5" r="1" fill="currentColor"/>'),
 };

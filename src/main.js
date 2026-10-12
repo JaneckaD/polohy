@@ -8,10 +8,11 @@ import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRe
 import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
 import { cityTrip, timeTripPosition, isCoach } from './cities.js';
 import { loadRegioJet, regioJetVehicles } from './regiojet.js';
-import { estimatedVehicles, setBusRoutes, hasBusRoutes } from './estimated.js';
+import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown } from './estimated.js';
+import { JmkLive, setJmkSegments } from './jmk.js';
 import { currentTripIndex } from './route-match.js';
 import { renderDetails, renderTrip } from './card.js';
-import { applyVehicleColors, trainColors, TYPE_COLORS } from './colors.js';
+import { applyVehicleColors, vehicleColors } from './colors.js';
 import { computeRoute, drawRoute, clearRoute, loadRoutes, loadBusRoutes, drawLineRoutes, drawJourney, clearJourney } from './route.js';
 import { drawRegion, loadRegion } from './region.js';
 import { TRAIN_REFRESH_MS } from './trains.js';
@@ -43,8 +44,11 @@ const map = new Map({
   pitchWithRotate: false,
 });
 map.touchZoomRotate.disableRotation();
+// Pro automatické testy vzhledu (?debug).
+if (new URLSearchParams(location.search).has('debug')) window.__map = map;
 map.keyboard.disableRotation();
-map.addControl(new AttributionControl({ compact: true }), 'bottom-left');
+// Živé polohy IDS JMK jsou otevřená data pod licencí CC BY: uvádíme zdroj.
+map.addControl(new AttributionControl({ compact: true, customAttribution: 'Polohy IDS JMK: <a href="https://data.brno.cz" target="_blank">KORDIS JMK</a> (CC BY)' }), 'bottom-left');
 
 const statusEl = document.getElementById('status');
 function setStatus(text, isError = false) {
@@ -215,7 +219,7 @@ async function fetchCityTrip(v) {
 /** Dálkový autobus: zastávky nese už vůz, trasu po silnicích stáhneme (RegioJet ji má s jízdním řádem). */
 async function fetchCoachTrip(v) {
   const trip = coachTrip(v);
-  const segments = v.segments ?? (v.estimated ? null : await fetchCoachRoute(v));
+  const segments = v.segments ?? (v.city === 'flix' ? await fetchCoachRoute(v) : null);
   if (segments) trip.segments = segments;
   return trip;
 }
@@ -224,6 +228,12 @@ async function updateSelected(first = false) {
   if (!selected) return;
   const v = vehicles.get(selected.id);
   if (!v) return deselect();
+  // Živý vůz IDS JMK přejel na další spoj (nebo se spoj teprve dohledal): zastávky nového spoje.
+  if (v.calls && v.tripId != null && selected.trip && v.tripId !== selected.tripId) {
+    selected.tripId = v.tripId;
+    selected.trip = coachTrip(v);
+    if (v.segments) selected.trip.segments = v.segments;
+  }
   applyVehicleColors(sheetEl, v);
   sheetEl.querySelector('.sheet-details').replaceChildren(renderDetails(v, selected.trip));
   const tripEl = sheetEl.querySelector('.sheet-trip');
@@ -256,7 +266,7 @@ async function updateSelected(first = false) {
   const token = selected.token;
   const route = await computeRoute(v, selected.trip ?? [], pos?.current);
   if (!selected || selected.token !== token) return;
-  if (route) drawRoute(map, route, v.type, v.type === 'train' ? trainColors(v.kind) : v.city ? TYPE_COLORS[v.city] : null);
+  if (route) drawRoute(map, route, v.type, vehicleColors(v));
   else clearRoute(map);
   if (pos) return; // u vlaku poloha vůči zastávkám už je známá
   // Poloha vůči zastávkám je známá až z trasy: když vůz už odjel ze zastávky, překreslíme seznam.
@@ -328,6 +338,7 @@ async function select(v) {
   const trip = v.type === 'train' ? await fetchTrainTrip(v) : v.calls || isCoach(v.city) ? await fetchCoachTrip(v) : v.city ? await fetchCityTrip(v) : await fetchTrip(v);
   if (!selected || selected.token !== token) return;
   selected.trip = trip;
+  selected.tripId = v.tripId ?? null;
   updateSelected(true);
 }
 
@@ -360,10 +371,15 @@ function render() {
   const visible = selected && !shown.some((v) => v.id === selected.id) ? [...shown, ...all.filter((v) => v.id === selected.id)] : shown;
   vehicles.update(visible);
   updateJourneyBar();
-  updateSelected();
+  // Panel vybraného vozu jen když se jeho data změnila (živé polohy chodí po částech každé 3 s).
+  const sel = selected && visible.find((v) => v.id === selected.id);
+  if (!selected || sel !== selected.src) {
+    if (selected) selected.src = sel;
+    updateSelected();
+  }
   drawRegion(map);
   if (lastUpdate) {
-    const total = store.vehicles.length + store.cityBuses.length + store.coaches.length + store.estimated.length;
+    const total = store.vehicles.length + store.cityBuses.length + store.jmk.length + store.coaches.length + store.estimated.length;
     const buses = shown.filter((v) => v.type !== 'train').length;
     const trains = shown.length - buses;
     const parts = [buses === total ? `${total} vozů` : `${buses} z ${total} vozů`];
@@ -470,8 +486,23 @@ async function refreshEstimated() {
   }
   const now = new Date();
   const { date, min } = pragueNow();
+  setJmkDown(jmk.down);
   store.setEstimated(estimatedVehicles(P, region, date, min + now.getSeconds() / 60));
 }
+
+// Živé polohy IDS JMK (tramvaje, trolejbusy, autobusy): spoje se dohledají v datech vyhledávání spojení.
+let jmkPlanner = null;
+let jmkRegion = null;
+const jmk = new JmkLive({
+  onChange: (list) => store.setJmk(list),
+  context: () => ({ P: jmkPlanner, region: jmkRegion, ...pragueNow() }),
+});
+setJmkSegments(segmentsOf);
+Promise.all([loadRegion().catch(() => null), new Promise((r) => setTimeout(r, 2500)).then(loadPlanner).catch(() => null)]).then(([region, P]) => {
+  jmkRegion = region;
+  jmkPlanner = P;
+  jmk.rebuild();
+});
 
 store.subscribe(render);
 // Kraj vozu (filtr Kraj) se pozná podle obrysů krajů v region.json.
@@ -486,6 +517,7 @@ function start() {
     return;
   }
   if (timer) return;
+  jmk.start();
   refresh();
   refreshTrains();
   refreshCities();
@@ -502,6 +534,7 @@ function start() {
 }
 
 function stop() {
+  jmk.stop();
   clearInterval(timer);
   clearInterval(trainTimer);
   clearInterval(coachTimer);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPlannerFromTrips } from '../scripts/planner-data.mjs';
 import { preparePlanner } from '../src/planner.js';
-import { estimatedVehicles, setBusRoutes } from '../src/estimated.js';
+import { estimatedVehicles, setBusRoutes, setJmkDown } from '../src/estimated.js';
 import { lineLabel } from '../src/cities.js';
 
 const stops = [['Pohořelice, nám.', 48.98, 16.52], ['Vlasatice, obecní úřad', 48.95, 16.55], ['Mikulov, žel.st.', 48.8, 16.63]];
@@ -23,8 +23,16 @@ test('číslo linky z šestimístné licence', () => {
   assert.equal(lineLabel('S3'), 'S3');
 });
 
+test('linky IDS JMK jedou živě: odhad jen když živý proud nefunguje', () => {
+  setBusRoutes([]);
+  setJmkDown(false);
+  assert.deepEqual(estimatedVehicles(P, null, '2026-10-12', 605).map((v) => v.city), ['coach']);
+  setJmkDown(true);
+});
+
 test('odhadovaný autobus: mezi zastávkami, v zastávce, mimo provoz, jen sítě bez živé polohy', () => {
   setBusRoutes([]);
+  setJmkDown(true);
   const between = estimatedVehicles(P, null, '2026-10-12', 605);
   assert.deepEqual(between.map((v) => v.city).sort(), ['coach', 'jmk']);
   const jmk = between.find((v) => v.city === 'jmk');
@@ -53,6 +61,7 @@ test('odhadovaný autobus: mezi zastávkami, v zastávce, mimo provoz, jen sít�
 });
 
 test('odhad jede po trase po silnici, když ji máme', () => {
+  setJmkDown(true);
   setBusRoutes([
     {
       ref: 'jmk:104',

@@ -3,6 +3,7 @@ const svg = (body, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
 export const KIND_ICONS = {
+  tram: svg('<path d="M8.5 2.5h7M12 2.5V6"/><rect x="5.5" y="6" width="13" height="12" rx="3"/><path d="M5.5 12h13M8 21.5l1.5-3.5M16 21.5 14.5 18"/><circle cx="9" cy="15" r="1" fill="currentColor"/><circle cx="15" cy="15" r="1" fill="currentColor"/>'),
   trolleybus: svg('<rect x="4" y="8" width="16" height="10" rx="2"/><path d="M4 13h16M9 8 7 2.5M15 8l2-5.5"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
   mhd: svg('<rect x="4" y="4" width="16" height="14" rx="2"/><path d="M4 11h16M8 4v7M16 4v7"/><circle cx="8" cy="18.5" r="1.3"/><circle cx="16" cy="18.5" r="1.3"/>'),
   regional: svg('<rect x="2.5" y="6" width="19" height="11" rx="2"/><path d="M2.5 11h19M7.5 6v5M12 6v5M16.5 6v5"/><circle cx="6.5" cy="17.5" r="1.5"/><circle cx="17.5" cy="17.5" r="1.5"/>'),

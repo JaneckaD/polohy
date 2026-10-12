@@ -51,13 +51,15 @@ function render() {
   const t = TRAIN_KINDS;
   body.replaceChildren(
     group('Vozy a vlaky', [
-      row([vehicle('3', k.trolleybus.color, k.trolleybus.text, { type: 'trolleybus' })], 'Trolejbus', 'Městská doprava, v kolečku číslo linky'),
+      row([vehicle('4', k.tram.color, k.tram.text, { type: 'tram' })], 'Tramvaj', 'Městská doprava, v kolečku číslo linky'),
+      row([vehicle('3', k.trolleybus.color, k.trolleybus.text, { type: 'trolleybus' })], 'Trolejbus', 'Městská doprava'),
       row([vehicle('31', k.mhd.color, k.mhd.text)], 'Autobus MHD', 'Městská doprava'),
       row([vehicle('371', k.regional.color, k.regional.text)], 'Regionální autobus', 'Linky mezi obcemi, živě nebo odhadem podle jízdního řádu'),
       row([vehicle('856', k.coach.color, k.coach.text), vehicle('RJ', k.coach.color, k.coach.text)], 'Dálkový autobus', 'Linky přes celou republiku a do zahraničí, živě nebo odhadem podle jízdního řádu'),
       row([vehicle('Os', t.os.color, '#fff', { type: 'train' }), vehicle('Sp', t.sp.color, '#fff', { type: 'train' })], 'Osobní a spěšný vlak', 'V kolečku druh vlaku, číslo je v detailu'),
       row([vehicle('R', t.r.color, '#fff', { type: 'train' }), vehicle('EC', t.int.color, '#fff', { type: 'train' })], 'Rychlík a mezinárodní vlak', 'R, RJ, LE, IC… a EC, EN, rj…'),
       row([vehicle('6', k.mhd.color, k.mhd.text, { arrow: 45 })], 'Šipka u kolečka', 'Směr, kterým vůz jede'),
+      row([h('div', 'legend-dots')], 'Malé tečky', 'Na oddálené mapě s mnoha vozy, po přiblížení se ukážou kolečka s čísly'),
     ]),
     group('Na mapě', [
       row([h('div', 'legend-line route')], 'Trasa vybraného vozu', 'Barevně ještě pojede, šedě už projel, tečky jsou zastávky'),

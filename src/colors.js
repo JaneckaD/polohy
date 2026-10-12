@@ -1,4 +1,4 @@
-// Barvy podle druhu dopravy: trolejbus žlutý, autobus MHD modrý, regionální autobus oranžový,
+// Barvy podle druhu dopravy: trolejbus žlutý, tramvaj červená, autobus MHD modrý, regionální autobus oranžový,
 // vlak podle druhu (osobní, spěšný, rychlík, mezinárodní).
 // text = barva písma na barvě linky (na žluté tmavé, kontrast 14:1; na modré bílé, 5,3:1),
 // casing = okraj čáry na bílé mapě, passed = projetá část trasy (šedá),
@@ -6,13 +6,26 @@
 import { NETWORKS } from './cities.js';
 import { TRAIN_KINDS } from './trains.js';
 
+// Tramvaj: tmavší červená, aby se nepletla se zpožděním ani s rychlíkem.
+export const TRAM_COLOR = '#c4122f';
+
 export const TYPE_COLORS = {
   trolleybus: { main: '#ffcc00', text: '#1c1c1e', casing: '#a07f00', passed: '#8e8e93', dark: '#8e8e93', stop: '#7a5f00', stopPassed: '#636366' },
   bus: { main: '#0a66d8', text: '#ffffff', casing: '#ffffff', passed: '#8e8e93', dark: '#8e8e93', stop: '#063f86', stopPassed: '#636366' },
+  tram: { main: TRAM_COLOR, text: '#ffffff', casing: '#ffffff', passed: '#8e8e93', dark: '#8e8e93', stop: '#7f1019', stopPassed: '#636366' },
 };
 // MHD dalších měst (modrá) a regionální autobusy (oranžová).
 for (const [code, c] of Object.entries(NETWORKS)) {
   TYPE_COLORS[code] = { main: c.main, text: c.text, casing: '#ffffff', passed: '#8e8e93', dark: '#8e8e93', stop: c.stop, stopPassed: '#636366' };
+}
+
+/** Klíč barev vozu nebo spoje: trolejbus a tramvaj podle druhu (i v jiném městě), jinak podle sítě. */
+export const colorKey = (type, city) => (type === 'trolleybus' || type === 'tram' ? type : city && TYPE_COLORS[city] ? city : type);
+
+/** Barvy vozu (trasa na mapě, kolečko): vlak podle druhu vlaku, ostatní podle colorKey. */
+export function vehicleColors(v) {
+  if (v?.type === 'train') return trainColors(v.kind);
+  return TYPE_COLORS[colorKey(v?.type, v?.city)] ?? TYPE_COLORS.bus;
 }
 
 /** Nastaví prvku CSS proměnné barev typu: --line-color (výplň), --line-text (písmo na ní), --line-ink (čáry a ikony na bílé). */
@@ -22,7 +35,7 @@ export function applyTypeColors(el, type) {
   el.style.setProperty('--line-text', c.text);
   el.style.setProperty('--line-ink', type === 'trolleybus' ? '#b38900' : c.main);
   el.style.setProperty('--line-stop', c.stop);
-  el.dataset.type = type === 'trolleybus' ? 'trolleybus' : 'bus';
+  el.dataset.type = type === 'trolleybus' || type === 'tram' ? type : 'bus';
   return el;
 }
 
@@ -36,7 +49,7 @@ export function trainColors(kind) {
 
 /** Barvy podle vozu: u vlaku barva druhu vlaku, jinak podle typu. */
 export function applyVehicleColors(el, v) {
-  if (v?.city) {
+  if (v?.city && v.type !== 'trolleybus' && v.type !== 'tram') {
     applyTypeColors(el, v.city);
     el.dataset.type = 'bus';
     return el;
@@ -51,7 +64,7 @@ export function applyVehicleColors(el, v) {
   return el;
 }
 
-export const TYPE_LABELS = { trolleybus: 'Trolejbus', bus: 'Autobus' };
+export const TYPE_LABELS = { trolleybus: 'Trolejbus', tram: 'Tramvaj', bus: 'Autobus' };
 
 // Stejné hranice jako legenda na dszo.cz/online: 0–2, 2–4, 4–10 a víc než 10 minut.
 export function delayLevel(seconds) {

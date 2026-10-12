@@ -18,25 +18,38 @@ test('názvy zastávek a dopravců z celostátních dat', () => {
   assert.equal(shortAgency('D.M.D-GROUP, spol. s r.o.'), 'D.M.D-GROUP');
 });
 
-test('IDS JMK: regionální linky ano, MHD Brna a jiných měst ne', () => {
+test('IDS JMK: regionální linky, MHD Brna (i tramvaje) a MHD jiných měst', () => {
   const bytes = zip({
     'routes.txt': ['route_id,agency_id,route_short_name,route_long_name,route_type', 'L44,99,44,Brno MHD,3', 'L104,99,104,Brno - Pohořelice,3', 'L801,99,801,Znojmo MHD,3', 'L1,99,1,Tramvaj,0'],
     'trips.txt': ['route_id,service_id,trip_id,trip_short_name', 'L44,S,T1,', 'L104,S,T2,5', 'L801,S,T3,', 'L1,S,T4,'],
-    'stops.txt': ['stop_id,stop_name,stop_lat,stop_lon,zone_id', 'A,Mendlovo náměstí,49.19,16.59,100', 'B,"Pohořelice, nám.",48.98,16.52,510', 'C,"Znojmo, Náměstí",48.85,16.05,800', 'D,"Znojmo, Nádraží",48.86,16.06,800'],
+    'stops.txt': ['stop_id,stop_name,stop_lat,stop_lon,zone_id', 'U1Z1,Mendlovo náměstí,49.19,16.59,100', 'B,"Pohořelice, nám.",48.98,16.52,510', 'C,"Znojmo, Náměstí",48.85,16.05,800', 'D,"Znojmo, Nádraží",48.86,16.06,800'],
+    'agency.txt': ['agency_id,agency_name', '99,KORDIS JMK'],
     'stop_times.txt': [
       'trip_id,arrival_time,departure_time,stop_id,stop_sequence',
-      'T1,08:00:00,08:00:00,A,1', 'T1,08:10:00,08:10:00,A,2',
-      'T2,08:00:00,08:00:00,A,1', 'T2,08:40:00,08:40:00,B,2',
+      'T1,08:00:00,08:00:00,U1Z1,1', 'T1,08:10:00,08:10:00,U1Z1,2',
+      'T2,08:00:00,08:00:00,U1Z1,1', 'T2,08:40:00,08:40:00,B,2',
       'T3,08:00:00,08:00:00,C,1', 'T3,08:05:00,08:05:00,D,2',
-      'T4,08:00:00,08:00:00,A,1', 'T4,08:05:00,08:05:00,A,2',
+      'T4,08:00:00,08:00:00,U1Z1,1', 'T4,08:05:00,08:05:00,U1Z1,2',
     ],
     'calendar.txt': CAL,
   });
   const trips = kordisTrips(bytes, { startDate: '2026-10-12', days: 3 });
-  assert.deepEqual(trips.map((t) => t.ref), ['104']);
-  assert.equal(trips[0].city, 'jmk');
-  assert.deepEqual(trips[0].stops.map((s) => s[0]), ['Brno, Mendlovo náměstí', 'Pohořelice, nám.']);
-  assert.equal(trips[0].mask, '111');
+  const by = Object.fromEntries(trips.map((t) => [t.ref, t]));
+  assert.deepEqual(Object.keys(by).sort(), ['1', '104', '44', '801']);
+  assert.equal(by['104'].city, 'jmk');
+  assert.deepEqual(by['104'].stops.map((s) => s[0]), ['Brno, Mendlovo náměstí', 'Pohořelice, nám.']);
+  assert.deepEqual(by['104'].nodes, [1, null], 'uzel zastávky z U1Z1');
+  assert.equal(by['104'].mask, '111');
+  assert.equal(by['104'].operator, undefined, 'KORDIS není dopravce');
+  assert.equal(by['44'].city, 'brno');
+  assert.equal(by['1'].city, 'brno');
+  assert.equal(by['1'].type, 'tram');
+  assert.equal(by['801'].city, 'jmkmhd');
+  assert.equal(by['801'].operator, 'MHD Znojmo');
+  // Uzly zastávek se dostanou do dat vyhledávání (živé polohy podle nich najdou zastávku).
+  const P = buildPlannerFromTrips({ startDate: '2026-10-12', days: 3, rawTrips: trips });
+  assert.equal(P.stops[P.nodes[1]][0], 'Brno, Mendlovo náměstí');
+  assert.equal(P.patterns.find((p) => p.r === '1').y, 'r');
 });
 
 test('celostátní data: dálkový spoj zkrácený na oblast, duplicita a MHD vynechané', () => {
@@ -58,7 +71,7 @@ test('celostátní data: dálkový spoj zkrácený na oblast, duplicita a MHD vy
     'calendar.txt': CAL,
   });
   // Spoj T2 už je v datech IDS JMK (stejné časy na stejných místech).
-  const known = knownEvents([{ type: 'bus', times: [420, 450], stops: [['Brno, Zvonařka', 49.1862, 16.6183], ['Rajhrad, nám.', 49.0901, 16.6004]] }]);
+  const known = knownEvents([{ type: 'bus', city: 'jmk', times: [420, 450], stops: [['Brno, Zvonařka', 49.1862, 16.6183], ['Rajhrad, nám.', 49.0901, 16.6004]] }]);
   const trips = nationalTrips(bytes, { startDate: '2026-10-12', days: 2, region, known });
   assert.equal(trips.length, 1);
   const [t] = trips;

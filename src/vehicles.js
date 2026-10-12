@@ -1,6 +1,7 @@
 import { Marker } from 'maplibre-gl';
 import { TRAIN_KINDS } from './trains.js';
-import { NETWORKS } from './cities.js';
+import { vehicleColors } from './colors.js';
+import { styleReady } from './region.js';
 
 // Vrstva vozidel: kolečko s číslem linky a malou šipkou ve směru jízdy.
 // Směr bereme z dat (heading), a když chybí, dopočítáme ho z posledních dvou poloh vozu.
@@ -48,15 +49,10 @@ function setLabel(el, v) {
   // Trojmístná čísla regionálních linek se do kolečka vejdou jen menším písmem.
   el.classList.toggle('long-label', String(key ?? '').length >= 3);
   if (v.type !== 'train') {
-    // MHD jiného města a regionální autobusy: barva města nebo dopravce.
-    const net = NETWORKS[v.city];
-    if (net) {
-      el.style.setProperty('--vehicle-color', net.main);
-      el.style.setProperty('--vehicle-text', net.text);
-    } else {
-      el.style.removeProperty('--vehicle-color');
-      el.style.removeProperty('--vehicle-text');
-    }
+    // Barva podle druhu: trolejbus žlutý, tramvaj červená, MHD modrá, regionální oranžová, dálkové tyrkysová.
+    const c = vehicleColors(v);
+    el.style.setProperty('--vehicle-color', c.main);
+    el.style.setProperty('--vehicle-text', c.text);
     return;
   }
   el.title = `${v.code} ${v.number} · ${v.operator?.short ?? ''}`;
@@ -72,6 +68,19 @@ const STACK_STEP_PX = 30;
 const VIEW_MARGIN = 0.25; // rezerva kolem výřezu (podíl jeho šířky/výšky)
 const CULL_MS = 200; // jak často během posunu mapy přepočítat, které značky patří na mapu
 
+// Hodně vozů ve výřezu (oddálená mapa, celé Brno): místo prvků stránky malé tečky kreslené mapou (WebGL),
+// které posun mapy nezpomalí. Kolečka s čísly se vrátí po přiblížení.
+const DOT_LIMIT = 300; // nejvíc koleček (prvků stránky) ve výřezu
+const DOT_MAX_ZOOM = 14; // od tohoto přiblížení vždy kolečka
+const SRC_DOTS = 'vehicle-dots';
+
+function dotFeature(v) {
+  const c = vehicleColors(v);
+  const color = v.type === 'train' ? TRAIN_KINDS[v.kind]?.color ?? '#6c6c70' : c.main;
+  const label = v.type === 'train' ? v.code : `${v.line ?? ''}${v.mark ?? ''}`;
+  return { type: 'Feature', properties: { id: v.id, color, text: v.type === 'train' ? '#ffffff' : c.text, label }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
+}
+
 export class VehicleLayer {
   /** @param {{ onHover?: (v, el) => void, onLeave?: () => void, onSelect?: (v) => void }} handlers */
   constructor(map, handlers = {}) {
@@ -82,6 +91,8 @@ export class VehicleLayer {
     this.animating = new Set();
     this.frame = null;
     this.view = null;
+    this.dots = false; // režim teček (mapa kreslí vozy sama)
+    this.dotsDirty = true;
     let last = 0;
     map.on('move', () => {
       const now = performance.now();
@@ -94,6 +105,95 @@ export class VehicleLayer {
       this.view = null;
       this.cull();
     });
+    this.bindDots();
+  }
+
+  /** Vrstva teček pro oddálenou mapu: klepnutí a najetí myší jako u koleček. */
+  bindDots() {
+    const map = this.map;
+    const ensure = () => {
+      if (!styleReady(map) || map.getSource(SRC_DOTS)) return;
+      map.addSource(SRC_DOTS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: SRC_DOTS,
+        type: 'circle',
+        source: SRC_DOTS,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 10, 4.5, 13, 8],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 12, 1.5],
+          'circle-opacity': 1,
+          'circle-stroke-opacity': 1,
+        },
+      });
+      // Čísla linek v tečkách, jen kde se vejdou (mapa sama skryje překrývající se).
+      map.addLayer({
+        id: `${SRC_DOTS}-labels`,
+        type: 'symbol',
+        source: SRC_DOTS,
+        minzoom: 12,
+        layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 9, 'text-allow-overlap': false, 'text-padding': 1 },
+        paint: { 'text-color': ['get', 'text'] },
+      });
+      this.dotsDirty = true;
+      this.renderDots();
+    };
+    ensure();
+    map.on('load', ensure);
+    map.on('styledata', ensure);
+    const byId = (e) => this.items.get(e.features?.[0]?.properties?.id);
+    map.on('click', SRC_DOTS, (e) => {
+      const item = byId(e);
+      if (!item) return;
+      e.originalEvent?.stopPropagation();
+      // Klepnutí na mapu jinak výběr zruší: vybereme až po něm.
+      setTimeout(() => this.handlers.onSelect?.(item.vehicle), 0);
+    });
+    map.on('mousemove', SRC_DOTS, (e) => {
+      const item = byId(e);
+      if (!item || !matchMedia('(hover: hover)').matches) return;
+      map.getCanvas().style.cursor = 'pointer';
+      if (this.hovered === item) return;
+      this.hovered = item;
+      const p = map.project([item.pos.lon, item.pos.lat]);
+      const box = map.getContainer().getBoundingClientRect();
+      const r = 6;
+      const el = { getBoundingClientRect: () => ({ left: box.left + p.x - r, right: box.left + p.x + r, top: box.top + p.y - r, bottom: box.top + p.y + r, width: 2 * r, height: 2 * r }) };
+      this.handlers.onHover?.(item.vehicle, el);
+    });
+    map.on('mouseleave', SRC_DOTS, () => {
+      map.getCanvas().style.cursor = '';
+      this.hovered = null;
+      this.handlers.onLeave?.();
+    });
+  }
+
+  /** Tečky všech vozů kromě vybraného (ten je vždy kolečko). */
+  renderDots() {
+    const src = this.map.getSource(SRC_DOTS);
+    if (!src || !this.dotsDirty) return;
+    this.dotsDirty = false;
+    const features = [];
+    if (this.dots) for (const item of this.items.values()) if (item.vehicle.id !== this.selectedId) features.push(dotFeature({ ...item.vehicle, lat: item.pos.lat, lon: item.pos.lon }));
+    src.setData({ type: 'FeatureCollection', features });
+    const dim = this.selectedId != null && this.dots ? 0.35 : 1;
+    this.map.setPaintProperty(SRC_DOTS, 'circle-opacity', dim);
+    this.map.setPaintProperty(SRC_DOTS, 'circle-stroke-opacity', dim);
+  }
+
+  /** Kolečka, nebo tečky: podle přiblížení a počtu vozů ve výřezu. */
+  chooseMode() {
+    let dots = false;
+    if (this.map.getZoom() < DOT_MAX_ZOOM && this.map.getSource(SRC_DOTS)) {
+      let n = 0;
+      for (const item of this.items.values()) if (this.inView(item.pos) && ++n > DOT_LIMIT) break;
+      dots = n > DOT_LIMIT;
+    }
+    if (dots !== this.dots) {
+      this.dots = dots;
+      this.dotsDirty = true;
+    }
   }
 
   get(id) {
@@ -116,9 +216,9 @@ export class VehicleLayer {
     return p.lon >= w && p.lon <= e && p.lat >= s && p.lat <= n;
   }
 
-  /** Značka je na mapě, jen když je vůz v okolí výřezu (vybraný vůz vždy). */
+  /** Značka je na mapě, jen když je vůz v okolí výřezu (vybraný vůz vždy), v režimu teček jen vybraný. */
   place(item) {
-    const show = item.vehicle.id === this.selectedId || this.inView(item.pos);
+    const show = item.vehicle.id === this.selectedId || (!this.dots && this.inView(item.pos));
     if (show === item.shown) return;
     item.shown = show;
     if (show) item.marker.setLngLat([item.pos.lon, item.pos.lat]).addTo(this.map);
@@ -126,7 +226,9 @@ export class VehicleLayer {
   }
 
   cull() {
+    this.chooseMode();
     for (const item of this.items.values()) this.place(item);
+    this.renderDots();
   }
 
   update(vehicles) {
@@ -136,6 +238,9 @@ export class VehicleLayer {
     for (const v of vehicles) {
       seen.add(v.id);
       let item = this.items.get(v.id);
+      // Vůz se od minula nezměnil (živé polohy chodí po částech): nic nepřepočítáváme.
+      if (item?.src === v) continue;
+      this.dotsDirty = true;
 
       if (!item) {
         const el = createElement();
@@ -150,6 +255,7 @@ export class VehicleLayer {
       }
 
       const bearing = Number.isFinite(v.bearing) ? v.bearing : item.bearing;
+      item.src = v;
       item.vehicle = { ...v, bearing };
       if (item.el.dataset.type !== v.type) item.el.dataset.type = v.type;
       if ((item.el.dataset.city ?? null) !== (v.city ?? null)) {
@@ -158,7 +264,6 @@ export class VehicleLayer {
       }
       setLabel(item.el, v);
       this.setBearing(item, bearing);
-      this.place(item);
     }
 
     for (const [id, item] of this.items) {
@@ -166,10 +271,12 @@ export class VehicleLayer {
         item.marker.remove();
         this.animating.delete(item);
         this.items.delete(id);
+        this.dotsDirty = true;
       }
     }
     this.stackTrains(vehicles);
     this.applySelection();
+    this.cull();
   }
 
   // Vlaky stojící ve stejné stanici mají stejnou polohu: značky se seřadí pod sebe, ať jdou všechny vidět.
@@ -209,6 +316,7 @@ export class VehicleLayer {
 
   select(id) {
     this.selectedId = id;
+    this.dotsDirty = true;
     this.applySelection();
     this.cull();
   }
@@ -240,7 +348,7 @@ export class VehicleLayer {
   moveTo(item, target) {
     const from = item.anim ? this.current(item, performance.now()) : { ...item.pos };
     item.pos = target;
-    if (!item.shown && !this.inView(target)) {
+    if (!item.shown) {
       item.anim = null;
       this.animating.delete(item);
       item.marker.setLngLat([target.lon, target.lat]);

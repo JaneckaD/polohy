@@ -117,10 +117,13 @@ export function buildPlannerFromTrips(tt) {
   const patterns = [];
   const patternIdx = new Map();
   const trips = [];
+  // Uzel zastávky IDS JMK → zastávka (živé polohy IDS JMK hlásí poslední a cílovou zastávku číslem uzlu).
+  const nodes = {};
   let skipped = 0;
   for (const t of tt.rawTrips) {
     if (!t.mask.includes('1') || t.stops.length < 2) continue;
     const seq = t.stops.map(placeOf);
+    t.nodes?.forEach((n, i) => n != null && !(n in nodes) && (nodes[n] = seq[i]));
     // Časy musí jít popořadě, jinak je spoj v datech poškozený.
     if (t.times.some((x, i) => i && x < t.times[i - 1])) {
       skipped++;
@@ -135,7 +138,7 @@ export function buildPlannerFromTrips(tt) {
     const key = `${t.city ?? ''}|${t.ref}|${headsign}|${t.operator ?? ''}|${seq.join(',')}`;
     if (!patternIdx.has(key)) {
       patternIdx.set(key, patterns.length);
-      const pattern = { r: t.ref, y: t.type === 'train' ? 'v' : t.type === 'trolleybus' ? 't' : 'b', h: headsign, s: seq };
+      const pattern = { r: t.ref, y: TYPE_CODE[t.type] ?? 'b', h: headsign, s: seq };
       // Vlak: číslo, druh a dopravce.
       // MHD jiného města (Kroměříž, Valašské Meziříčí): stejná čísla linek jako ve Zlíně.
       if (t.city) pattern.c = t.city;
@@ -174,6 +177,28 @@ export function buildPlannerFromTrips(tt) {
     trips,
     dwell,
     tripNo,
+    ...(Object.keys(nodes).length ? { nodes } : {}),
     skipped,
   };
+}
+
+/** Druh vozu ve vzoru spoje: v vlak, t trolejbus, r tramvaj, b autobus. */
+const TYPE_CODE = { train: 'v', trolleybus: 't', tram: 'r', bus: 'b' };
+
+/**
+ * Zmenší data pro přenos: spoj se stejnými rozestupy časů jako předchozí spoj stejného vzoru
+ * (u MHD skoro všechny) nese jen [vzor, maska, odjezd]; rozestupy se doplní v prohlížeči (unpackTrips v src/planner.js).
+ * Spoje musí být seřazené podle vzoru (buildPlannerFromTrips je tak řadí).
+ */
+export function packTrips(planner) {
+  let prev = null;
+  let packed = 0;
+  planner.trips = planner.trips.map((t) => {
+    const same = prev && prev[0] === t[0] && prev.length === t.length && t.length > 3 && t.every((x, i) => i < 3 || x === prev[i]);
+    prev = t;
+    if (!same) return t;
+    packed++;
+    return t.slice(0, 3);
+  });
+  return packed;
 }

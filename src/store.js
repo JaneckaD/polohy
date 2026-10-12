@@ -31,6 +31,8 @@ export const store = {
   coaches: [],
   // Autobusy bez živé polohy: poloha odhadem podle jízdního řádu (src/estimated.js).
   estimated: [],
+  // Živé polohy IDS JMK (src/jmk.js): tramvaje, trolejbusy a autobusy MHD i regionální linky.
+  jmk: [],
 
   setFilter(patch) {
     this.filter = normalizeFilter({ ...this.filter, ...patch });
@@ -64,9 +66,14 @@ export const store = {
     this.emit();
   },
 
+  setJmk(list) {
+    this.jmk = list;
+    this.emit();
+  },
+
   /** Všechny vozy a vlaky na mapě. */
   allVehicles() {
-    return [...this.vehicles, ...this.cityBuses, ...this.coaches, ...this.estimated, ...this.trains];
+    return [...this.vehicles, ...this.cityBuses, ...this.jmk, ...this.coaches, ...this.estimated, ...this.trains];
   },
 
   /** Polohy z minulého spuštění, pokud nejsou starší než maxAge ms. */
@@ -80,8 +87,16 @@ export const store = {
     return () => listeners.delete(fn);
   },
 
+  // Překreslení se sloučí do jednoho snímku (víc zdrojů často přijde naráz).
   emit() {
-    for (const fn of listeners) fn(this);
+    if (this.pending) return;
+    this.pending = true;
+    const run = () => {
+      this.pending = false;
+      for (const fn of listeners) fn(this);
+    };
+    if (typeof requestAnimationFrame === 'function' && typeof document !== 'undefined' && !document.hidden) requestAnimationFrame(run);
+    else setTimeout(run, 0);
   },
 };
 

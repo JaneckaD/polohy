@@ -15,6 +15,10 @@ export const CITIES = {
   // MHD Uherské Hradiště (ZDS-Psota, i Staré Město a Kunovice) a Vsetín (Z-Group).
   uh: { name: 'Uherské Hradiště', licence: '805', ...MHD },
   vs: { name: 'Vsetín', licence: '945', ...MHD },
+  // IDS JMK (živé polohy KORDIS, jízdní řády GTFS KORDIS): MHD Brna (tramvaje, trolejbusy, autobusy)
+  // a MHD ostatních měst kraje (město je u spoje jako „MHD Znojmo“).
+  brno: { name: 'Brno', licence: null, jmk: true, ...MHD },
+  jmkmhd: { name: null, licence: null, jmk: true, ...MHD },
 };
 
 /**
@@ -48,9 +52,13 @@ export const COACHES = {
 export const NETWORKS = { ...CITIES, ...CARRIERS, ...COACHES };
 export const isCarrier = (key) => key in CARRIERS;
 export const isCoach = (key) => key in COACHES;
+/** Síť IDS JMK (živé polohy z proudu KORDIS): regionální linky, MHD Brna a MHD ostatních měst. */
+export const isJmk = (key) => key === 'jmk' || !!CITIES[key]?.jmk;
+/** Trasy po silnicích jsou v routes-bus.json (načítá se až při potřebě), ne v routes.json. */
+export const lazyRoutes = (key) => isCarrier(key) || isCoach(key) || !!CITIES[key]?.jmk;
 
 /** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“, „FlixBus“. */
-export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
+export const networkLabel = (key) => (CITIES[key] ? (CITIES[key].name ? `MHD ${CITIES[key].name}` : 'MHD') : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
 
 /** Číslo linky pro zobrazení: šestimístná licence z jízdních řádů („726504“) → číslo linky („504“), jako u linek IDZK. */
 export function lineLabel(ref) {
@@ -71,7 +79,7 @@ export function carrierName(cr) {
   return cr.replace(/,.*$/, '').trim() || null;
 }
 
-const cityOfLicence = (cn) => Object.keys(CITIES).find((c) => cn.startsWith(CITIES[c].licence)) ?? null;
+const cityOfLicence = (cn) => Object.keys(CITIES).find((c) => CITIES[c].licence && cn.startsWith(CITIES[c].licence)) ?? null;
 
 /** Název zastávky pro zobrazení: „Valašské Meziříčí,žel.st.“ → „žel.st.“ (obec jen u jiné obce). */
 export function cityStopName(city, name) {

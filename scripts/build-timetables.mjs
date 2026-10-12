@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { readJdf, buildTimetables } from './jdf-lib.mjs';
 import { buildFromGtfs } from './gtfs-lib.mjs';
-import { buildPlannerData, buildPlannerFromTrips } from './planner-data.mjs';
+import { buildPlannerData, buildPlannerFromTrips, packTrips } from './planner-data.mjs';
 import { dszoMarks, applyMarks } from './dszo-notes.mjs';
 import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from './routes-lib.mjs';
 import { normalizeName } from '../src/names.js';
@@ -15,7 +15,7 @@ import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
 import { kordisTrips, nationalTrips, knownEvents, KORDIS_GTFS_URL, NATIONAL_GTFS_URL } from './area-buses.mjs';
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
-import { cityStopName, CITIES, CARRIERS, COACHES } from '../src/cities.js';
+import { cityStopName, CITIES, CARRIERS, COACHES, lazyRoutes } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
 
@@ -284,6 +284,8 @@ if (tt) {
       console.warn(`Výbavu vlaků se nepodařilo načíst: ${err.message}`);
     }
   }
+  const packed = packTrips(planner);
+  console.log(`Zkrácené spoje (stejné rozestupy jako předchozí spoj): ${packed} z ${planner.trips.length}.`);
   const plannerJson = JSON.stringify(planner);
   writeFileSync(new URL('planner.json', TT_DIR), plannerJson);
   console.log(`Velikost dat vyhledávání: ${(plannerJson.length / 1e6).toFixed(1)} MB (gzip ${(gzipSync(plannerJson).length / 1e6).toFixed(1)} MB).`);
@@ -357,11 +359,12 @@ let cityRouted = 0;
 const busRoutes = [];
 if (!tt?.previous) {
   const routedNetwork = (c) => c in CITIES || c in CARRIERS || c in COACHES;
+  // Tramvaje nejezdí po silnicích: jejich trasa je přímo mezi zastávkami (blízko u sebe).
   const deadline = Date.now() + (LOCAL_OSRM ? 120 : 25) * 60 * 1000;
   let postponed = 0;
   const variants = new Map();
   for (const t of tt?.rawTrips ?? []) {
-    if (!t.city || !routedNetwork(t.city)) continue;
+    if (!t.city || !routedNetwork(t.city) || t.type === 'tram') continue;
     const key = `${t.city}:${t.ref}|${t.stops.map((s) => s[0]).join('|')}`;
     if (!variants.has(key)) variants.set(key, t);
   }
@@ -386,7 +389,7 @@ if (!tt?.previous) {
     for (const p of pairs) coveredPairs.add(p);
     const line = geometry.length > 2 ? removeDetours(geometry, located) : geometry;
     const stops = located.map(([n, lat, lon]) => [cityStopName(t.city, n), lat, lon]);
-    (t.city in CITIES ? routes : busRoutes).push({ ref, type: 'bus', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line, key });
+    (lazyRoutes(t.city) ? busRoutes : routes).push({ ref, type: 'bus', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line, key });
   }
   console.log(`Trasy MHD dalších měst: ${routes.filter((r) => r.city).length} variant, regionálních autobusů: ${busRoutes.length} variant (nově spočítané ${cityRouted}, odloženo na příště ${postponed}).`);
 } else {

@@ -17,6 +17,12 @@ export function matchJourneyVehicles(journey, P, vehicles, now) {
         if (train) used.add(train.id);
         return train?.id ?? null;
       }
+      // Živý vůz IDS JMK nese spoj, kterým jede.
+      const exact = vehicles.find((v) => v.tripId === leg.trip.id && !used.has(v.id));
+      if (exact) {
+        used.add(exact.id);
+        return exact.id;
+      }
       for (const v of vehicles) {
         if (used.has(v.id) || v.type === 'train' || (v.city ?? null) !== (pat.c ?? null) || String(v.line) !== String(pat.r) || !v.stop) continue;
         const headsign = v.rawHeadsign ?? v.headsign;

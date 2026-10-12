@@ -20,6 +20,12 @@ a jízdní řád spoje s časy.
   a spojí rovnými čarami.
 - **Trolejbus nebo autobus:** DSZO to v datech neuvádí, rozlišuje se podle čísla vozu (2xx a 4xx trolejbusy,
   ostatní autobusy).
+- **Jihomoravský kraj (IDS JMK) živě:** veřejný proud poloh vozidel KORDIS JMK z otevřených dat Brna
+  ([data.brno.cz](https://data.brno.cz), licence CC BY, zdroj KORDIS JMK), WebSocket
+  `wss://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe` – tramvaje, trolejbusy a autobusy
+  MHD Brna, MHD ostatních měst a regionální linky, každý vůz asi po 30 s. Prohlížeč se připojuje přímo (bez proxy),
+  spoj se dohledá v jízdních řádech GTFS KORDIS podle linky, poslední projeté a cílové zastávky
+  ([`src/jmk.js`](src/jmk.js)).
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
   minimalistickým stylem v [`src/style.js`](src/style.js): bílý podklad, světlé ulice, jen názvy obcí.
 

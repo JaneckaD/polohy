@@ -21,10 +21,20 @@ export function distanceMeters(lat1, lon1, lat2, lon2) {
 
 export const walkMinutes = (meters) => Math.max(1, Math.ceil((meters * DETOUR) / WALK_M_PER_MIN));
 
+/** Doplní rozestupy časů spojů zkrácených při sestavení dat (scripts/planner-data.mjs packTrips). */
+export function unpackTrips(trips) {
+  let prev = null;
+  return trips.map((t) => {
+    const full = t.length === 3 && prev && prev[0] === t[0] ? [...t, ...prev.slice(3)] : t;
+    prev = full;
+    return full;
+  });
+}
+
 /** Připraví data: rozbalí časy spojů a spočítá pěší přestupy. */
 export function preparePlanner(data) {
   const stops = data.stops.map(([name, lat, lon], i) => ({ i, name, full: name, lat, lon, norm: normalizeName(name) }));
-  const trips = data.trips.map(([p, m, t0, ...deltas], id) => {
+  const trips = unpackTrips(data.trips).map(([p, m, t0, ...deltas], id) => {
     const times = [t0];
     for (const d of deltas) times.push(times.at(-1) + d);
     // Příjezdy: vlaky ve stanici stojí, jinde je příjezd = odjezd.
@@ -64,9 +74,9 @@ export function preparePlanner(data) {
   }
   const walkMin = new Map();
   walks.forEach((list, a) => list.forEach((w) => walkMin.set(a * stops.length + w.to, w)));
-  // Co na zastávce staví: vlak, MHD (DSZO a MHD měst) nebo regionální autobus.
+  // Co na zastávce staví: vlak, tramvaj, MHD (DSZO a MHD měst) nebo regionální autobus.
   for (const p of data.patterns) {
-    const kind = p.y === 'v' ? 'train' : p.c && (isCarrier(p.c) || isCoach(p.c)) ? 'bus' : 'mhd';
+    const kind = p.y === 'v' ? 'train' : p.y === 'r' ? 'tram' : p.c && (isCarrier(p.c) || isCoach(p.c)) ? 'bus' : 'mhd';
     for (const si of p.s) (stops[si].kinds ??= new Set()).add(kind);
   }
   const towns = buildTowns(stops);
@@ -78,7 +88,7 @@ export function preparePlanner(data) {
     s.full = `Zlín, ${s.name}`;
     s.norm = normalizeName(s.full);
   }
-  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, notes: data.notes ?? {}, stops, trips, walks, walkMin, towns, connCache: new Map() };
+  return { startDate: data.startDate, days: data.days, equip: data.equip ?? {}, notes: data.notes ?? {}, nodes: data.nodes ?? {}, stops, trips, walks, walkMin, towns, connCache: new Map() };
 }
 
 /**

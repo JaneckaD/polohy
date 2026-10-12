@@ -1,11 +1,12 @@
 // Autobusy celé oblasti mimo IDZK, pro vyhledávání spojení (a mapu):
-//  - regionální linky IDS JMK z otevřených dat KORDIS JMK (GTFS), bez MHD měst,
+//  - všechny linky IDS JMK z otevřených dat KORDIS JMK (GTFS): regionální, MHD Brna i ostatních měst,
 //  - ostatní regionální, dálkové a mezinárodní linky s aspoň dvěma zastávkami v oblasti z celostátních
 //    jízdních řádů CIS JŘ převedených do GTFS (data.jr.ggu.cz). Spoje, které už jsou v datech z IDZK
 //    nebo IDS JMK (stejné časy na stejných místech), se přeskočí.
 // Výstup jsou rawTrips pro buildPlannerFromTrips: { ref, type: 'bus', city, number, mask, times, stops, headsign, operator }.
 import { readGtfsFiles } from './gtfs-lib.mjs';
 import { regionContains } from '../src/region.js';
+import { CARRIERS } from '../src/cities.js';
 
 export const KORDIS_GTFS_URL = 'https://kordis-jmk.cz/gtfs/gtfs.zip';
 export const NATIONAL_GTFS_URL = 'https://data.jr.ggu.cz/results/latest/JDF_merged_GTFS.zip';
@@ -86,18 +87,26 @@ export function jdfStopName(name) {
 const BRNO_MHD = /^(\d{1,2}|N\d+|E\d+|x\d{1,2}|š\d+|P\d+)$/i;
 // Brněnské zóny IDS JMK (zastávky v Brně mají v datech název bez obce).
 const BRNO_ZONES = new Set(['100', '101']);
+// Druhy linek v GTFS KORDIS: 0 tramvaj, 800 trolejbus, 3 autobus (2 vlaky a 4 lodě nebereme, vlaky jsou z dat SŽ).
+const KORDIS_TYPES = { 0: 'tram', 800: 'trolleybus', 11: 'trolleybus', 3: 'bus' };
+
+/** Uzel zastávky KORDIS („U1234Z2“ → 1234): stejné číslo posílají živé polohy IDS JMK (LastStopID). */
+export const kordisNode = (stopId) => Number(/^U(\d+)/.exec(stopId ?? '')?.[1]) || null;
 
 /**
- * Regionální autobusy IDS JMK (GTFS KORDIS JMK). MHD měst se pozná podle čísla (Brno) nebo tak,
- * že všechny zastávky linky jsou v jedné obci.
+ * Všechny linky IDS JMK (GTFS KORDIS JMK): regionální autobusy (síť jmk), MHD Brna – tramvaje, trolejbusy
+ * a autobusy (síť brno) a MHD ostatních měst (síť jmkmhd, „MHD Znojmo“ jako dopravce). MHD Brna se pozná
+ * podle druhu a čísla linky, MHD jiného města tak, že všechny zastávky linky jsou v jedné obci.
  */
 export function kordisTrips(zipBytes, { startDate, days, log = () => {} }) {
   const routes = new Map();
   const trips = new Map();
   const stops = new Map();
+  const agencies = new Map();
   const cal = calendars(startDate, days);
   readGtfsFiles(zipBytes, {
-    'routes.txt': (r) => r.route_type === '3' && !BRNO_MHD.test(r.route_short_name.trim()) && routes.set(r.route_id, r),
+    'agency.txt': (r) => agencies.set(r.agency_id, shortAgency(r.agency_name)),
+    'routes.txt': (r) => KORDIS_TYPES[r.route_type] && routes.set(r.route_id, r),
     'trips.txt': (r) => routes.has(r.route_id) && trips.set(r.trip_id, r),
     'stops.txt': (r) => stops.set(r.stop_id, r),
     ...cal.handlers,
@@ -116,6 +125,7 @@ export function kordisTrips(zipBytes, { startDate, days, log = () => {} }) {
     return brno(s) && !/^Brno\b/i.test(name) ? `Brno, ${name}` : name;
   };
   const town = (s) => (brno(s) ? 'Brno' : stopName(s).split(',')[0].trim());
+  const brnoLine = (route) => KORDIS_TYPES[route.route_type] !== 'bus' || BRNO_MHD.test(route.route_short_name.trim());
 
   const out = [];
   const towns = new Map(); // route_id → obce
@@ -131,24 +141,35 @@ export function kordisTrips(zipBytes, { startDate, days, log = () => {} }) {
     const st = list.map((r) => stops.get(r.stop_id));
     if (!towns.has(route.route_id)) towns.set(route.route_id, new Set());
     for (const s of st) towns.get(route.route_id).add(town(s));
+    const agency = agencies.get(route.agency_id);
     out.push({
       route: route.route_id,
       ref: route.route_short_name.trim(),
-      type: 'bus',
-      city: 'jmk',
-      number: (trip.trip_short_name ?? '').trim() || null,
+      type: KORDIS_TYPES[route.route_type],
+      city: brnoLine(route) ? 'brno' : 'jmk',
+      number: null,
       mask,
       times: dep,
       stops: st.map((s, i) => [stopName(s) || list[i].stop_id, s ? Number(s.stop_lat) : null, s ? Number(s.stop_lon) : null]),
+      nodes: list.map((r) => kordisNode(r.stop_id)),
+      ...(agency && !/KORDIS/i.test(agency) ? { operator: agency } : {}),
     });
   }
-  const cityLines = new Set([...towns].filter(([, t]) => t.size === 1).map(([r]) => r));
-  const regional = out.filter((t) => !cityLines.has(t.route));
-  for (const t of regional) delete t.route;
-  const cityRefs = [...new Set([...cityLines].map((r) => routes.get(r)?.route_short_name))].sort();
-  log(`IDS JMK: ${regional.length} spojů regionálních linek (${new Set(regional.map((t) => t.ref)).size} linek), vynechané MHD měst: ${cityRefs.join(', ') || '—'}`);
-  log(`IDS JMK ukázka zastávek: ${[...new Set(regional.slice(0, 40).flatMap((t) => t.stops.map((s) => s[0])))].slice(0, 25).join(' | ')}`);
-  return regional;
+  // MHD ostatních měst: všechny zastávky linky v jedné obci (Brno je síť brno).
+  const cityTown = new Map([...towns].filter(([, t]) => t.size === 1 && !t.has('Brno')).map(([r, t]) => [r, [...t][0]]));
+  for (const t of out) {
+    if (t.city === 'jmk' && cityTown.has(t.route)) {
+      t.city = 'jmkmhd';
+      t.operator = `MHD ${cityTown.get(t.route)}`;
+    }
+    delete t.route;
+  }
+  const count = (c) => out.filter((t) => t.city === c);
+  const lines = (list) => new Set(list.map((t) => t.ref)).size;
+  const [reg, br, mhd] = ['jmk', 'brno', 'jmkmhd'].map(count);
+  log(`IDS JMK: ${reg.length} spojů regionálních linek (${lines(reg)} linek), MHD Brno ${br.length} spojů (${lines(br)} linek: tramvaje ${br.filter((t) => t.type === 'tram').length}, trolejbusy ${br.filter((t) => t.type === 'trolleybus').length} spojů), MHD dalších měst ${mhd.length} spojů (${[...new Set(mhd.map((t) => t.operator))].join(', ') || '—'}).`);
+  log(`IDS JMK dopravci: ${[...new Set(out.map((t) => t.operator).filter(Boolean))].slice(0, 40).join(', ')}`);
+  return out;
 }
 
 // Klíč „čas + místo“ zastavení spoje (místo jako čtverec asi 2 × 2 km), podle něj poznáme spoj,
@@ -159,7 +180,8 @@ const eventKey = (time, lat, lon) => `${time}|${Math.round(lat * 50)}|${Math.rou
 export function knownEvents(rawTrips) {
   const set = new Set();
   for (const t of rawTrips) {
-    if (t.type === 'train') continue;
+    // Jen regionální linky: MHD jezdí tak hustě, že by „časem a místem“ sedělo i na dálkové autobusy.
+    if (t.type === 'train' || !(t.city in CARRIERS)) continue;
     t.stops.forEach(([, lat, lon], i) => lat != null && set.add(eventKey(t.times[i] % 1440, lat, lon)));
   }
   return set;

@@ -7,15 +7,22 @@ import { tripGeometry } from './route-match.js';
 import { cityStopName, lineLabel } from './cities.js';
 
 // Sítě, jejichž vozy nemají jinou polohu. FlixBus a RegioJet mají vlastní zdroj uvnitř Zlínského kraje,
-// jinde (Jihomoravský kraj) je odhadneme také z jízdního řádu.
-const ESTIMATED = new Set(['jmk', 'other', 'coach', 'flix', 'rj']);
+// jinde (Jihomoravský kraj) je odhadneme také z jízdního řádu. Linky IDS JMK (regionální i MHD) jedou živě
+// z proudu KORDIS (src/jmk.js); odhadem jen, když proud nefunguje.
+const ESTIMATED = new Set(['other', 'coach', 'flix', 'rj']);
+const JMK_FALLBACK = new Set(['jmk', 'brno', 'jmkmhd']);
 const OWN_SOURCE = new Set(['flix', 'rj']);
+let jmkDown = false;
+/** Živý proud IDS JMK nefunguje: jeho linky se ukážou odhadem podle jízdního řádu. */
+export function setJmkDown(down) {
+  jmkDown = !!down;
+}
 
 const hhmm = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, '0')}:${String(((m % 60) + 60) % 60).padStart(2, '0')}`;
 
 const indexCache = new WeakMap(); // planner -> spoje sítí z ESTIMATED
 function tripsOf(P) {
-  if (!indexCache.has(P)) indexCache.set(P, P.trips.filter((t) => ESTIMATED.has(t.pattern.c)));
+  if (!indexCache.has(P)) indexCache.set(P, P.trips.filter((t) => ESTIMATED.has(t.pattern.c) || JMK_FALLBACK.has(t.pattern.c)));
   return indexCache.get(P);
 }
 
@@ -32,7 +39,7 @@ export function setBusRoutes(routes) {
 export const hasBusRoutes = () => routesByCity.size > 0;
 
 let patternGeo = new WeakMap(); // vzor spoje -> segmenty [[lon, lat], …] | null
-function segmentsOf(P, pattern) {
+export function segmentsOf(P, pattern) {
   if (!patternGeo.has(pattern)) {
     const own = routesByCity.get(pattern.c);
     let segments = null;
@@ -54,6 +61,7 @@ export function estimatedVehicles(P, region, date, min) {
   const di = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${P.startDate}T00:00:00Z`)) / 86400000);
   const out = [];
   for (const trip of tripsOf(P)) {
+    if (!jmkDown && JMK_FALLBACK.has(trip.pattern.c)) continue;
     // Spoj dnešního dne, nebo včerejšího, který jede přes půlnoc (časy po 24:00).
     for (const [day, t] of [[di, min], [di - 1, min + 1440]]) {
       if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
@@ -85,7 +93,7 @@ export function estimatedVehicles(P, region, date, min) {
       const calls = s.map((si, i) => ({ seq: i + 1, name: cityStopName(pattern.c, P.stops[si].name), lat: P.stops[si].lat, lon: P.stops[si].lon, time: hhmm(times[i]) }));
       out.push({
         id: `est-${trip.id}-${day}`,
-        type: 'bus',
+        type: pattern.y === 'r' ? 'tram' : pattern.y === 't' ? 'trolleybus' : 'bus',
         city: pattern.c,
         line: lineLabel(pattern.r),
         lineRef: pattern.r,

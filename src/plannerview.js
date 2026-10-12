@@ -68,16 +68,15 @@ function lineBadge(pat, trip = null) {
 }
 
 // Barva spoje podle druhu dopravy (MHD, regionální, dálkový autobus, druh vlaku).
-const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : pat.c ? applyVehicleColors(el, { city: pat.c }) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
-const busKind = (pat) => (isCoach(pat.c) ? 'Dálkový autobus' : 'Autobus');
+const patType = (pat) => (pat.y === 't' ? 'trolleybus' : pat.y === 'r' ? 'tram' : 'bus');
+const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : pat.c ? applyVehicleColors(el, { city: pat.c, type: patType(pat) }) : applyTypeColors(el, patType(pat)));
+const busKind = (pat) => (isCoach(pat.c) ? 'Dálkový autobus' : pat.y === 't' ? 'Trolejbus' : pat.y === 'r' ? 'Tramvaj' : 'Autobus');
 const rideKind = (pat) =>
   pat.y === 'v'
     ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}`
     : pat.c
       ? `${busKind(pat)} · ${pat.o ?? networkLabel(pat.c)}`
-      : pat.y === 't'
-        ? 'Trolejbus'
-        : 'Autobus';
+      : busKind(pat);
 
 // --- stav formuláře (pamatuje se mezi návštěvami) -----------------------------------
 const MY_LOCATION = { name: 'Moje poloha', here: true };
@@ -90,8 +89,10 @@ const ICON_MHD = svg('<path d="m9 5-2-3M15 5l2-3"/><rect x="5" y="5" width="14" 
 const ICON_BUS = svg('<rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M7 21v-3M17 21v-3M8 14.5h.01M16 14.5h.01"/>', 16);
 const ICON_TOWN = svg('<path d="M3 21h18M5 21V9l6-4v16M11 21V11h8v10M8 11v.01M8 15v.01M15 15v.01M15 18v.01"/>', 16);
 const ICON_RECENT = svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 16);
+const ICON_TRAM = svg('<path d="M9 3h6M12 3v3"/><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M6 12h12M8 21l1.5-3M16 21l-1.5-3M9.5 15h.01M14.5 15h.01"/>', 16);
 const STOP_KINDS = [
   ['train', 'Vlak', ICON_TRAIN],
+  ['tram', 'Tramvaj', ICON_TRAM],
   ['mhd', 'MHD', ICON_MHD],
   ['bus', 'Regionální autobus', ICON_BUS],
 ];
