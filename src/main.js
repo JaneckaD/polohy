@@ -497,6 +497,7 @@ const jmk = new JmkLive({
   onChange: (list) => store.setJmk(list),
   context: () => ({ P: jmkPlanner, region: jmkRegion, ...pragueNow() }),
 });
+if (window.__map) window.__dbg = { store, jmk, select, selected: () => selected, planner: () => jmkPlanner };
 setJmkSegments(segmentsOf);
 Promise.all([loadRegion().catch(() => null), new Promise((r) => setTimeout(r, 2500)).then(loadPlanner).catch(() => null)]).then(([region, P]) => {
   jmkRegion = region;
