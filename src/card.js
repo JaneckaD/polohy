@@ -133,7 +133,7 @@ export function renderDetails(v, trip = null) {
   title.append(h('div', 'card-headsign', v.headsign ? `→ ${v.headsign}` : `Linka ${v.line}`));
   const type = h('div', 'card-type');
   type.innerHTML = ICONS[v.type] ?? '';
-  const label = v.international ? 'Mezinárodní autobus' : isCoach(v.city) ? 'Dálkový autobus' : TYPE_LABELS[v.type] ?? 'Vůz';
+  const label = isCoach(v.city) ? 'Dálkový autobus' : TYPE_LABELS[v.type] ?? 'Vůz';
   type.append(v.city ? ` ${label} · ${v.operatorName ?? networkLabel(v.city)}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
   title.append(type);
   head.append(badge, title);

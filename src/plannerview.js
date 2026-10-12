@@ -69,7 +69,7 @@ function lineBadge(pat, trip = null) {
 
 // Barva spoje podle druhu dopravy (MHD, regionální, dálkový autobus, druh vlaku).
 const colorRide = (el, pat) => (pat.y === 'v' ? applyVehicleColors(el, trainOf(pat)) : pat.c ? applyVehicleColors(el, { city: pat.c }) : applyTypeColors(el, pat.y === 't' ? 'trolleybus' : 'bus'));
-const busKind = (pat) => (pat.i ? 'Mezinárodní autobus' : isCoach(pat.c) ? 'Dálkový autobus' : 'Autobus');
+const busKind = (pat) => (isCoach(pat.c) ? 'Dálkový autobus' : 'Autobus');
 const rideKind = (pat) =>
   pat.y === 'v'
     ? `${TRAIN_KINDS[trainKind(pat.k)]?.long ?? 'Vlak'} · ${trainOperator(pat.o).short}`

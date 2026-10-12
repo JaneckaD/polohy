@@ -18,7 +18,7 @@ const shown = (patch) => all.filter((v) => matchesFilter(v, { ...EMPTY_FILTER, .
 test('filtr: druh a dopravce vozu (MHD bez dopravce)', () => {
   assert.deepEqual(describe(dszoTrolley), { kind: 'trolleybus', carrier: null, region: 'zlk' });
   assert.deepEqual(describe(vmBus), { kind: 'mhd', carrier: null, region: 'zlk' });
-  assert.equal(describe({ id: 'e-1', type: 'bus', city: 'coach', international: true, operatorName: 'D.M.D-GROUP' }).kind, 'intl');
+  assert.equal(describe({ id: 'e-1', type: 'bus', city: 'coach', international: true, operatorName: 'D.M.D-GROUP' }).kind, 'coach');
   assert.equal(describe({ id: 'e-2', type: 'bus', city: 'jmk', operatorName: 'BDS-BUS' }).carrier, 'BDS-BUS');
   assert.equal(describe(regional).kind, 'regional');
   assert.equal(describe(regional).carrier, 'ČSAD BUS UH');

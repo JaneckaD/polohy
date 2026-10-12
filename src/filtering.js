@@ -10,7 +10,6 @@ export const KINDS = {
   mhd: { label: 'MHD autobusy', color: '#0a66d8', text: '#ffffff' },
   regional: { label: 'Regionální autobusy', color: '#e8710a', text: '#ffffff' },
   coach: { label: 'Dálkové autobusy', color: '#00838f', text: '#ffffff' },
-  intl: { label: 'Mezinárodní autobusy', color: '#00838f', text: '#ffffff' },
   train: { label: 'Vlaky', color: '#3a3a3c', text: '#ffffff' },
 };
 
@@ -41,7 +40,7 @@ function krajAt(v) {
 export const KIND_HINTS = [
   ['MHD', 'trolejbusy a autobusy městské dopravy'],
   ['Regionální', 'linky mezi obcemi, živě nebo odhadem podle jízdního řádu'],
-  ['Dálkové a mezinárodní', 'linky přes celou republiku a do zahraničí'],
+  ['Dálkové', 'linky přes celou republiku i do zahraničí'],
 ];
 
 export const EMPTY_FILTER = { kinds: [], trainKinds: [], regions: [], carriers: [] };
@@ -56,7 +55,7 @@ export function carrierColor(v) {
 /** Druh dopravy, dopravce a kraj vozu. U MHD dopravce neřešíme (filtruje se druhem). */
 export function describe(v) {
   if (v.type === 'train') return { kind: 'train', carrier: v.operator?.short ?? null, region: krajAt(v) };
-  if (isCoach(v.city)) return { kind: v.international ? 'intl' : 'coach', carrier: v.operatorName ?? COACHES[v.city].short, region: krajAt(v) };
+  if (isCoach(v.city)) return { kind: 'coach', carrier: v.operatorName ?? COACHES[v.city].short, region: krajAt(v) };
   if (v.city && CARRIERS[v.city]) return { kind: 'regional', carrier: v.operatorName ?? CARRIERS[v.city].short, region: krajAt(v) };
   return { kind: v.type === 'trolleybus' ? 'trolleybus' : 'mhd', carrier: null, region: krajAt(v) };
 }

@@ -576,14 +576,6 @@ input:focus-visible {
   transition: transform 0.2s;
 }
 
-.vehicle.estimated .vehicle-dot {
-  opacity: 0.72; /* poloha jen odhadem podle jízdního řádu */
-}
-
-.vehicle.estimated.selected .vehicle-dot {
-  opacity: 1;
-}
-
 .vehicle-arrow {
   position: absolute;
   inset: -9px;
@@ -2330,6 +2322,13 @@ input:focus-visible {
     animation: fade 0.25s;
   }
 
+  /* Na počítači je okno filtru plné, bez průsvitu mapy. */
+  .modal-panel.glass {
+    background: var(--cell);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
   .modal-panel .sheet-grip {
     display: none;
   }
@@ -2430,8 +2429,8 @@ input:focus-visible {
 /* --- Filtr: druhy dopravy jako kulatá tlačítka, sbalitelné skupiny ----------------- */
 .kind-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px 4px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
 }
 
 .kind-btn {
