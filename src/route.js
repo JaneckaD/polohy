@@ -1,6 +1,6 @@
 // Vykreslení trasy vybraného vozu: projetá část šedá, zbývající v barvě linky, zastávky s časy.
 import { TYPE_COLORS, trainColors } from './colors.js';
-import { isCarrier } from './cities.js';
+import { isCarrier, isCoach } from './cities.js';
 import { trainKind } from './trains.js';
 import { findRoute, splitRoute, attachTimes, tripGeometry, splitTrip, currentTripIndex } from './route-match.js';
 import { RailNetwork, railGeometry } from './railroute.js';
@@ -20,7 +20,7 @@ let routesPromise = null;
 
 let busRoutesPromise = null;
 /** Trasy regionálních autobusů (načtou se až při prvním výběru takového vozu nebo spoje). */
-function loadBusRoutes() {
+export function loadBusRoutes() {
   busRoutesPromise ??= fetch('./routes-bus.json')
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
@@ -221,7 +221,7 @@ async function geometryFor(trip, ref, train = false) {
           // MHD jiného města (ref „km:1“): jen trasy toho města a polohy zastávek ze spoje,
           // názvy zastávek se mezi městy opakují. Zlínské spoje trasy jiných měst nepoužijí.
           const city = /^(\w+):/.exec(ref ?? '')?.[1];
-          const own = city && isCarrier(city) ? await loadBusRoutes() : data.routes;
+          const own = city && (isCarrier(city) || isCoach(city)) ? await loadBusRoutes() : data.routes;
           geo = city
             ? tripGeometry(trip, own.filter((r) => r.city === city), ref, {})
             : tripGeometry(trip, data.routes.filter((r) => !r.city), ref, data.stops);

@@ -133,15 +133,15 @@ export function renderDetails(v, trip = null) {
   title.append(h('div', 'card-headsign', v.headsign ? `→ ${v.headsign}` : `Linka ${v.line}`));
   const type = h('div', 'card-type');
   type.innerHTML = ICONS[v.type] ?? '';
-  const label = isCoach(v.city) ? 'Dálkový autobus' : TYPE_LABELS[v.type] ?? 'Vůz';
-  type.append(v.city ? ` ${label} · ${networkLabel(v.city)}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
+  const label = v.international ? 'Mezinárodní autobus' : isCoach(v.city) ? 'Dálkový autobus' : TYPE_LABELS[v.type] ?? 'Vůz';
+  type.append(v.city ? ` ${label} · ${v.operatorName ?? networkLabel(v.city)}${v.plate ? ` · ${v.plate}` : ''}` : ` ${label} · vůz ${v.id}`);
   title.append(type);
   head.append(badge, title);
   card.append(head);
 
   const pills = h('div', 'card-pills');
   if (v.estimated) {
-    // RegioJet polohy ani zpoždění nezveřejňuje.
+    // Bez živé polohy (RegioJet, regionální a dálkové linky): jen podle jízdního řádu.
     pills.append(h('span', 'card-ago', 'poloha odhadem podle jízdního řádu'));
   } else {
     pills.append(h('span', `card-delay delay-${delayLevel(v.delay)}`, delayLabel(v)));

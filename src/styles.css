@@ -576,6 +576,14 @@ input:focus-visible {
   transition: transform 0.2s;
 }
 
+.vehicle.estimated .vehicle-dot {
+  opacity: 0.72; /* poloha jen odhadem podle jízdního řádu */
+}
+
+.vehicle.estimated.selected .vehicle-dot {
+  opacity: 1;
+}
+
 .vehicle-arrow {
   position: absolute;
   inset: -9px;

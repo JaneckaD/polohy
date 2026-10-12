@@ -15,7 +15,7 @@ import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
 import { kordisTrips, nationalTrips, knownEvents, KORDIS_GTFS_URL, NATIONAL_GTFS_URL } from './area-buses.mjs';
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
-import { cityStopName, CITIES, CARRIERS } from '../src/cities.js';
+import { cityStopName, CITIES, CARRIERS, COACHES } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
 import { regionContains } from '../src/region.js';
 
@@ -356,7 +356,7 @@ for (const line of tt?.previous ? [] : tt?.lines ?? []) {
 let cityRouted = 0;
 const busRoutes = [];
 if (!tt?.previous) {
-  const routedNetwork = (c) => c in CITIES || !!CARRIERS[c]?.live;
+  const routedNetwork = (c) => c in CITIES || c in CARRIERS || c in COACHES;
   const deadline = Date.now() + (LOCAL_OSRM ? 120 : 25) * 60 * 1000;
   let postponed = 0;
   const variants = new Map();

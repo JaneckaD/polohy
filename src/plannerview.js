@@ -1,7 +1,7 @@
 // Záložka Spojení: odkud, kam, den a čas → nejbližší spojení s přestupy (i pěšími) → detail spojení.
 import { applyTypeColors, applyVehicleColors } from './colors.js';
 import { TRAIN_KINDS, trainKind, trainOperator } from './trains.js';
-import { networkLabel, isCoach } from './cities.js';
+import { networkLabel, isCoach, lineLabel } from './cities.js';
 import { preparePlanner, searchJourneys, findStops, findTowns, nearbyStops, rideStops, distanceMeters } from './planner.js';
 
 const body = document.getElementById('pl-body');
@@ -64,7 +64,7 @@ function lineBadge(pat, trip = null) {
     return badge;
   }
   // Spoj DSZO s písmenem z jízdního řádu (8d, 38g…).
-  return colorRide(h('span', 'line-badge', `${pat.r}${trip?.mark ?? ''}`), pat);
+  return colorRide(h('span', 'line-badge', `${lineLabel(pat.r)}${trip?.mark ?? ''}`), pat);
 }
 
 // Barva spoje podle druhu dopravy (MHD, regionální, dálkový autobus, druh vlaku).
@@ -451,7 +451,7 @@ function legRows(j, P) {
     }
     if (l.stay) {
       const row = h('div', 'rleg rleg-stay');
-      row.append(h('span', 'rleg-icon'), h('span', 'rleg-text', `pokračuje dál jako ${l.trip.pattern.r}, zůstaň ${l.trip.pattern.y === 'v' ? 've vlaku' : 've voze'}`));
+      row.append(h('span', 'rleg-icon'), h('span', 'rleg-text', `pokračuje dál jako ${lineLabel(l.trip.pattern.r)}, zůstaň ${l.trip.pattern.y === 'v' ? 've vlaku' : 've voze'}`));
       el.append(row);
       return;
     }
@@ -544,7 +544,7 @@ function renderDetail(j, P, date) {
     }
     // Přestup na stejné zastávce: čekání
     const prev = j.legs[i - 1];
-    if (l.stay) legsEl.append(h('div', 'leg-change', `Spoj pokračuje dál jako linka ${l.trip.pattern.r}, zůstaň ve voze${l.dep - prev.arr ? ` (stojí ${l.dep - prev.arr} min)` : ''}`));
+    if (l.stay) legsEl.append(h('div', 'leg-change', `Spoj pokračuje dál jako linka ${lineLabel(l.trip.pattern.r)}, zůstaň ve voze${l.dep - prev.arr ? ` (stojí ${l.dep - prev.arr} min)` : ''}`));
     else if (prev?.type === 'ride') legsEl.append(h('div', 'leg-change', `Přestup na stejné zastávce · čekání ${l.dep - prev.arr} min`));
     else if (prev?.type === 'walk' && l.dep - prev.arr > 0 && i > 1) legsEl.append(h('div', 'leg-change', `Čekání ${l.dep - prev.arr} min`));
 

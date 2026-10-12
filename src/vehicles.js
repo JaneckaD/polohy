@@ -38,6 +38,7 @@ function createElement() {
 // Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku druh (Os, R…) v kolečku barvy druhu
 // (jako značky DSZO). Číslo vlaku a dopravce jsou až v detailu.
 function setLabel(el, v) {
+  el.classList.toggle('estimated', !!v.estimated);
   // Linka DSZO s písmenem spoje z jízdního řádu (8d = končí ve vozovně u Baťovy nemocnice).
   const key = v.type === 'train' ? v.code : `${v.line}${v.mark ?? ''}`;
   if (el.dataset.label === key) return;

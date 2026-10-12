@@ -52,6 +52,12 @@ export const isCoach = (key) => key in COACHES;
 /** Popis sítě pro detail vozu a spoje: „MHD Kroměříž“, „ČSAD BUS UH“, „FlixBus“. */
 export const networkLabel = (key) => (CITIES[key] ? `MHD ${CITIES[key].name}` : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
 
+/** Číslo linky pro zobrazení: šestimístná licence z jízdních řádů („726504“) → číslo linky („504“), jako u linek IDZK. */
+export function lineLabel(ref) {
+  const m = /^(\d{3})(\d{3})$/.exec(String(ref ?? ''));
+  return m ? String(Number(m[2])) || m[2] : String(ref ?? '');
+}
+
 /** Dopravce podle route_id z GTFS IDZK (null u MHD měst a linek DSZO). */
 export function carrierOfRoute(routeId) {
   const code = /^BUS[^:]*:\d+_(\d+)_/.exec(routeId ?? '')?.[1];
