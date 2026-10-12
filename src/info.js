@@ -52,7 +52,7 @@ function render() {
     group('Jízdní řády a vyhledávání', [
       row('Zlínský kraj', 'GTFS IDZK a papírové jízdní řády DSZO (písmena u spojů).'),
       row('Jihomoravský kraj', ['GTFS KORDIS JMK', 'https://kordis-jmk.cz/gtfs/'], '.'),
-      row('Olomoucký a Moravskoslezský kraj', 'Regionální linky i MHD měst (autobusy, trolejbusy, tramvaje) z celostátních jízdních řádů CIS JŘ převedených do GTFS (', ['data.jr.ggu.cz', 'https://data.jr.ggu.cz'], ').'),
+      row('Olomoucký a Moravskoslezský kraj', 'Regionální linky i MHD měst (autobusy, trolejbusy, tramvaje) z jízdních řádů ', ['Spojenky', 'https://www.spojenka.cz/jrdata'], ' (MFF UK, CIS JŘ a data dopravních podniků, pro nekomerční užití).'),
       row('Celostátní autobusy', 'Jízdní řády CIS JŘ převedené do GTFS (', ['data.jr.ggu.cz', 'https://data.jr.ggu.cz'], '), RegioJet z ', ['regiojet.cz', 'https://regiojet.cz'], '.'),
       row('Vlaky', 'Celostátní jízdní řád ', ['CIS JŘ', 'https://portal.cisjr.cz'], ' (časy, výbava vlaků).'),
     ]),

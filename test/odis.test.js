@@ -29,6 +29,10 @@ test('ODIS: tramvaj MHD Ostrava podle čísla linky a spoje (licence 915…)', (
   assert.equal(v.atStop, false);
   assert.equal(v.next, 'Ostrava,Hrabůvka,Poliklinika'.replace(/,\s*/, ', '));
   assert.equal(describe(v).kind, 'tram');
+  // Číslo spoje nesedí (MHD Ostrava posílá pořadí vozu): spoj podle linky, příští zastávky a cíle.
+  const other = parseOdis({ ...t, cn: t.cn.replace('|132|', '|999|') }, { P, date: '2026-10-12', min: 1110 });
+  assert.equal(other.tripId, v.tripId);
+  assert.equal(parseOdis({ ...t, cn: t.cn.replace('|132|', '|999|').replace('|Dubina|', '|Hranečník|') }, { P, date: '2026-10-12', min: 1110 }).calls, undefined, 'jiný cíl');
   // Bez dat vyhledávání: druh podle čísla linky.
   assert.equal(parseOdis(t).type, 'tram');
   assert.equal(parseOdis({ ...t, cn: '102|102|52|||Hlavní nádraží|0|1122|Hlavní nádraží|Hulváky|1|Ev. č. 3746' }).type, 'trolleybus');

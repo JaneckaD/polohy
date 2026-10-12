@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
-import { kordisTrips, nationalTrips, knownEvents, jdfStopName, shortAgency } from '../scripts/area-buses.mjs';
+import { kordisTrips, nationalTrips, knownEvents, jdfStopName, shortAgency, spojenkaTrips, mhdTown, allEvents } from '../scripts/area-buses.mjs';
 import { buildPlannerFromTrips } from '../scripts/planner-data.mjs';
 
 const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
@@ -86,4 +86,44 @@ test('celostátní data: dálkový spoj zkrácený na oblast, duplicita a MHD vy
 
   const P = buildPlannerFromTrips({ startDate: '2026-10-12', days: 2, rawTrips: trips });
   assert.deepEqual(P.patterns[0], { r: '000032', y: 'b', h: 'Wien,Erdberg', s: [0, 1], c: 'rj', o: 'STUDENT AGENCY', i: 1 });
+});
+
+test('Spojenka: tramvaje, trolejbusy, MHD a regionální linky Olomouckého a Moravskoslezského kraje', () => {
+  const bytes = zip({
+    'agency.txt': ['agency_id,agency_name', 'A1,"Dopravní podnik města Olomouce, a.s."', 'A2,Transdev Slezsko a.s.', 'A3,"Městský dopravní podnik Opava, a.s."'],
+    'routes.txt': ['agency_id,route_id,route_short_name,route_long_name,route_type,is_night,is_regional', 'A1,R1,2,Neředín - Hlavní nádraží,0,0,0', 'A2,R2,533,Havířov - Karviná,3,0,1', 'A3,R3,201,Opava - Kylešovice,11,0,0', 'A1,R9,S1,Vlak,2,0,1'],
+    'trips.txt': ['route_id,trip_id,service_id,trip_short_name,trip_headsign,relations', 'R1,T1,S,,"Olomouc, Hlavní nádraží",SCC:895002:12', 'R2,T2,S,,,SCC:912533:48', 'R3,T3,S,,,', 'R9,T9,S,,,'],
+    'stops.txt': ['stop_id,stop_name,stop_lat,stop_lon', 'O1,"Olomouc, Neředín, krematorium",49.5953,17.2272', 'O2,"Olomouc, Hlavní nádraží",49.5925,17.2770', 'H1,"Havířov, Podlesí, aut.nádr.",49.7766,18.4258', 'K1,"Karviná, Fryštát, aut.nádr.",49.8568,18.5485', 'P1,"Opava, Kylešovice, Bílovecká",49.9207,17.9127', 'P2,"Opava, Městský hřbitov",49.9400,17.8800', 'Z1,"Zlín, Náměstí Míru",49.2265,17.6667', 'Z2,"Zlín, Malenovice",49.2093,17.5303'],
+    'stop_times.txt': [
+      'trip_id,arrival_time,departure_time,stop_id,stop_sequence',
+      'T1,10:00:00,10:00:00,O1,1', 'T1,10:12:00,10:12:00,O2,2',
+      'T2,10:00:00,10:00:00,H1,1', 'T2,10:25:00,10:25:00,K1,2',
+      'T3,10:00:00,10:00:00,P1,1', 'T3,10:10:00,10:10:00,P2,2',
+      'T9,10:00:00,10:00:00,O1,1', 'T9,10:10:00,10:10:00,O2,2',
+    ],
+    'calendar.txt': CAL,
+  });
+  const trips = spojenkaTrips(bytes, { startDate: '2026-10-12', days: 2, region });
+  const by = Object.fromEntries(trips.map((t) => [t.ref, t]));
+  assert.deepEqual(Object.keys(by).sort(), ['201', '895002', '912533'], 'vlaky ne');
+  assert.equal(by['895002'].type, 'tram');
+  assert.equal(by['895002'].city, 'town');
+  assert.equal(by['895002'].operator, 'MHD Olomouc');
+  assert.equal(by['895002'].number, '12');
+  assert.equal(by['895002'].headsign, 'Olomouc,Hlavní nádraží');
+  assert.deepEqual(by['895002'].stops[0], ['Olomouc,Neředín,krematorium', 49.5953, 17.2272]);
+  assert.equal(by['912533'].city, 'other');
+  assert.equal(by['912533'].operator, 'Transdev Slezsko');
+  assert.equal(by['912533'].number, '48');
+  assert.equal(by['201'].type, 'trolleybus');
+  assert.equal(by['201'].operator, 'MHD Opava');
+  // Spoj, který už v datech je (stejné časy a místa), se přeskočí.
+  assert.equal(spojenkaTrips(bytes, { startDate: '2026-10-12', days: 2, region, known: allEvents([by['912533']]) }).length, 2);
+});
+
+test('město linky MHD', () => {
+  assert.equal(mhdTown('MHD Krnov nemocnice hlavní brána', ['Krnov', 'Guntramovice']), 'Krnov');
+  assert.equal(mhdTown('Havířov,Šumbark,točna Lidická-Šenov', ['Šenov', 'Havířov']), 'Havířov');
+  assert.equal(mhdTown('Frýdek-Místek-Staré Město-Baška', ['Baška', 'Frýdek-Místek']), 'Frýdek-Místek');
+  assert.equal(mhdTown('Ladova - Tržnice', ['Olomouc']), 'Olomouc');
 });

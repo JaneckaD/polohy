@@ -1,28 +1,30 @@
-import { readGtfsFiles } from '../../scripts/gtfs-lib.mjs';
-let t0 = Date.now();
-const res = await fetch('https://www.spojenka.cz/jrdata/jizdnirady-gtfs.zip', { headers: { 'User-Agent': 'polohy-probe (github.com/JaneckaD/polohy)' } });
-console.log('status', res.status, JSON.stringify(Object.fromEntries(res.headers)));
-const bytes = new Uint8Array(await res.arrayBuffer());
-console.log('size', bytes.length, 'ms', Date.now() - t0);
-const files = {};
-const agencies = new Map(); const routes = []; let stopsN = 0, stopsZero = 0; const box = { olk: [0, 0], msk: [0, 0] };
-const sampleStops = [];
-readGtfsFiles(bytes, {
-  'agency.txt': (r) => agencies.set(r.agency_id, r.agency_name),
-  'routes.txt': (r) => routes.push(r),
-  'stops.txt': (r) => { stopsN++; const la = +r.stop_lat, lo = +r.stop_lon; if (!la) stopsZero++; if (/^Olomouc|^Ostrava/.test(r.stop_name) && sampleStops.length < 10) sampleStops.push(r); },
-  'feed_info.txt': (r) => console.log('feed_info', JSON.stringify(r)),
-});
-console.log('stops', stopsN, 'without coords', stopsZero);
-for (const s of sampleStops) console.log('stop', JSON.stringify(s));
-const cnt = {}; for (const r of routes) cnt[r.route_type] = (cnt[r.route_type] ?? 0) + 1; console.log('route types', JSON.stringify(cnt));
-console.log('route cols', Object.keys(routes[0]).join(','));
-for (const re of [/Ostrava/i, /Olomouc/i, /Opava/i]) {
-  const rs = routes.filter((r) => re.test(agencies.get(r.agency_id) ?? ''));
-  const c = {}; for (const r of rs) c[r.route_type] = (c[r.route_type] ?? 0) + 1;
-  console.log(re, rs.length, JSON.stringify(c), rs.filter((r) => r.route_type === '0' || r.route_type === '900' || r.route_type === '11' || r.route_type === '800').slice(0, 6).map((r) => `${r.route_type}:${r.route_short_name}/${r.route_long_name}/${r.route_id}`).join(' | '), rs.slice(0, 4).map((r) => `${r.route_type}:${r.route_short_name}/${r.route_id}`).join(' | '));
-}
-console.log('agencies sample', [...agencies.values()].filter((a) => /ostrav|olomouc|opav|odis|idsok/i.test(a)).join(' | '));
-let trips = 0; const tripSample = [];
-readGtfsFiles(bytes, { 'trips.txt': (r) => { trips++; if (tripSample.length < 3) tripSample.push(r); } });
-console.log('trips', trips, JSON.stringify(tripSample));
+import { preparePlanner } from '../../src/planner.js';
+import { parseOdis } from '../../src/odis.js';
+import { estimatedVehicles } from '../../src/estimated.js';
+import { krajOf } from '../../src/region.js';
+const SITE = 'https://janeckad.github.io/polohy/';
+const UA = { 'User-Agent': 'Mozilla/5.0 Chrome/129' };
+const now = new Date();
+const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map((p) => [p.type, p.value]));
+const date = `${parts.year}-${parts.month}-${parts.day}`;
+const min = Number(parts.hour) * 60 + Number(parts.minute);
+let t = performance.now();
+const text = await (await fetch(SITE + 'tt/planner.json?x=' + Date.now())).text();
+const t1 = performance.now();
+const P = preparePlanner(JSON.parse(text));
+console.log(`planner ${(text.length / 1e6).toFixed(1)} MB fetch ${Math.round(t1 - t)} ms parse+prepare ${Math.round(performance.now() - t1)} ms trips ${P.trips.length} stops ${P.stops.length}`);
+const region = await (await fetch(SITE + 'region.json')).json();
+const r = await fetch('https://mpvnet.cz/odis/map/mapData', { method: 'POST', headers: { ...UA, 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz' }, body: JSON.stringify({ w: 16.8, s: 49.3, e: 18.95, n: 50.5, zoom: 13, showStops: false, mapFilterId: null }) });
+const tr = (await r.json()).transmitters;
+const vs = tr.map((x) => parseOdis(x, { P, date, min })).filter(Boolean);
+const by = (f, list) => { const c = {}; for (const v of list) { const k = f(v); c[k] = (c[k] ?? 0) + 1; } return JSON.stringify(Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 30)); };
+console.log(`ODIS ${tr.length} → vozů ${vs.length}, se spojem ${vs.filter((v) => v.calls).length}`);
+console.log('city/type', by((v) => `${v.city}/${v.type}/${v.calls ? 'spoj' : 'BEZ'}`, vs));
+console.log('bez spoje podle dopravce', by((v) => v.operatorName, vs.filter((v) => !v.calls)));
+for (const v of vs.filter((v) => !v.calls).slice(0, 15)) console.log('  bez spoje', v.licence, v.line, v.tripNo, v.operatorName, v.stop, '→', v.headsign);
+for (const v of vs.filter((v) => v.calls).slice(0, 6)) console.log('  ok', v.licence, v.line, v.tripNo, v.type, v.operatorName, 'next', v.next, v.nextIndex, v.atStop, 'calls', v.calls.length, 'delay', v.delay);
+// Pozice: jak daleko je vůz od úseku spoje podle nextIndex
+const est = estimatedVehicles(P, region, date, min);
+console.log(`odhad: ${est.length} vozů`, by((v) => `${v.city}/${krajOf(region, v.lon, v.lat)}`, est));
+const pats = {}; for (const tr of P.trips) pats[tr.pattern.c ?? 'dszo'] = (pats[tr.pattern.c ?? 'dszo'] ?? 0) + 1; console.log('spoje podle sítě', JSON.stringify(pats));
+const towns = {}; for (const tr of P.trips) if (tr.pattern.c === 'town') towns[tr.pattern.o] = (towns[tr.pattern.o] ?? 0) + 1; console.log('MHD měst', JSON.stringify(towns));

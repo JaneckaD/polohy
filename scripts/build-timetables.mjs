@@ -13,7 +13,7 @@ import { locateStops, simplifyLine, stopCorrector, uTurns, removeDetours } from 
 import { normalizeName } from '../src/names.js';
 import { railTrips, RAIL_GTFS_URL } from './rail-gtfs.mjs';
 import { cityTrips } from './city-gtfs.mjs';
-import { kordisTrips, nationalTrips, knownEvents, KORDIS_GTFS_URL, NATIONAL_GTFS_URL } from './area-buses.mjs';
+import { kordisTrips, nationalTrips, knownEvents, spojenkaTrips, allEvents, KORDIS_GTFS_URL, NATIONAL_GTFS_URL, SPOJENKA_GTFS_URL } from './area-buses.mjs';
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
 import { cityStopName, CITIES, CARRIERS, COACHES, lazyRoutes } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
@@ -226,11 +226,27 @@ if (tt?.rawTrips) {
   } catch (err) {
     console.warn(`Jízdní řády IDS JMK se nepodařilo zpracovat: ${err.stack}`);
   }
+  // Olomoucký a Moravskoslezský kraj ze Spojenky (polohy všech zastávek, tramvaje); když nejde stáhnout,
+  // vezmou se z celostátních dat (bez tramvají a zastávek bez polohy).
+  let spojenka = null;
+  try {
+    spojenka = await download(process.env.SPOJENKA_GTFS_URL ?? SPOJENKA_GTFS_URL);
+  } catch (err) {
+    console.warn(`Jízdní řády Spojenky se nepodařilo stáhnout: ${err.message}`);
+  }
   try {
     const bytes = await download(process.env.NATIONAL_GTFS_URL ?? NATIONAL_GTFS_URL);
-    tt.rawTrips.push(...nationalTrips(bytes, { startDate: tt.startDate, days: tt.days, region, known: knownEvents(tt.rawTrips), log: (m) => console.log(m) }));
+    tt.rawTrips.push(...nationalTrips(bytes, { startDate: tt.startDate, days: tt.days, region, known: knownEvents(tt.rawTrips), skipKraje: spojenka ? new Set(['olk', 'msk']) : null, log: (m) => console.log(m) }));
   } catch (err) {
     console.warn(`Celostátní jízdní řády autobusů se nepodařilo zpracovat: ${err.stack}`);
+  }
+  if (spojenka) {
+    try {
+      tt.rawTrips.push(...spojenkaTrips(spojenka, { startDate: tt.startDate, days: tt.days, region, known: allEvents(tt.rawTrips), log: (m) => console.log(m) }));
+    } catch (err) {
+      console.warn(`Jízdní řády Spojenky se nepodařilo zpracovat: ${err.stack}`);
+    }
+    spojenka = null;
   }
 }
 

@@ -34,6 +34,48 @@ function tripsByKey(P) {
   return tripIndex.get(P);
 }
 
+// Spoje MHD podle čísla linky (MHD Ostrava posílá místo čísla spoje pořadí vozu).
+const lineIndex = new WeakMap();
+function tripsByLine(P) {
+  if (!lineIndex.has(P)) {
+    const idx = new Map();
+    for (const trip of P.trips) {
+      if (!NETS.has(trip.pattern.c)) continue;
+      const key = lineLabel(trip.pattern.r);
+      if (!idx.has(key)) idx.set(key, []);
+      idx.get(key).push(trip);
+    }
+    lineIndex.set(P, idx);
+  }
+  return lineIndex.get(P);
+}
+
+/**
+ * Spoj podle linky, příští zastávky a cíle: příští zastávka má být podle jízdního řádu a zpoždění
+ * za chvíli (do 12 minut). Pro vozy, jejichž číslo spoje neodpovídá jízdnímu řádu.
+ */
+export function matchOdisByStop(P, line, next, headsign, date, min, delayMin = 0) {
+  if (!P || !line || !next) return null;
+  const di = dayIndex(P.startDate, date);
+  let best = null;
+  for (const trip of tripsByLine(P).get(String(line)) ?? []) {
+    const s = trip.pattern.s;
+    if (headsign && nameSimilarity(headsign, P.stops[s.at(-1)].name) < 0.6) continue;
+    for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
+      if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
+      const t = min + shift - Math.max(0, delayMin);
+      if (t < trip.arr[0] - 30 || t > trip.times.at(-1) + 5) continue;
+      for (let k = 1; k < s.length; k++) {
+        const ahead = trip.arr[k] - t;
+        if (ahead < -2 || ahead > 12 || !sameStop(next, P.stops[s[k]].name)) continue;
+        const score = Math.abs(ahead - 1.5);
+        if (!best || score < best.score) best = { score, trip, shift };
+      }
+    }
+  }
+  return best;
+}
+
 /** Jízda spoje, která teď jede (dnešní, nebo včerejší přes půlnoc): { trip, shift } nebo null. */
 export function matchOdisTrip(P, licence, tripNo, date, min, delayMin = 0) {
   if (!P || !licence || !tripNo) return null;
@@ -91,7 +133,8 @@ export function parseOdis(t, { P = null, date, min } = {}) {
   const licence = /^\d{6}$/.test(f[0]) ? f[0] : dpo ? `${DPO_LICENCE}${String(f[1]).padStart(3, '0')}` : null;
   const tripNo = f[2] || null;
   const delay = parseDelay(t.ds);
-  const match = P && date ? matchOdisTrip(P, licence, tripNo, date, min, Math.round((delay ?? 0) / 60)) : null;
+  const delayMin = Math.round((delay ?? 0) / 60);
+  const match = P && date ? (matchOdisTrip(P, licence, tripNo, date, min, delayMin) ?? matchOdisByStop(P, lineLabel(f[1]), f[5], f[9], date, min, delayMin)) : null;
   const pat = match?.trip.pattern;
   const city = pat?.c ?? (dpo || /MDPO/.test(t.cr ?? '') ? 'town' : 'other');
   const type = TYPES[pat?.y] ?? (dpo ? dpoType(f[1]) : 'bus');
