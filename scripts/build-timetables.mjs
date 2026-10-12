@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 // Stáhne jízdní řády DSZO (balík JDF z dszo.cz), uloží je pro aplikaci do public/tt/
 // a pro každou linku a směr spočítá trasu po silnicích přes její zastávky (OSRM).
 // Běží v GitHub Actions po scripts/build-routes.mjs, který připraví polohy zastávek z OpenStreetMap.
@@ -283,7 +284,9 @@ if (tt) {
       console.warn(`Výbavu vlaků se nepodařilo načíst: ${err.message}`);
     }
   }
-  writeFileSync(new URL('planner.json', TT_DIR), JSON.stringify(planner));
+  const plannerJson = JSON.stringify(planner);
+  writeFileSync(new URL('planner.json', TT_DIR), plannerJson);
+  console.log(`Velikost dat vyhledávání: ${(plannerJson.length / 1e6).toFixed(1)} MB (gzip ${(gzipSync(plannerJson).length / 1e6).toFixed(1)} MB).`);
   writeFileSync(new URL('index.json', TT_DIR), JSON.stringify({ startDate: tt.startDate, days: tt.days, lines: tt.lines.map((l) => ({ ref: l.ref, type: l.type })) }));
   console.log(`Vyhledávání spojení: ${planner.stops.length} zastávek, ${planner.patterns.length} variant, ${planner.trips.length} spojů.`);
 } else {

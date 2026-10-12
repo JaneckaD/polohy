@@ -62,7 +62,10 @@ export function readGtfsFiles(zipBytes, handlers) {
     };
     file.start();
   };
-  uz.push(zipBytes, true);
+  // Po kouscích: jinak by se celý rozbalený soubor (celostátní stop_times má přes 1 GB) vrátil jako jeden blok.
+  const CHUNK = 1 << 16;
+  if (!zipBytes.length) uz.push(zipBytes, true);
+  for (let i = 0; i < zipBytes.length; i += CHUNK) uz.push(zipBytes.subarray(i, i + CHUNK), i + CHUNK >= zipBytes.length);
 }
 
 const toMinutes = (t) => {
