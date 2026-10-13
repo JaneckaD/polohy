@@ -224,10 +224,12 @@ test('proxy /jmk: poslední dávka proudu IDS JMK, zprávy beze změny', async (
   const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
     assert.equal(String(url), 'https://gis.brno.cz/geoevent/ws/services/Kordis_stream/StreamServer/subscribe');
     assert.equal(init.headers.Upgrade, 'websocket');
+    // Potvrzení filtru hned, vozy až po chvíli (dřív se dávka uzavřela jen s potvrzením).
+    setTimeout(() => listeners.message({ data: '{"filter":{"outFields":"ID"}}' }), 5);
     setTimeout(() => {
       listeners.message({ data: '{"attributes":{"ID":1,"LineName":"4"}}' });
       listeners.message({ data: '{"attributes":{"ID":2,"LineName":"12"}}' });
-    }, 10);
+    }, 1400);
     return { status: 101, webSocket: ws };
   });
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil() {} });
@@ -240,5 +242,19 @@ test('proxy /jmk: poslední dávka proudu IDS JMK, zprávy beze změny', async (
   const calls = fetchMock.mock.callCount();
   assert.equal((await (await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil() {} })).json()).list.length, 2);
   assert.equal(fetchMock.mock.callCount(), calls);
+  fetchMock.mock.restore();
+});
+
+test('proxy /idsok: polohy spojů Olomouckého kraje, chyba zdroje jako 502', async () => {
+  let calls = 0;
+  const fetchMock = mock.method(globalThis, 'fetch', async (url) => {
+    assert.equal(String(url), 'https://www.cestujok.cz/idspublicservices/api/service/position');
+    calls++;
+    return calls === 1 ? new Response('down', { status: 503 }) : Response.json([{ id: 1, name: '895002 / 12', lat: 49.59, lon: 17.26 }]);
+  });
+  assert.equal((await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/idsok'))).status, 502);
+  const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/idsok'));
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).list[0].name, '895002 / 12');
   fetchMock.mock.restore();
 });

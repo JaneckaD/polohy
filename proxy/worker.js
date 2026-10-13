@@ -213,6 +213,38 @@ async function odisBuses() {
   }
 }
 
+// Olomoucký kraj (IDSOK): mapa poloh spojů na cestujok.cz (CestujOK). Server je pomalý nebo nedostupný
+// z některých sítí, proto vlastní adresa a krátký časový limit; poslední odpověď se drží 15 s.
+const IDSOK_URL = 'https://www.cestujok.cz/idspublicservices/api/service/position';
+let idsokLast = null; // { at, body }
+
+async function idsokBuses() {
+  if (idsokLast && Date.now() - idsokLast.at < 15000) return idsokLast.body;
+  const res = await fetch(IDSOK_URL, {
+    headers: {
+      Accept: 'application/json',
+      Referer: 'https://www.cestujok.cz/idspublic/',
+      'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)',
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const list = await res.json();
+  if (!Array.isArray(list)) throw new Error('neočekávaná odpověď');
+  idsokLast = { at: Date.now(), body: JSON.stringify({ at: Date.now(), list }) };
+  return idsokLast.body;
+}
+
+async function idsok() {
+  try {
+    return new Response(await idsokBuses(), {
+      headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    return new Response(`IDSOK: ${err.message}`, { status: 502, headers: CORS });
+  }
+}
+
 async function cityBuses() {
   const [upstream, km, odis] = await Promise.all([
     fetch(MPV_URL, {
@@ -350,7 +382,8 @@ async function collectJmk() {
     };
     const hard = setTimeout(done, 28000);
     ws.addEventListener('message', (e) => {
-      if (typeof e.data !== 'string') return;
+      // Hned po připojení přijde potvrzení filtru (bez vozu); dávka vozů až pak, zhruba do 30 s.
+      if (typeof e.data !== 'string' || !e.data.includes('"attributes"')) return;
       list.push(e.data);
       // Dávka přijde během chvilky: po 1,2 s ticha je celá.
       clearTimeout(quiet);
@@ -408,6 +441,7 @@ export default {
     if (request.method === 'GET' && url.pathname === '/trains') return trains();
     if (request.method === 'GET' && url.pathname === '/mhd') return cityBuses();
     if (request.method === 'GET' && url.pathname === '/jmk') return jmkSnapshot(ctx);
+    if (request.method === 'GET' && url.pathname === '/idsok') return idsok();
     if (request.method === 'GET' && url.pathname === '/flix') return flixBuses();
     if (request.method === 'GET' && url.pathname === '/flix/route') return flixRoute(url.searchParams.get('id'));
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {

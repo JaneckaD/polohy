@@ -30,6 +30,9 @@ a jízdní řád spoje s časy.
 - **Moravskoslezský kraj (ODIS) živě:** veřejná mapa poloh vozidel ODIS ([mpvnet.cz/odis](https://mpvnet.cz/odis/map))
   přes proxy `/mhd` (pole `odis`): regionální autobusy a MHD měst včetně tramvají a trolejbusů Ostravy. Spoj se dohledá
   v celostátních jízdních řádech podle licence linky a čísla spoje ([`src/odis.js`](src/odis.js)).
+- **Olomoucký kraj (IDSOK) živě:** mapa spojů CestujOK (`cestujok.cz/idspublicservices/api/service/position`)
+  přes proxy `/idsok` (vlastní adresa s krátkým limitem, aby výpadek nezdržel ostatní); spoj se dohledá podle
+  licence a čísla spoje, jinak podle odjezdu z výchozí zastávky ([`src/idsok.js`](src/idsok.js)).
 - **Olomoucký a Moravskoslezský kraj, jízdní řády:** regionální linky a MHD menších měst z celostátních dat
   CIS JŘ v GTFS (data.jr.ggu.cz; licence a čísla spojů sedí na polohy ODIS). MHD dopravních podniků Ostravy,
   Olomouce a Opavy (i tramvaje a trolejbusy, které celostátní data nemají) a polohy zastávek, které tam chybí,

@@ -2,6 +2,7 @@
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
 import { parseOdis } from './odis.js';
+import { parseIdsok } from './idsok.js';
 
 // Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
@@ -177,12 +178,22 @@ export function parseKmBus(b) {
   };
 }
 
-/** Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS); ctx = { P, date, min } pro spoje ODIS. */
+/** Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK); ctx = { P, region, date, min } pro spoje ODIS a IDSOK. */
 export async function fetchCityBuses(proxy, ctx = {}) {
+  // Olomoucký kraj (IDSOK) má vlastní adresu: jeho výpadek nebo pomalá odpověď nesmí zdržet ostatní.
+  const idsok = fetch(`${proxy}/idsok`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
   const res = await fetch(`${proxy}/mhd`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`/mhd: HTTP ${res.status}`);
   const data = await res.json();
-  return [...(data.vehicles ?? []).map(parseCityBus), ...(data.km ?? []).map(parseKmBus), ...(data.odis ?? []).map((t) => parseOdis(t, ctx))].filter(Boolean);
+  const ok = (await idsok)?.list ?? [];
+  return [
+    ...(data.vehicles ?? []).map(parseCityBus),
+    ...(data.km ?? []).map(parseKmBus),
+    ...(data.odis ?? []).map((t) => parseOdis(t, ctx)),
+    ...ok.map((s) => parseIdsok(s, ctx)),
+  ].filter(Boolean);
 }
 
 /**

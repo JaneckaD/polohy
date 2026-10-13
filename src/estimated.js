@@ -16,13 +16,14 @@ const JMK_FALLBACK = new Set(['jmk', 'brno', 'jmkmhd']);
 const OWN_SOURCE = new Set(['flix', 'rj']);
 let jmkDown = false;
 let liveTrips = new Set();
-let odisUp = false;
+let liveKraje = new Set();
 /**
- * Mapa ODIS posílá vozy: regionální linky a MHD v Moravskoslezském kraji se pak neodhadují (jedou živě,
- * jako linky IDZK ve Zlínském kraji); vůz, ke kterému se spoj nenašel, by se jinak ukázal dvakrát.
+ * Kraje, kde mapa (ODIS v Moravskoslezském, IDSOK v Olomouckém) právě posílá vozy: regionální linky a MHD
+ * se tam neodhadují (jedou živě, jako linky IDZK ve Zlínském kraji); vůz, ke kterému se spoj nenašel,
+ * by se jinak ukázal dvakrát.
  */
-export function setOdisUp(up) {
-  odisUp = !!up;
+export function setLiveKraje(kraje) {
+  liveKraje = new Set(kraje);
 }
 /** Spoje (id spoje v datech vyhledávání), které právě jedou živě: jejich odhad se neukáže. */
 export function setLiveTrips(ids) {
@@ -116,7 +117,7 @@ export function estimatedVehicles(P, region, date, min) {
         pos = line?.length > 1 ? along(line, f) : along([[a.lon, a.lat], [b.lon, b.lat]], f);
       }
       if (region && !regionContains(region, pos.lon, pos.lat)) continue;
-      if (odisUp && region && (pattern.c === 'town' || pattern.c === 'other') && krajOf(region, pos.lon, pos.lat) === 'msk') continue;
+      if (liveKraje.size && region && (pattern.c === 'town' || pattern.c === 'other') && liveKraje.has(krajOf(region, pos.lon, pos.lat))) continue;
       // FlixBus a RegioJet uvnitř Zlínského kraje ukazují vlastní zdroje.
       if (OWN_SOURCE.has(pattern.c) && (!region || krajOf(region, pos.lon, pos.lat) === 'zlk')) continue;
       const calls = callsOf(P, trip);

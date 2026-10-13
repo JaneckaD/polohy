@@ -182,31 +182,70 @@ export function parseOdis(t, { P = null, region = null, date, min } = {}) {
     updated: null,
     live: 'odis',
   };
-  if (match) {
-    const { calls, segments } = tripCalls(P, match.trip, city, type === 'tram');
-    // Příští zastávka podle názvu z mapy, jinak podle jízdního řádu a zpoždění.
-    const now = min + match.shift - Math.max(0, Math.round((delay ?? 0) / 60));
-    let ni = f[5] ? calls.findIndex((c, i) => i > 0 && sameStop(f[5], c.raw)) : -1;
-    if (ni < 0) {
-      ni = match.trip.times.findIndex((tt) => tt > now);
-      if (ni < 0) ni = calls.length - 1;
-    }
-    const waiting = now < match.trip.times[0];
-    if (waiting) ni = 0; // čeká na výchozí zastávce
-    const prev = calls[ni - 1];
-    const standing = /stoji/.test(t.ico ?? '');
-    const atStop = ni === 0 || (standing && prev?.lat != null && distM(t.x, t.y, prev.lat, prev.lon) < 80);
-    const k = atStop && ni > 0 ? ni - 1 : ni;
-    Object.assign(v, {
-      tripId: match.trip.id,
-      from: calls[0].name,
-      headsign: v.headsign ?? calls.at(-1).name,
-      next: atStop ? (calls[k + 1]?.name ?? null) : calls[k].name,
-      calls,
-      nextIndex: k,
-      atStop,
-      segments,
-    });
-  }
+  if (match) attachTrip(v, P, match, { next: f[5], standing: /stoji/.test(t.ico ?? ''), min });
   return v;
 }
+
+/**
+ * Doplní vozu spoj z dat vyhledávání: zastávky, příští zastávku a trasu. Příští zastávka podle názvu
+ * z mapy (next), jinak podle jízdního řádu a zpoždění; standing = vůz stojí (u zastávky do 80 m).
+ */
+export function attachTrip(v, P, match, { next = null, standing = false, min }) {
+  const { calls, segments } = tripCalls(P, match.trip, v.city, v.type === 'tram');
+  const now = min + match.shift - Math.max(0, Math.round((v.delay ?? 0) / 60));
+  let ni = next ? calls.findIndex((c, i) => i > 0 && sameStop(next, c.raw)) : -1;
+  if (ni < 0) {
+    ni = match.trip.times.findIndex((tt) => tt > now);
+    if (ni < 0) ni = calls.length - 1;
+  }
+  if (now < match.trip.times[0]) ni = 0; // čeká na výchozí zastávce
+  const prev = calls[ni - 1];
+  const atStop = ni === 0 || (standing && prev?.lat != null && distM(v.lat, v.lon, prev.lat, prev.lon) < 80);
+  const k = atStop && ni > 0 ? ni - 1 : ni;
+  Object.assign(v, {
+    tripId: match.trip.id,
+    from: calls[0].name,
+    headsign: v.headsign ?? calls.at(-1).name,
+    next: atStop ? (calls[k + 1]?.name ?? null) : calls[k].name,
+    calls,
+    nextIndex: k,
+    atStop,
+    segments,
+  });
+  return v;
+}
+
+// Spoje podle licence linky (pro mapy, které posílají jen linku a odjezd z výchozí zastávky).
+const refIndex = new WeakMap();
+function tripsByRef(P) {
+  if (!refIndex.has(P)) {
+    const idx = new Map();
+    for (const trip of P.trips) {
+      if (!NETS.has(trip.pattern.c)) continue;
+      const key = String(trip.pattern.r);
+      if (!idx.has(key)) idx.set(key, []);
+      idx.get(key).push(trip);
+    }
+    refIndex.set(P, idx);
+  }
+  return refIndex.get(P);
+}
+
+/** Spoj podle licence linky, výchozí zastávky a času odjezdu z ní (min. od půlnoci): { trip, shift } nebo null. */
+export function matchByDeparture(P, licence, depName, depMin, date, min) {
+  if (!P || !licence || !Number.isFinite(depMin)) return null;
+  const di = dayIndex(P.startDate, date);
+  let best = null;
+  for (const trip of tripsByRef(P).get(String(licence)) ?? []) {
+    for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
+      if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
+      if (min + shift < trip.times[0] - 60 || min + shift > trip.times.at(-1) + 90) continue;
+      const diff = Math.abs((trip.times[0] % 1440) - depMin);
+      if (diff > 1) continue;
+      const score = diff + (depName && !sameStop(depName, P.stops[trip.pattern.s[0]].name) ? 5 : 0);
+      if (!best || score < best.score) best = { score, trip, shift };
+    }
+  }
+  return best && best.score <= 1 ? best : null;
+}
+
