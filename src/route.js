@@ -133,11 +133,13 @@ function ensureLayers(map) {
     id: 'route-stop-labels',
     type: 'symbol',
     source: SRC_STOPS,
-    minzoom: 12.5,
+    minzoom: 10,
     layout: {
+      // Když se nevejdou všechny, přednost mají zastávky, kam vůz teprve pojede.
+      'symbol-sort-key': ['case', ['get', 'passed'], 1, 0],
       'text-field': ['case', ['has', 'time'], ['concat', ['get', 'time'], '  ', ['get', 'name']], ['get', 'name']],
       'text-font': ['Noto Sans Regular'],
-      'text-size': 11,
+      'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 11.5],
       'text-anchor': 'left',
       'text-offset': [0.9, 0],
       'text-max-width': 12,

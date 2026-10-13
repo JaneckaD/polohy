@@ -622,7 +622,7 @@ input:focus-visible {
 }
 
 .vehicle.dimmed {
-  opacity: 0.35;
+  opacity: 0.15;
 }
 
 .vehicle.selected {

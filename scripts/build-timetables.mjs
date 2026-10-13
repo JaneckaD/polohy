@@ -17,6 +17,7 @@ import { kordisTrips, nationalTrips, knownEvents, spojenkaTrips, spojenkaStopCoo
 import { railEquipment, CZPTT_URL, timetableYear } from './rail-equip.mjs';
 import { cityStopName, CITIES, CARRIERS, COACHES, lazyRoutes } from '../src/cities.js';
 import { RailNetwork } from '../src/railroute.js';
+import { mergeLines, simplify } from './rails-lib.mjs';
 import { regionContains, railArea } from '../src/region.js';
 
 const UA = { 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' };
@@ -384,7 +385,39 @@ let cityRouted = 0;
 const busRoutes = [];
 if (!tt?.previous) {
   const routedNetwork = (c) => c in CITIES || c in CARRIERS || c in COACHES;
-  // Tramvaje nejezdí po silnicích: jejich trasa je přímo mezi zastávkami (blízko u sebe).
+  // Tramvaje nejezdí po silnicích: jejich trasa vede po tramvajových kolejích z OSM (railcache/trams.geojsonseq
+  // ze scripts/rails-pbf.sh), mezi zastávkami bez cesty po kolejích rovně.
+  const tramNet = loadTramNetwork();
+  let tramRouted = 0;
+  let tramSegs = 0;
+  let tramOnRails = 0;
+  const tramVariants = new Map();
+  for (const t of tt?.rawTrips ?? []) {
+    if (t.type !== 'tram' || !t.city) continue;
+    const key = `${t.city}:${t.ref}|${t.stops.map((s) => s[0]).join('|')}`;
+    if (!tramVariants.has(key)) tramVariants.set(key, t);
+  }
+  for (const t of tramNet ? tramVariants.values() : []) {
+    const located = t.stops.filter((s) => s[1] != null);
+    if (located.length < 2) continue;
+    const line = [];
+    for (let i = 1; i < located.length; i++) {
+      const [a, b] = [located[i - 1], located[i]];
+      const path = tramNet.path([a[1], a[2]], [b[1], b[2]]);
+      tramSegs++;
+      // Cesta po kolejích jen když není o moc delší než vzdušná čára (jinak kolej vede jinudy).
+      const direct = Math.hypot((a[1] - b[1]) * 110574, (a[2] - b[2]) * 72000);
+      const ok = path?.length > 1 && pathLength(path) < direct * 2.5 + 300;
+      if (ok) tramOnRails++;
+      const piece = ok ? [[a[2], a[1]], ...path, [b[2], b[1]]] : [[a[2], a[1]], [b[2], b[1]]];
+      line.push(...(line.length ? piece.slice(1) : piece));
+    }
+    const stops = located.map(([n, lat, lon]) => [cityStopName(t.city, n), lat, lon]);
+    const ref = `${t.city}:${t.ref}`;
+    (lazyRoutes(t.city) ? busRoutes : routes).push({ ref, type: 'tram', city: t.city, dir: 'c', to: stops.at(-1)[0], stops, line: simplifyLine(line), key: `tram|${ref}|${t.stops.map((x) => x[0]).join('|')}` });
+    tramRouted++;
+  }
+  console.log(tramNet ? `Trasy tramvají po kolejích: ${tramRouted} variant, ${tramOnRails} z ${tramSegs} úseků mezi zastávkami po kolejích.` : 'Tramvajové koleje chybí (railcache/trams.geojsonseq), tramvaje rovně mezi zastávkami.');
   const deadline = Date.now() + (LOCAL_OSRM ? 120 : 25) * 60 * 1000;
   let postponed = 0;
   const variants = new Map();
@@ -420,6 +453,27 @@ if (!tt?.previous) {
 } else {
   busRoutes.push(...previousBus);
 }
+/** Síť tramvajových kolejí z exportu dat Geofabriku (scripts/rails-pbf.sh), nebo null. */
+function loadTramNetwork() {
+  const file = new URL('../railcache/trams.geojsonseq', import.meta.url);
+  if (!existsSync(file)) return null;
+  const lines = [];
+  for (const row of readFileSync(file, 'utf8').split('\n')) {
+    const json = row.replace(/^\x1e/, '').trim();
+    if (!json) continue;
+    const f = JSON.parse(json);
+    if (f.geometry?.type !== 'LineString' || f.properties?.railway !== 'tram') continue;
+    lines.push(f.geometry.coordinates.map(([x, y]) => [Math.round(x * 1e6) / 1e6, Math.round(y * 1e6) / 1e6]));
+  }
+  return lines.length ? new RailNetwork(mergeLines(lines).map((l) => simplify(l, 1.5))) : null;
+}
+
+function pathLength(line) {
+  let m = 0;
+  for (let i = 1; i < line.length; i++) m += Math.hypot((line[i][1] - line[i - 1][1]) * 110574, (line[i][0] - line[i - 1][0]) * 72000);
+  return m;
+}
+
 writeFileSync(BUS_ROUTES, JSON.stringify({ generated: new Date().toISOString(), routes: busRoutes }));
 
 // Linky, které v jízdních řádech chybí, necháme z OpenStreetMap.

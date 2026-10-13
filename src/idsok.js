@@ -4,7 +4,7 @@
 // licence a odjezdu z výchozí zastávky.
 import { formatDelay } from './dszo.js';
 import { cityStopName, lineLabel, carrierName } from './cities.js';
-import { matchOdisTrip, matchByDeparture, attachTrip } from './odis.js';
+import { matchOdisTrip, matchByDeparture, matchByEnds, attachTrip } from './odis.js';
 import { krajOf } from './region.js';
 
 const TRAIN = /^(?:Os|Sp|R|Rx|Ex|EC|EN|IC|ICE|RJ|LE|AEx|SC|TL|Mv|Sv)\s*\d/;
@@ -14,18 +14,24 @@ const hm = (s) => {
 };
 const text = (x) => (x == null ? '' : String(x).trim());
 
-/** Licence linky a číslo spoje z názvu spoje („895002 / 12“, „Bus 780402, spoj 5“, „12 (895012)“). */
+// Slovo na začátku názvu spoje, které jen říká druh vozu („Bus 12“, „Tram 2“, „Trol 25“).
+const KIND_WORD = /^(?:bus|autobus|tram|tramvaj|trol|trolejbus|mhd|linka)\b\.?\s*/i;
+
+/** Licence linky a číslo spoje z názvu spoje („895002 / 12“, „Bus 780402, spoj 5“, „Tram 2“, „12 (895012)“). */
 export function idsokNumbers(name) {
-  const s = text(name);
+  const s = text(name).replace(KIND_WORD, '');
   const licence = /(?<!\d)(\d{6})(?!\d)/.exec(s)?.[1] ?? null;
   const rest = licence ? s.replace(licence, ' ') : s;
   const trip = /(?:\/|spoj|#)\s*(\d{1,5})(?!\d)/i.exec(rest)?.[1] ?? null;
-  const line = licence ? lineLabel(licence) : (/(?<![\d:])(\d{1,3}|[A-Z]\d{0,2})(?![\d:])/.exec(rest)?.[1] ?? null);
+  const line = licence ? lineLabel(licence) : (/(?<![\d:\w])(\d{1,3}|[A-Z]{1,2}\d{1,3}|[A-Z])(?![\d:\w])/.exec(rest.replace(/(?:\/|spoj|#)\s*\d+/gi, ' '))?.[1] ?? null);
   return { licence, trip, line };
 }
 
-const isTrain = (s) => /vlak|train|rail/i.test(text(s.vehicleType)) || TRAIN.test(text(s.name));
-const isTram = (s) => /tram/i.test(text(s.vehicleType));
+// Druh vozu: mapa posílá kód (A autobus, E tramvaj, T trolejbus, V vlak) nebo slovo.
+const vtype = (s) => text(s.vehicleType).toUpperCase();
+const isTrain = (s) => vtype(s) === 'V' || /VLAK|TRAIN|RAIL/.test(vtype(s)) || TRAIN.test(text(s.name));
+const isTram = (s) => vtype(s) === 'E' || /TRAM/.test(vtype(s)) || /^tram/i.test(text(s.name));
+const isTrolley = (s) => vtype(s) === 'T' || /TROL/.test(vtype(s)) || /^trol/i.test(text(s.name));
 
 /** Spoj z mapy IDSOK → vůz pro mapu (stejný tvar jako vozy ODIS), nebo null (vlak, spoj mimo kraj, bez polohy). */
 export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
@@ -35,18 +41,28 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
   // Spoje do sousedních krajů ukazují jejich vlastní mapy (IDZK, ODIS, IDS JMK).
   if (region && krajOf(region, lon, lat) !== 'olk') return null;
   const { licence, trip, line } = idsokNumbers(s.name);
-  if (!line && !licence) return null;
   const delayMin = Number(s.delay);
   const delay = Number.isFinite(delayMin) && delayMin > -60 ? delayMin * 60 : null;
-  const match = P && date ? (matchOdisTrip(P, licence, trip, date, min, Math.round((delay ?? 0) / 60)) ?? matchByDeparture(P, licence, text(s.dep), hm(s.depTime), date, min)) : null;
+  // Spoj v jízdních řádech: podle licence a čísla spoje, podle licence a odjezdu, jinak podle výchozí
+  // a cílové zastávky s časy (ty mapa posílá vždy, i když z názvu linku nepoznáme).
+  const match =
+    P && date
+      ? (matchOdisTrip(P, licence, trip, date, min, Math.round((delay ?? 0) / 60)) ??
+        matchByDeparture(P, licence, text(s.dep), hm(s.depTime), date, min) ??
+        matchByEnds(P, { dep: text(s.dep), depMin: hm(s.depTime), dest: text(s.dest), destMin: hm(s.destTime), line, tram: isTram(s) }, date, min))
+      : null;
   const pat = match?.trip.pattern;
-  const city = pat?.c ?? (/^(?:895|785|925|926|936|93523)/.test(licence ?? '') ? 'town' : 'other');
-  const type = pat?.y === 'r' || isTram(s) ? 'tram' : pat?.y === 't' ? 'trolleybus' : 'bus';
+  const town = isTram(s) || isTrolley(s) || /^(?:895|785|925|926|936|93523)/.test(licence ?? '');
+  const city = pat?.c ?? (town ? 'town' : 'other');
+  const type = pat ? (pat.y === 'r' ? 'tram' : pat.y === 't' ? 'trolleybus' : 'bus') : isTram(s) ? 'tram' : isTrolley(s) ? 'trolleybus' : 'bus';
+  const label = pat ? lineLabel(pat.r) : (line ?? (licence ? lineLabel(licence) : null));
+  if (!label) return null;
   const v = {
     id: `idsok-${s.id ?? `${licence}-${trip}`}`,
     type,
     city,
-    line: line ?? lineLabel(licence),
+    line: label,
+    lineRef: pat?.r ?? licence ?? null,
     licence,
     lat,
     lon,
@@ -58,7 +74,7 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
     rawStop: null,
     rawHeadsign: text(s.dest) || null,
     tripNo: trip,
-    operatorName: pat?.c === 'town' ? pat.o : carrierName(text(s.operator)),
+    operatorName: pat?.o ?? (carrierName(text(s.operator)) || null),
     lowFloor: null,
     features: [],
     plate: null,

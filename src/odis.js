@@ -95,7 +95,7 @@ export function matchOdisTrip(P, licence, tripNo, date, min, delayMin = 0) {
   return best && best.gap <= 30 ? best : null;
 }
 
-// Trasy vzorů spojů po silnicích (src/estimated.js), u tramvají rovně mezi zastávkami.
+// Trasy vzorů spojů (src/estimated.js): autobusy po silnicích, tramvaje po kolejích; bez trasy rovně mezi zastávkami.
 let segmentsFor = () => null;
 export function setOdisSegments(fn) {
   segmentsFor = fn;
@@ -103,13 +103,20 @@ export function setOdisSegments(fn) {
 
 const callsCache = new WeakMap();
 function tripCalls(P, trip, net, tram) {
-  if (!callsCache.has(trip)) {
+  let c = callsCache.get(trip);
+  if (!c) {
     const pat = trip.pattern;
     const calls = pat.s.map((si, i) => ({ seq: i + 1, name: cityStopName(net, P.stops[si].name), raw: P.stops[si].name, lat: P.stops[si].lat, lon: P.stops[si].lon, time: hhmm(trip.times[i]) }));
-    const segments = tram ? calls.slice(1).map((c, i) => (c.lat != null && calls[i].lat != null ? [[calls[i].lon, calls[i].lat], [c.lon, c.lat]] : null)) : segmentsFor(P, pat);
-    callsCache.set(trip, { calls, segments });
+    c = { calls, segments: null };
+    callsCache.set(trip, c);
   }
-  return callsCache.get(trip);
+  // Trasy se načítají až po startu: dokud nejsou, tramvaj jede rovně a příště se zkusí znovu.
+  if (!c.routed) {
+    const own = segmentsFor(P, trip.pattern);
+    if (own) Object.assign(c, { segments: own, routed: true });
+    else if (tram) c.segments = c.calls.slice(1).map((x, i) => (x.lat != null && c.calls[i].lat != null ? [[c.calls[i].lon, c.calls[i].lat], [x.lon, x.lat]] : null));
+  }
+  return c;
 }
 
 // Názvy zastávek na mapě ODIS bývají bez obce („Kotva“, „Mor. Ostrava, Plynárny“), v jízdních řádech
@@ -249,3 +256,48 @@ export function matchByDeparture(P, licence, depName, depMin, date, min) {
   return best && best.score <= 1 ? best : null;
 }
 
+
+// Spoje podle minuty odjezdu z výchozí zastávky (pro mapy, ze kterých linku nepoznáme).
+const depIndex = new WeakMap();
+function tripsByDeparture(P) {
+  if (!depIndex.has(P)) {
+    const idx = new Map();
+    for (const trip of P.trips) {
+      if (!NETS.has(trip.pattern.c)) continue;
+      const key = Math.round(trip.times[0]) % 1440;
+      if (!idx.has(key)) idx.set(key, []);
+      idx.get(key).push(trip);
+    }
+    depIndex.set(P, idx);
+  }
+  return depIndex.get(P);
+}
+
+/**
+ * Spoj podle výchozí a cílové zastávky a jejich časů (min. od půlnoci), případně i linky: { trip, shift } nebo null.
+ * Zastávky se porovnávají podle názvu (i bez obce), časy na minutu.
+ */
+export function matchByEnds(P, { dep, depMin, dest, destMin, line = null, tram = false }, date, min) {
+  if (!P || !dep || !Number.isFinite(depMin)) return null;
+  const di = dayIndex(P.startDate, date);
+  const idx = tripsByDeparture(P);
+  let best = null;
+  for (const m of [depMin, depMin - 1, depMin + 1]) {
+    for (const trip of idx.get((m + 1440) % 1440) ?? []) {
+      const pat = trip.pattern;
+      for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
+        if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
+        if (min + shift < trip.times[0] - 60 || min + shift > trip.times.at(-1) + 90) continue;
+        const first = stopSimilarity(dep, P.stops[pat.s[0]].name);
+        if (first < 0.6) continue;
+        const last = dest ? stopSimilarity(dest, P.stops[pat.s.at(-1)].name) : 0.5;
+        let score = (1 - first) + (1 - last) + Math.abs(m - depMin) * 0.3;
+        if (Number.isFinite(destMin)) score += Math.min(3, Math.abs(((trip.times.at(-1) % 1440) - destMin + 1440 + 720) % 1440 - 720)) * 0.3;
+        if (line && String(line) === lineLabel(pat.r)) score -= 0.5;
+        if (tram && pat.y === 'r') score -= 0.2;
+        if (!best || score < best.score) best = { score, trip, shift };
+      }
+    }
+  }
+  return best && best.score <= 1.2 ? best : null;
+}

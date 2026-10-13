@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Železniční tratě celé oblasti (region.json) z dat OpenStreetMap od Geofabriku (v GitHub Actions), když Overpass nejde
-# (bývá přetížený). Výsledek: railcache/rails.geojsonseq (koleje a stanice), z něj staví scripts/build-rails.mjs.
+# (bývá přetížený). Výsledek: railcache/rails.geojsonseq (koleje a stanice), z něj staví scripts/build-rails.mjs,
+# a railcache/trams.geojsonseq (tramvajové koleje), po nich vedou trasy tramvají (scripts/build-timetables.mjs).
 # Soubor uchovává actions/cache (obnoví se jednou týdně nebo se změnou oblasti).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p railcache
-if [ -s railcache/rails.geojsonseq ]; then
+if [ -s railcache/rails.geojsonseq ] && [ -s railcache/trams.geojsonseq ]; then
   echo "Koleje z cache."
   exit 0
 fi
@@ -19,5 +20,9 @@ osmium tags-filter railcache/cz.osm.pbf w/railway=rail,narrow_gauge n/railway=st
 osmium extract -p railcache/area.geojson railcache/rail.osm.pbf -o railcache/area.osm.pbf --overwrite
 osmium export railcache/area.osm.pbf -f geojsonseq --geometry-types=point,linestring --add-unique-id=type_id \
   -o railcache/rails.geojsonseq --overwrite
-rm -f railcache/cz.osm.pbf railcache/rail.osm.pbf railcache/area.osm.pbf
-echo "Koleje z Geofabriku: $(wc -l < railcache/rails.geojsonseq) prvků."
+osmium tags-filter railcache/cz.osm.pbf w/railway=tram -o railcache/tram.osm.pbf --overwrite
+osmium extract -p railcache/area.geojson railcache/tram.osm.pbf -o railcache/tram-area.osm.pbf --overwrite
+osmium export railcache/tram-area.osm.pbf -f geojsonseq --geometry-types=linestring --add-unique-id=type_id \
+  -o railcache/trams.geojsonseq --overwrite
+rm -f railcache/cz.osm.pbf railcache/rail.osm.pbf railcache/area.osm.pbf railcache/tram.osm.pbf railcache/tram-area.osm.pbf
+echo "Koleje z Geofabriku: $(wc -l < railcache/rails.geojsonseq) prvků, tramvajové koleje: $(wc -l < railcache/trams.geojsonseq) úseků."

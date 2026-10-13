@@ -40,3 +40,21 @@ test('IDSOK: vlaky a vozy bez polohy se přeskočí', () => {
   assert.equal(parseIdsok({ name: 'Os 3105', vehicleType: 'VLAK', lat: 49.6, lon: 17.2 }), null);
   assert.equal(parseIdsok({ name: '895002 / 12', lat: 0, lon: 0 }), null);
 });
+
+test('IDSOK: linka z názvu s druhem vozu, spoj podle výchozí a cílové zastávky, kódy druhů vozů', () => {
+  assert.equal(idsokNumbers('Tram 2').line, '2');
+  assert.equal(idsokNumbers('Bus 14').line, '14');
+  assert.equal(idsokNumbers('Bus').line, null);
+  // Z názvu nic, druh jen kódem: spoj podle odjezdu a cíle.
+  const v = parseIdsok({ id: 90, name: 'Tram', dep: 'Olomouc, Neředín, krematorium', depTime: '10:00', dest: 'Olomouc, Hlavní nádraží', destTime: '10:12', delay: 0, vehicleType: 'E', lat: 49.5948, lon: 17.24 }, { P, date: '2026-10-13', min: 604 });
+  assert.equal(v.type, 'tram');
+  assert.equal(v.line, '2');
+  assert.equal(v.city, 'town');
+  assert.equal(v.tripId, P.trips.find((t) => t.pattern.r === '895002').id);
+  // Bez spoje v jízdních řádech: druh podle kódu, MHD.
+  const t = parseIdsok({ id: 91, name: 'Trol 25', dep: 'Někde', depTime: '03:00', vehicleType: 'T', lat: 49.59, lon: 17.25 }, { P, date: '2026-10-13', min: 604 });
+  assert.equal(t.type, 'trolleybus');
+  assert.equal(t.line, '25');
+  assert.equal(t.city, 'town');
+  assert.equal(parseIdsok({ name: 'Os 3105', vehicleType: 'V', lat: 49.6, lon: 17.2 }), null);
+});

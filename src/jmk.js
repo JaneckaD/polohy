@@ -85,7 +85,7 @@ function findTrip(P, a, date, min, last, final, maxScore) {
   return best;
 }
 
-// Trasy vzorů spojů po silnicích (src/estimated.js), u tramvají rovně mezi zastávkami.
+// Trasy vzorů spojů (src/estimated.js): autobusy po silnicích, tramvaje po kolejích; bez trasy rovně mezi zastávkami.
 let segmentsFor = () => null;
 export function setJmkSegments(fn) {
   segmentsFor = fn;
@@ -94,13 +94,20 @@ export function setJmkSegments(fn) {
 /** Zastávky a trasa spoje pro vůz (sdílené všemi vozy na stejném spoji). */
 const callsCache = new WeakMap();
 function tripCalls(P, trip, net, tram) {
-  if (!callsCache.has(trip)) {
+  let c = callsCache.get(trip);
+  if (!c) {
     const pat = trip.pattern;
     const calls = pat.s.map((si, i) => ({ seq: i + 1, name: cityStopName(net, P.stops[si].name), lat: P.stops[si].lat, lon: P.stops[si].lon, time: hhmm(trip.times[i]) }));
-    const segments = tram ? calls.slice(1).map((c, i) => (c.lat != null && calls[i].lat != null ? [[calls[i].lon, calls[i].lat], [c.lon, c.lat]] : null)) : segmentsFor(P, pat);
-    callsCache.set(trip, { calls, segments });
+    c = { calls, segments: null };
+    callsCache.set(trip, c);
   }
-  return callsCache.get(trip);
+  // Trasy se načítají až po startu: dokud nejsou, tramvaj jede rovně a příště se zkusí znovu.
+  if (!c.routed) {
+    const own = segmentsFor(P, trip.pattern);
+    if (own) Object.assign(c, { segments: own, routed: true });
+    else if (tram) c.segments = c.calls.slice(1).map((x, i) => (x.lat != null && c.calls[i].lat != null ? [[c.calls[i].lon, c.calls[i].lat], [x.lon, x.lat]] : null));
+  }
+  return c;
 }
 
 /** Zpráva z proudu → vůz pro mapu (stejný tvar jako ostatní vozy), nebo null (vlak, neaktivní, mimo oblast). */

@@ -167,7 +167,7 @@ export class VehicleLayer {
     const features = [];
     if (this.dots) for (const item of this.items.values()) if (item.vehicle.id !== this.selectedId) features.push(dotFeature({ ...item.vehicle, lat: item.pos.lat, lon: item.pos.lon }));
     src.setData({ type: 'FeatureCollection', features });
-    const dim = this.selectedId != null && this.dots ? 0.35 : 1;
+    const dim = this.selectedId != null && this.dots ? 0.15 : 1;
     this.map.setPaintProperty(SRC_DOTS, 'circle-opacity', dim);
     this.map.setPaintProperty(SRC_DOTS, 'circle-stroke-opacity', dim);
   }

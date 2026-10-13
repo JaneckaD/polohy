@@ -36,7 +36,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: railcache
-          key: rails-${{ steps.week.outputs.week }}-${{ hashFiles('public/region.json') }}-v1
+          key: rails-${{ steps.week.outputs.week }}-${{ hashFiles('public/region.json') }}-v2
       - name: Koleje z dat OpenStreetMap
         run: scripts/rails-pbf.sh
         continue-on-error: true
