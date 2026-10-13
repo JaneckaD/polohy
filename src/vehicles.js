@@ -38,11 +38,17 @@ function createElement() {
 
 // Obsah značky: u autobusu a trolejbusu číslo linky, u vlaku druh (Os, R…) v kolečku barvy druhu
 // (jako značky DSZO). Číslo vlaku a dopravce jsou až v detailu.
+// Ostatní vozy, když je jeden vybraný (všechny druhy: kolečka i tečky). Viz polohy-selection-dim.
+const DIM_OPACITY = 0.15;
+
 function setLabel(el, v) {
   el.classList.toggle('estimated', !!v.estimated);
   // Linka DSZO s písmenem spoje z jízdního řádu (8d = končí ve vozovně u Baťovy nemocnice).
   const key = v.type === 'train' ? v.code : `${v.line}${v.mark ?? ''}`;
-  if (el.dataset.label === key) return;
+  // Barva se mění i beze změny linky (vůz se dohledá v jízdním řádu až po načtení dat: regionální → MHD).
+  const look = `${key}|${v.type}|${v.city ?? ''}|${v.kind ?? ''}`;
+  if (el.dataset.look === look) return;
+  el.dataset.look = look;
   el.dataset.label = key;
   const dot = el.querySelector('.vehicle-dot');
   dot.textContent = key;
@@ -167,7 +173,7 @@ export class VehicleLayer {
     const features = [];
     if (this.dots) for (const item of this.items.values()) if (item.vehicle.id !== this.selectedId) features.push(dotFeature({ ...item.vehicle, lat: item.pos.lat, lon: item.pos.lon }));
     src.setData({ type: 'FeatureCollection', features });
-    const dim = this.selectedId != null && this.dots ? 0.15 : 1;
+    const dim = this.selectedId != null && this.dots ? DIM_OPACITY : 1;
     this.map.setPaintProperty(SRC_DOTS, 'circle-opacity', dim);
     this.map.setPaintProperty(SRC_DOTS, 'circle-stroke-opacity', dim);
   }
@@ -316,7 +322,12 @@ export class VehicleLayer {
       const selected = id === this.selectedId;
       const dimmed = this.selectedId != null && !selected;
       if (item.selected !== selected) item.el.classList.toggle('selected', (item.selected = selected));
-      if (item.dimmed !== dimmed) item.el.classList.toggle('dimmed', (item.dimmed = dimmed));
+      if (item.dimmed !== dimmed) {
+        item.el.classList.toggle('dimmed', (item.dimmed = dimmed));
+        // MapLibre dává značce průhlednost do inline stylu (přebije CSS třídu): ztlumení přes její API.
+        const o = dimmed ? DIM_OPACITY : 1;
+        item.marker.setOpacity(o, o);
+      }
     }
   }
 

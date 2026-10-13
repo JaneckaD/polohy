@@ -58,3 +58,13 @@ test('IDSOK: linka z názvu s druhem vozu, spoj podle výchozí a cílové zast�
   assert.equal(t.city, 'town');
   assert.equal(parseIdsok({ name: 'Os 3105', vehicleType: 'V', lat: 49.6, lon: 17.2 }), null);
 });
+
+test('IDSOK: skutečný tvar dat (lineNumber, serviceNumber, lineType)', () => {
+  const v = parseIdsok({ id: 'S-895002-322', sourceType: 'S', vehicleType: 'E', lineType: 'A', lineNumber: 895002, serviceNumber: 12, name: 'Tram 2', dep: 'Olomouc, Neředín, krematorium', depTime: '10:00', dest: 'Olomouc, Hlavní nádraží', destTime: '10:12', lat: 49.5948, lon: 17.24, angle: 90, delay: 0, operator: 'Dopravní podnik města Olomouce, a.s.' }, { P, date: '2026-10-13', min: 604 });
+  assert.equal(v.line, '2');
+  assert.equal(v.tripNo, '12');
+  assert.equal(v.tripId, P.trips.find((t) => t.pattern.r === '895002').id);
+  const u = parseIdsok({ id: 'S-895013-1', vehicleType: 'A', lineType: 'A', lineNumber: 895013, serviceNumber: 1, name: 'Bus 13', dep: 'X', depTime: '01:00', lat: 49.59, lon: 17.25 }, { P, date: '2026-10-13', min: 604 });
+  assert.equal(u.line, '13');
+  assert.equal(u.city, 'town');
+});

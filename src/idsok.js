@@ -40,7 +40,11 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !lat || isTrain(s)) return null;
   // Spoje do sousedních krajů ukazují jejich vlastní mapy (IDZK, ODIS, IDS JMK).
   if (region && krajOf(region, lon, lat) !== 'olk') return null;
-  const { licence, trip, line } = idsokNumbers(s.name);
+  // Mapa posílá licenci linky (lineNumber) a číslo spoje (serviceNumber); z názvu jen když chybí.
+  const parsed = idsokNumbers(s.name);
+  const licence = /^\d{6}$/.test(text(s.lineNumber)) ? text(s.lineNumber) : parsed.licence;
+  const trip = Number.isFinite(Number(s.serviceNumber)) && text(s.serviceNumber) ? String(Number(s.serviceNumber)) : parsed.trip;
+  const line = licence ? lineLabel(licence) : parsed.line;
   const delayMin = Number(s.delay);
   const delay = Number.isFinite(delayMin) && delayMin > -60 ? delayMin * 60 : null;
   // Spoj v jízdních řádech: podle licence a čísla spoje, podle licence a odjezdu, jinak podle výchozí
@@ -52,7 +56,8 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
         matchByEnds(P, { dep: text(s.dep), depMin: hm(s.depTime), dest: text(s.dest), destMin: hm(s.destTime), line, tram: isTram(s) }, date, min))
       : null;
   const pat = match?.trip.pattern;
-  const town = isTram(s) || isTrolley(s) || /^(?:895|785|925|926|936|93523)/.test(licence ?? '');
+  // lineType A = městská linka (MHD), V/Z/D = regionální, mezikrajská, dálková.
+  const town = text(s.lineType).toUpperCase() === 'A' || isTram(s) || isTrolley(s) || /^(?:895|785|925|926|936|93523)/.test(licence ?? '');
   const city = pat?.c ?? (town ? 'town' : 'other');
   const type = pat ? (pat.y === 'r' ? 'tram' : pat.y === 't' ? 'trolleybus' : 'bus') : isTram(s) ? 'tram' : isTrolley(s) ? 'trolleybus' : 'bus';
   const label = pat ? lineLabel(pat.r) : (line ?? (licence ? lineLabel(licence) : null));
@@ -66,7 +71,7 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
     licence,
     lat,
     lon,
-    bearing: null,
+    bearing: Number.isFinite(Number(s.angle)) && s.angle !== '' && s.angle != null ? Number(s.angle) : null,
     stop: null,
     next: null,
     from: s.dep ? cityStopName(city, text(s.dep)) : null,
