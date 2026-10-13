@@ -4,6 +4,7 @@
 // nemají číslo, to dohledá identifyTrain v train-trip.js.
 import { krovakToWgs } from './krovak.js';
 import { regionContains } from './region.js';
+import { formatDelay } from './dszo.js';
 
 export const TRAIN_REFRESH_MS = 20000;
 
@@ -87,7 +88,7 @@ export function parseTrain(t, region) {
     nextArr: t.nst || null,
     nextDep: t.nsp || null,
     delay: delayMin != null ? delayMin * 60 : null,
-    delayText: delayMin != null ? `${Math.abs(delayMin)} min` : null,
+    delayText: delayMin != null ? formatDelay(delayMin * 60) : null,
   };
 }
 

@@ -1,5 +1,5 @@
 // Karta s detaily vozu (při najetí myší) a spodní panel s jízdním řádem spoje (po klepnutí).
-import { FEATURES } from './dszo.js';
+import { FEATURES, formatDelay } from './dszo.js';
 import { applyVehicleColors, TYPE_LABELS, delayLevel } from './colors.js';
 import { currentTripIndex } from './route-match.js';
 import { TRAIN_KINDS } from './trains.js';
@@ -41,9 +41,10 @@ function h(tag, className, text) {
 
 function delayLabel(v) {
   if (v.delay == null) return 'zpoždění neznámé';
-  if (v.delay < 0) return `náskok ${v.delayText.replace('-', '')}`;
+  const text = formatDelay(Math.abs(v.delay));
+  if (v.delay < 0) return v.delay <= -30 ? `náskok ${text}` : 'včas';
   if (v.delay < 30) return 'včas';
-  return `zpoždění ${v.delayText}`;
+  return `zpoždění ${text}`;
 }
 
 function agoLabel(updated) {

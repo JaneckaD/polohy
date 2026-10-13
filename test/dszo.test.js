@@ -32,7 +32,7 @@ test('joins the terminus from tabs2.php', () => {
   const merged = mergeVehicles(parseVehiclesPage(PAGE), parseTable(TABLE));
   assert.equal(merged[0].headsign, 'Otrokovice,žel.st.');
   assert.equal(merged[0].stop, 'Náměstí Míru');
-  assert.equal(merged[0].delayText, '0:41');
+  assert.equal(merged[0].delayText, '1 minuta');
   assert.equal(merged[0].duty, '4/2');
   assert.equal(merged[1].headsign, null);
   assert.equal(merged[2].headsign, 'Sportovní hala');
@@ -44,8 +44,11 @@ test('tolerates broken table and empty page', () => {
 });
 
 test('formats delay', () => {
-  assert.equal(formatDelay(162), '2:42');
-  assert.equal(formatDelay(-20), '-0:20');
+  assert.equal(formatDelay(162), '3 minuty');
+  assert.equal(formatDelay(60), '1 minuta');
+  assert.equal(formatDelay(330), '6 minut');
+  assert.equal(formatDelay(-20), '0 minut');
+  assert.equal(formatDelay(-120), '-2 minuty');
 });
 
 test('reads vehicle equipment, type and update time', () => {

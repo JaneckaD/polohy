@@ -25,7 +25,7 @@ test('vůz MHD Valašského Meziříčí z mapy IDZK', () => {
   assert.equal(v.id, 'vm-2TD5812');
   assert.equal(v.stop, 'Tesla I');
   assert.equal(v.headsign, 'Krhová, točna');
-  assert.equal(v.delayText, '1:34');
+  assert.equal(v.delayText, '2 minuty');
   assert.equal(v.bearing, 0);
   assert.equal(parseCityBus({ ...record, cn: '800123|5|1' }), null, 'jiné linky ne');
 });

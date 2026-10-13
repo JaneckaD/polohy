@@ -52,11 +52,18 @@ export function vehicleType(id) {
   return n >= 200 && n < 500 ? 'trolleybus' : 'bus';
 }
 
+/** Počet minut česky: „1 minuta“, „2 minuty“, „5 minut“. */
+export function minutesText(n) {
+  if (n === 1) return '1 minuta';
+  if (n >= 2 && n <= 4) return `${n} minuty`;
+  return `${n} minut`;
+}
+
+/** Zpoždění (sekundy) v celých minutách jako v legendě: „2 minuty“, náskok se znaménkem „-1 minuta“. */
 export function formatDelay(seconds) {
   if (!Number.isFinite(seconds)) return null;
-  const sign = seconds < 0 ? '-' : '';
-  const s = Math.abs(Math.round(seconds));
-  return `${sign}${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const m = Math.round(Math.abs(seconds) / 60);
+  return `${seconds < 0 && m ? '-' : ''}${minutesText(m)}`;
 }
 
 /** Vytáhne vozidla z HTML stránky /online/. */
