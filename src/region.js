@@ -19,30 +19,42 @@ export function loadRegion() {
   return regionPromise;
 }
 
-// Obdélník kolem obrysu: bod mimo něj nemusí procházet tisíce vrcholů hranice kraje.
-const ringBoxes = new WeakMap();
-function ringBox(ring) {
-  let box = ringBoxes.get(ring);
-  if (!box) {
-    box = [Infinity, Infinity, -Infinity, -Infinity];
+// Obrys kraje má tisíce vrcholů. Hrany si rozdělíme do vodorovných pásů podle zeměpisné šířky:
+// test bodu pak prochází jen hrany ve svém pásu (výsledek je stejný jako přes celý obrys).
+const BANDS = 512;
+const ringIndexes = new WeakMap();
+function ringIndex(ring) {
+  let idx = ringIndexes.get(ring);
+  if (!idx) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const [x, y] of ring) {
-      if (x < box[0]) box[0] = x;
-      if (y < box[1]) box[1] = y;
-      if (x > box[2]) box[2] = x;
-      if (y > box[3]) box[3] = y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
     }
-    ringBoxes.set(ring, box);
+    const h = (maxY - minY) / BANDS || 1;
+    const bands = Array.from({ length: BANDS }, () => []);
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      const a = Math.max(0, Math.min(BANDS - 1, Math.floor((Math.min(yi, yj) - minY) / h)));
+      const b = Math.max(0, Math.min(BANDS - 1, Math.floor((Math.max(yi, yj) - minY) / h)));
+      for (let k = a; k <= b; k++) bands[k].push(xi, yi, xj, yj);
+    }
+    idx = { box: [minX, minY, maxX, maxY], h, bands };
+    ringIndexes.set(ring, idx);
   }
-  return box;
+  return idx;
 }
 
 function ringContains(ring, lon, lat) {
-  const box = ringBox(ring);
+  const { box, h, bands } = ringIndex(ring);
   if (lon < box[0] || lat < box[1] || lon > box[2] || lat > box[3]) return false;
+  const e = bands[Math.max(0, Math.min(BANDS - 1, Math.floor((lat - box[1]) / h)))];
   let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
+  for (let k = 0; k < e.length; k += 4) {
+    const xi = e[k], yi = e[k + 1], xj = e[k + 2], yj = e[k + 3];
     if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
