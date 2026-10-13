@@ -176,22 +176,26 @@ function routeInfo(route) {
   const alongs = [];
   let from = 0;
   const lat0 = route.line[0][1];
+  const xy = route.line.map((q) => toXY(q, lat0));
   for (const [, lat, lon] of route.stops) {
     const p = toXY([lon, lat], lat0);
+    const prev = alongs.at(-1) ?? 0;
     let best = null;
     for (let i = from; i < route.line.length - 1; i++) {
-      const a = toXY(route.line[i], lat0);
-      const b = toXY(route.line[i + 1], lat0);
+      // Dál po trase už lepší místo být nemůže (skóre roste s ujetou vzdáleností): stačí hledat do té doby.
+      if (best && 0.05 * (cum[i] - prev) > best.score) break;
+      const a = xy[i];
+      const b = xy[i + 1];
       const dx = b[0] - a[0], dy = b[1] - a[1];
       const len = Math.hypot(dx, dy);
       const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (len * len))) : 0;
       const dist = Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
       const along = cum[i] + t * len;
       // Mírně preferujeme bližší pokračování, aby zastávka nepadla na pozdější průjezd stejným místem.
-      const score = dist + 0.05 * (along - (alongs.at(-1) ?? 0));
+      const score = dist + 0.05 * (along - prev);
       if (!best || score < best.score) best = { score, along, seg: i };
     }
-    alongs.push(best ? best.along : alongs.at(-1) ?? 0);
+    alongs.push(best ? best.along : prev);
     if (best) from = best.seg;
   }
   info = { cum, alongs, names: route.stops.map(([n]) => normalizeName(n)) };

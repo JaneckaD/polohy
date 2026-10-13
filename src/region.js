@@ -19,7 +19,26 @@ export function loadRegion() {
   return regionPromise;
 }
 
+// Obdélník kolem obrysu: bod mimo něj nemusí procházet tisíce vrcholů hranice kraje.
+const ringBoxes = new WeakMap();
+function ringBox(ring) {
+  let box = ringBoxes.get(ring);
+  if (!box) {
+    box = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [x, y] of ring) {
+      if (x < box[0]) box[0] = x;
+      if (y < box[1]) box[1] = y;
+      if (x > box[2]) box[2] = x;
+      if (y > box[3]) box[3] = y;
+    }
+    ringBoxes.set(ring, box);
+  }
+  return box;
+}
+
 function ringContains(ring, lon, lat) {
+  const box = ringBox(ring);
+  if (lon < box[0] || lat < box[1] || lon > box[2] || lat > box[3]) return false;
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
@@ -48,10 +67,23 @@ export function krajArea(region, key) {
 }
 
 /** Kraj oblasti, ve kterém bod leží ('zlk', 'jmk', 'olk', 'msk'), nebo null. */
+// Vozy, které stojí nebo se vrátí na stejné místo, se ptají na kraj znovu: odpovědi pro přesné polohy si pamatujeme.
+const krajCache = new Map();
 export function krajOf(region, lon, lat) {
   const parts = region?.properties?.parts ?? {};
-  for (const [key, ring] of Object.entries(parts)) if (ringContains(ring, lon, lat)) return key;
-  return null;
+  const key = `${lon},${lat}`;
+  const hit = krajCache.get(key);
+  if (hit && hit.parts === parts) return hit.kraj;
+  let kraj = null;
+  for (const [k, ring] of Object.entries(parts)) {
+    if (ringContains(ring, lon, lat)) {
+      kraj = k;
+      break;
+    }
+  }
+  if (krajCache.size > 50000) krajCache.clear();
+  krajCache.set(key, { parts, kraj });
+  return kraj;
 }
 /**
  * Jde do mapy přidávat zdroje a vrstvy? map.isStyleLoaded() čeká i na všechny dlaždice, a na velké

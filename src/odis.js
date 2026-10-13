@@ -121,13 +121,38 @@ function tripCalls(P, trip, net, tram) {
 
 // Názvy zastávek na mapě ODIS bývají bez obce („Kotva“, „Mor. Ostrava, Plynárny“), v jízdních řádech
 // s obcí („Ostrava,Zábřeh,Kotva“): porovná se celý název, název bez obce i poslední část.
+const tailsCache = new Map();
 const tails = (name) => {
-  const parts = String(name).split(',').map((x) => x.trim()).filter(Boolean);
-  return [...new Set([parts.join(','), parts.slice(1).join(','), parts.at(-1)].filter(Boolean))];
+  const key = String(name);
+  let t = tailsCache.get(key);
+  if (!t) {
+    if (tailsCache.size > 50000) tailsCache.clear();
+    const parts = key.split(',').map((x) => x.trim()).filter(Boolean);
+    t = [...new Set([parts.join(','), parts.slice(1).join(','), parts.at(-1)].filter(Boolean))];
+    tailsCache.set(key, t);
+  }
+  return t;
 };
+// Stejné dvojice názvů se porovnávají při každé obnově poloh: výsledek si pamatujeme.
+const stopSimCache = new Map();
+let stopSimCount = 0;
 function stopSimilarity(a, b) {
-  let best = 0;
-  for (const x of tails(a)) for (const y of tails(b)) best = Math.max(best, nameSimilarity(x, y));
+  let row = stopSimCache.get(a);
+  if (!row) {
+    if (stopSimCount > 400000) {
+      stopSimCache.clear();
+      stopSimCount = 0;
+    }
+    row = new Map();
+    stopSimCache.set(a, row);
+  }
+  let best = row.get(b);
+  if (best === undefined) {
+    best = 0;
+    for (const x of tails(a)) for (const y of tails(b)) best = Math.max(best, nameSimilarity(x, y));
+    row.set(b, best);
+    stopSimCount++;
+  }
   return best;
 }
 const sameStop = (a, b) => !!a && !!b && stopSimilarity(a, b) >= 0.75;

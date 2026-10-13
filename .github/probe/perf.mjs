@@ -1,4 +1,4 @@
-// Dočasné měření: kde aplikace tráví čas (start, posun mapy, výběr vozu) – profil JS a dlouhé úlohy.
+// Dočasné měření (po optimalizaci): kde aplikace tráví čas (start, posun mapy, výběr vozu) – profil JS a dlouhé úlohy.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';

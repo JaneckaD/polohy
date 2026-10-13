@@ -1,19 +1,30 @@
 // Porovnávání názvů zastávek z DSZO a z OpenStreetMap, které se liší diakritikou,
 // zkratkami a čárkami („Otrokovice,žel.st.“ vs. „Otrokovice, železniční stanice“).
 
+const normCache = new Map();
+
 export function normalizeName(name) {
-  return String(name ?? '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  const key = String(name ?? '');
+  let n = normCache.get(key);
+  if (n === undefined) {
+    if (normCache.size > 100000) normCache.clear();
+    n = key
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    normCache.set(key, n);
+  }
+  return n;
 }
 
 // Stejné názvy se porovnávají při každé obnově poloh znovu a znovu: výsledky si pamatujeme.
-const MAX_CACHE = 50000;
+const MAX_CACHE = 100000;
 const tokenCache = new Map();
+// Podobnost: první název → (druhý název → podobnost); bez skládání klíčů z řetězců při každém dotazu.
 const similarityCache = new Map();
+let similarityCount = 0;
 
 export function nameTokens(name) {
   const key = String(name ?? '');
@@ -45,12 +56,22 @@ function oneTypo(a, b) {
  * takže „zel st“ odpovídá „zeleznicni stanice“, nebo když se delší slova liší jedním písmenem.
  */
 export function nameSimilarity(a, b) {
-  const key = `${a ?? ''}\u0000${b ?? ''}`;
-  let sim = similarityCache.get(key);
+  const ka = a ?? '';
+  const kb = b ?? '';
+  let row = similarityCache.get(ka);
+  if (!row) {
+    if (similarityCount > 4 * MAX_CACHE) {
+      similarityCache.clear();
+      similarityCount = 0;
+    }
+    row = new Map();
+    similarityCache.set(ka, row);
+  }
+  let sim = row.get(kb);
   if (sim === undefined) {
-    if (similarityCache.size > MAX_CACHE) similarityCache.clear();
     sim = similarity(a, b);
-    similarityCache.set(key, sim);
+    row.set(kb, sim);
+    similarityCount++;
   }
   return sim;
 }
