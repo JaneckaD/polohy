@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Železniční tratě oblasti vlaků (Zlínský a Jihomoravský kraj, region.json properties.rail) z dat OpenStreetMap od Geofabriku (v GitHub Actions), když Overpass nejde
+# Železniční tratě celé oblasti (region.json) z dat OpenStreetMap od Geofabriku (v GitHub Actions), když Overpass nejde
 # (bývá přetížený). Výsledek: railcache/rails.geojsonseq (koleje a stanice), z něj staví scripts/build-rails.mjs.
 # Soubor uchovává actions/cache (obnoví se jednou týdně nebo se změnou oblasti).
 set -euo pipefail

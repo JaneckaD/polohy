@@ -1188,17 +1188,42 @@ input:focus-visible {
   animation: fade 0.25s;
 }
 
+/* Okno má nahoře i dole stejný odstup od okraje obrazovky (i s výřezem a domovskou lištou iPhonu). */
 .modal-panel {
+  --modal-gap: calc(12px + max(env(safe-area-inset-top), env(safe-area-inset-bottom)));
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: 8px;
-  max-height: calc(100% - 40px - env(safe-area-inset-top));
+  bottom: var(--modal-gap);
+  max-height: calc(100% - 2 * var(--modal-gap));
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: 34px;
-  padding: 6px 18px calc(18px + env(safe-area-inset-bottom));
+  padding: 6px 18px 18px;
   box-sizing: border-box;
   animation: rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Stahování za úchyt: okno jde za prstem bez zpoždění. */
+.modal-panel.dragging {
+  transition: none;
+}
+
+.modal-panel .sheet-grip,
+.modal-panel .modal-head {
+  touch-action: none;
+}
+
+/* Úchyt má větší plochu pro prst, než je vidět. */
+.modal-panel .sheet-grip {
+  position: relative;
+}
+
+.modal-panel .sheet-grip::before {
+  content: '';
+  position: absolute;
+  inset: -12px -60px;
 }
 
 .modal-panel.glass {

@@ -37,8 +37,8 @@ a jízdní řád spoje s časy.
   CIS JŘ v GTFS (data.jr.ggu.cz; licence a čísla spojů sedí na polohy ODIS). MHD dopravních podniků Ostravy,
   Olomouce a Opavy (i tramvaje a trolejbusy, které celostátní data nemají) a polohy zastávek, které tam chybí,
   jsou z GTFS [Spojenky](https://www.spojenka.cz/jrdata) (MFF UK, volně pro nekomerční užití).
-  Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou zatím jen ve Zlínském
-  a Jihomoravském kraji (`properties.rail` v `region.json`).
+  Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou v celé oblasti (všechny čtyři kraje);
+  když mapa vlaků SŽ neodpoví, vlaky z map IDZK, ODIS a IDS JMK.
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
   minimalistickým stylem v [`src/style.js`](src/style.js): bílý podklad, světlé ulice, jen názvy obcí.
 

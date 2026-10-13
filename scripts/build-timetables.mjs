@@ -265,7 +265,7 @@ if (tt?.rawTrips) {
     const res = await fetch(url, { headers: UA });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
-    // Vlaky jen ve Zlínském a Jihomoravském kraji (oblast kolejí).
+    // Vlaky v celé oblasti (oblast kolejí).
     const region = railArea(JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8')));
     const trains = railTrips(bytes, { startDate: tt.startDate, days: tt.days, region, log: (m) => console.log(m) });
     tt.rawTrips.push(...trains);

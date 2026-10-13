@@ -232,6 +232,11 @@ test('proxy /jmk: poslední dávka proudu IDS JMK, zprávy beze změny', async (
     }, 1400);
     return { status: 101, webSocket: ws };
   });
+  // Bez dávky hned 503 (na proud se nečeká), dávka se sbírá na pozadí.
+  const pending = [];
+  const first = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil: (p) => pending.push(p) });
+  assert.equal(first.status, 503);
+  await Promise.all(pending);
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/jmk'), {}, { waitUntil() {} });
   assert.equal(res.status, 200);
   const data = await res.json();

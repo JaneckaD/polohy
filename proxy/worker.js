@@ -1,8 +1,9 @@
 // Cloudflare Worker: malá proxy, přes kterou si aplikace na GitHub Pages čte data DSZO.
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
-// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí oblasti (Zlínský a Jihomoravský kraj);
-//          když mapa vlaků neodpoví, vlaky z map IDZK a IDS JMK, jinak poslední úspěšná odpověď.
+// /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí oblasti (Zlínský, Jihomoravský,
+//          Olomoucký a Moravskoslezský kraj); když mapa vlaků neodpoví, vlaky z map IDZK, ODIS a IDS JMK,
+//          jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
 //       Navíc (pole odis) vozy z mapy ODIS (Moravskoslezský kraj: regionální autobusy a MHD měst včetně Ostravy).
@@ -20,12 +21,13 @@ const CORS = {
 
 // Polohy všech osobních vlaků v ČR (souřadnice S-JTSK, EPSG:5514).
 const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load';
-// Obdélník kolem oblasti (Zlínský a Jihomoravský kraj) v S-JTSK (s rezervou pár kilometrů), přesně ořízne aplikace.
-const ZK_BOX = { minX: -682000, maxX: -462000, minY: -1230000, maxY: -1109000 };
+// Obdélník kolem oblasti (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) v S-JTSK (s rezervou pár kilometrů),
+// přesně ořízne aplikace.
+const ZK_BOX = { minX: -690000, maxX: -415000, minY: -1230000, maxY: -1030000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
 
 // Mapa vlaků SŽ z Cloudflaru často neodpoví (z jiných sítí ano). Čekáme na ni proto jen chvíli
-// a po výpadku ji dvě minuty nezkoušíme. Náhradou jsou vlaky z mapy IDZK (Zlínský kraj) a z mapy IDS JMK
+// a po výpadku ji dvě minuty nezkoušíme. Náhradou jsou vlaky z map IDZK (Zlínský kraj), ODIS (Moravskoslezský kraj) a IDS JMK
 // (Jihomoravský kraj, bez čísla vlaku, to aplikace dohledá v jízdním řádu podle linky, cíle a polohy),
 // a když nejde ani jedna, poslední úspěšná odpověď z cache workeru.
 const TRAINS_LAST = 'https://dszo-proxy.internal/trains-last';
@@ -47,13 +49,13 @@ async function fetchTrains() {
   return null;
 }
 
-/** Vlaky z mapy IDZK ve stejných polích jako od SŽ, jen s polohou ve WGS84 (lat, lon). */
-async function idzkTrains() {
+/** Vlaky z mapy na platformě mpvnet (IDZK, ODIS) ve stejných polích jako od SŽ, jen s polohou ve WGS84 (lat, lon). */
+async function mpvTrains(url, body) {
   try {
-    const res = await fetch(MPV_URL, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
-      body: MPV_BODY,
+      body,
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
@@ -71,6 +73,9 @@ async function idzkTrains() {
     return null;
   }
 }
+
+const idzkTrains = () => mpvTrains(MPV_URL, MPV_BODY);
+const odisTrains = () => mpvTrains(ODIS_URL, ODIS_BODY);
 
 // Mapa IDS JMK (mapa.idsjmk.cz): API chce přístupový klíč, který stránka mapy posílá v HTML
 // (initializeApplication('…')). Klíč si pamatujeme a při odmítnutí si stáhneme nový.
@@ -136,9 +141,12 @@ async function trains() {
   const cache = globalThis.caches?.default;
   const data = await fetchTrains();
   if (!data) {
-    const [idzk, jmk] = await Promise.all([idzkTrains(), jmkTrains()]);
-    if (idzk || jmk) {
-      return new Response(JSON.stringify({ trains: [...(idzk ?? []), ...(jmk ?? [])], source: 'idzk', at: new Date().toISOString() }), {
+    const [idzk, odis, jmk] = await Promise.all([idzkTrains(), odisTrains(), jmkTrains()]);
+    if (idzk || odis || jmk) {
+      // Vlak na hranici krajů ukazují obě mapy: jen jednou (podle druhu a čísla).
+      const seen = new Set();
+      const list = [...(idzk ?? []), ...(odis ?? [])].filter((t) => !t.tn || (!seen.has(`${t.tt} ${t.tn}`) && seen.add(`${t.tt} ${t.tn}`)));
+      return new Response(JSON.stringify({ trains: [...list, ...(jmk ?? [])], source: 'idzk', at: new Date().toISOString() }), {
         headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
       });
     }
@@ -421,12 +429,9 @@ async function jmkSnapshot(ctx) {
     }
   }
   const age = jmkLast ? Date.now() - jmkLast.at : Infinity;
-  // Dávka starší než 25 s se obnoví na pozadí; odpověď je hned ta poslední (do 3 minut).
-  if (age > 25000) {
-    const p = refreshJmk();
-    if (age > 180000) await p;
-    else ctx?.waitUntil?.(p);
-  }
+  // Dávka starší než 25 s se obnoví na pozadí. Na novou se nikdy nečeká (trvá až 30 s): odpověď je hned
+  // ta poslední (do 3 minut), jinak 503 a aplikace mezitím ukáže odhad podle jízdního řádu.
+  if (age > 25000) ctx?.waitUntil?.(refreshJmk());
   if (!jmkLast || Date.now() - jmkLast.at > 180000) return new Response('No data', { status: 503, headers: CORS });
   return new Response(jmkLast.body, {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },

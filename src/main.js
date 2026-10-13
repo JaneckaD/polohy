@@ -24,6 +24,7 @@ import { setFilterRegion } from './filtering.js';
 import { initFilter } from './filter.js';
 import { initLegend } from './legend.js';
 import { initInfo } from './info.js';
+import { initModals } from './modal.js';
 import { vehicleMark } from './dszo-marks.js';
 import { initPlanner, loadPlanner } from './plannerview.js';
 import { trainTrip, trainPosition, completeTrains } from './train-trip.js';
@@ -433,7 +434,7 @@ function setTrains(list) {
 
 async function refreshTrains() {
   try {
-    // Vlaky jen ve Zlínském a Jihomoravském kraji.
+    // Vlaky v celé oblasti.
     setTrains(await fetchRegionTrains(railArea(await loadRegion())));
   } catch (err) {
     // Vlaky jsou doplněk: bez nich mapa MHD funguje dál (např. starší proxy bez /trains).
@@ -499,15 +500,21 @@ async function refreshEstimated() {
   }
   const now = new Date();
   const { date, min } = pragueNow();
-  setJmkDown(jmk.down);
+  jmkWasDown = jmk.down;
+  setJmkDown(jmkWasDown);
   store.setEstimated(estimatedVehicles(P, region, date, min + now.getSeconds() / 60));
 }
 
 // Živé polohy IDS JMK (tramvaje, trolejbusy, autobusy): spoje se dohledají v datech vyhledávání spojení.
 let jmkPlanner = null;
 let jmkRegion = null;
+let jmkWasDown = true;
 const jmk = new JmkLive({
-  onChange: (list) => store.setJmk(list),
+  onChange: (list) => {
+    store.setJmk(list);
+    // První živá dávka (nebo výpadek proudu): odhadované vozy IDS JMK hned vystřídají živé (nebo naopak).
+    if (jmk.down !== jmkWasDown) refreshEstimated();
+  },
   context: () => ({ P: jmkPlanner, region: jmkRegion, ...pragueNow() }),
   snapshot: fetchJmkSnapshot,
 });
@@ -581,6 +588,7 @@ map.on('load', () => {
 initFilter();
 initLegend();
 initInfo();
+initModals();
 initInstall();
 
 // Obnovit: stáhne novou verzi aplikace (i na ploše) a čerstvé jízdní řády, pak stránku načte znovu,

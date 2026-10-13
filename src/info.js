@@ -39,14 +39,14 @@ function group(title, rows) {
 
 function render() {
   body.replaceChildren(
-    h('p', 'info-lead', 'Doprava živě ukazuje, kde právě jedou autobusy, trolejbusy, tramvaje a vlaky na Moravě a ve Slezsku (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj), a hledá spojení. Vlaky zatím jen ve Zlínském a Jihomoravském kraji. Data se stahují jen při otevřené aplikaci.'),
+    h('p', 'info-lead', 'Doprava živě ukazuje, kde právě jedou autobusy, trolejbusy, tramvaje a vlaky na Moravě a ve Slezsku (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj), a hledá spojení. Data se stahují jen při otevřené aplikaci.'),
     group('Polohy vozidel', [
       row('MHD Zlín – Otrokovice', 'Veřejná mapa DSZO ', ['dszo.cz/online', 'https://www.dszo.cz/online/'], ', obnova asi po 15 s.'),
       row('Zlínský kraj', 'Mapa IDZK ', ['mpvnet.cz', 'https://mpvnet.cz/zlin/map'], ' (regionální autobusy a MHD měst), MHD Kroměříž z ', ['kromeriz.mhdonline.cz', 'https://kromeriz.mhdonline.cz'], '.'),
       row('Jihomoravský kraj', 'Polohy vozidel IDS JMK, zdroj ', ['KORDIS JMK', 'https://www.idsjmk.cz'], ', otevřená data ', ['data.brno.cz', 'https://data.brno.cz'], ', licence ', ['CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/deed.cs'], '.'),
       row('Moravskoslezský kraj', 'Mapa poloh vozidel ODIS ', ['mpvnet.cz/odis', 'https://mpvnet.cz/odis/map'], ' (regionální autobusy a MHD měst včetně Ostravy a Opavy), koordinátor ', ['KODIS', 'https://www.kodis.cz'], '.'),
       row('Olomoucký kraj', 'Mapa spojů ', ['CestujOK', 'https://www.cestujok.cz/idspublic/'], ' koordinátora ', ['KIDSOK', 'https://www.kidsok.cz'], '; když nefunguje, odhad podle jízdního řádu.'),
-      row('Vlaky', 'Mapa vlaků ', ['Správy železnic', 'https://mapy.spravazeleznic.cz/vlaky'], ', náhradou mapy IDZK a IDS JMK.'),
+      row('Vlaky', 'Mapa vlaků ', ['Správy železnic', 'https://mapy.spravazeleznic.cz/vlaky'], ', náhradou mapy IDZK, ODIS a IDS JMK.'),
       row('Dálkové autobusy', 'Sledování spojů ', ['FlixBus', 'https://www.flixbus.cz/track'], '. Ostatní dálkové a regionální linky bez živých poloh odhadem podle jízdního řádu (v detailu vozu je to napsané).'),
     ]),
     group('Jízdní řády a vyhledávání', [

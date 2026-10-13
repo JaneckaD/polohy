@@ -1,5 +1,5 @@
 // Oblast aplikace (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) a železniční tratě.
-// Vlaky a koleje jsou zatím jen ve Zlínském a Jihomoravském kraji (properties.rail).
+// Vlaky a koleje jsou v celé oblasti (dřív jen ve Zlínském a Jihomoravském kraji: properties.rail, když ho region.json má).
 // Vše mimo oblast je šrafované, tam aplikace zatím nesahá.
 // Obrys oblasti: sjednocené hranice obou krajů z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json
 // (properties.parts = obrysy jednotlivých krajů, podle nich filtr pozná kraj vozu);
@@ -35,7 +35,7 @@ export function regionContains(region, lon, lat) {
   return ring ? ringContains(ring, lon, lat) : true;
 }
 
-/** Oblast vlaků a kolejí (Zlínský a Jihomoravský kraj) jako GeoJSON Feature. */
+/** Oblast vlaků a kolejí (celá oblast, nebo properties.rail) jako GeoJSON Feature. */
 export function railArea(region) {
   const ring = region?.properties?.rail;
   return ring ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } } : region;

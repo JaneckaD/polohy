@@ -1,4 +1,4 @@
-// Všechny železniční tratě v oblasti aplikace (Zlínský a Jihomoravský kraj) z OpenStreetMap,
+// Všechny železniční tratě v oblasti aplikace (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) z OpenStreetMap,
 // do public/rails.json. Na mapě se kreslí jako koleje a po nich trasy vlaků.
 //
 // Výstup: { generated, lines: [[[lon, lat], …], …] }
@@ -7,12 +7,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildRails } from './rails-lib.mjs';
 import { overpass, previousDeploy } from './overpass.mjs';
 
-// CZ-72 = Zlínský kraj, CZ-64 = Jihomoravský kraj. Koleje z tras osobních vlaků (relace route=train)
+// CZ-72 = Zlínský, CZ-64 = Jihomoravský, CZ-71 = Olomoucký, CZ-80 = Moravskoslezský kraj. Koleje z tras osobních vlaků (relace route=train)
 // a k tomu všechny ostatní tratě (i nákladní a úzkorozchodné), bez vleček, kolejišť a výhybek
 // (service), aby mapa ve stanicích nebyla jen změť kolejí.
 const QUERY = `
 [out:json][timeout:300];
-area["ISO3166-2"~"^CZ-(72|64)$"]["boundary"="administrative"]->.kraj;
+area["ISO3166-2"~"^CZ-(72|64|71|80)$"]["boundary"="administrative"]->.kraj;
 relation["type"="route"]["route"="train"](area.kraj)->.r;
 (
   way(r.r)["railway"~"^(rail|narrow_gauge|light_rail)$"](area.kraj);

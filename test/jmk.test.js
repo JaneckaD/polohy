@@ -24,8 +24,9 @@ test('oblast: Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj, kraj
   const rail = railArea(region);
   assert.ok(regionContains(rail, 17.6667, 49.2265));
   assert.ok(regionContains(rail, 16.6068, 49.1951));
-  assert.ok(!regionContains(rail, 17.2509, 49.5938));
-  assert.ok(!regionContains(rail, 18.2625, 49.8346));
+  // Vlaky a koleje v celé oblasti (i Olomouc a Ostrava).
+  assert.ok(regionContains(rail, 17.2509, 49.5938));
+  assert.ok(regionContains(rail, 18.2625, 49.8346));
 });
 
 test('filtr Kraj: vlak v Brně patří do Jihomoravského kraje, DSZO do Zlínského', () => {

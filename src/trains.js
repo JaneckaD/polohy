@@ -1,6 +1,6 @@
-// Vlaky v oblasti (Zlínský a Jihomoravský kraj): polohy všech osobních vlaků od Správy železnic
+// Vlaky v oblasti (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj): polohy všech osobních vlaků od Správy železnic
 // (mapy.spravazeleznic.cz), přes stejnou proxy jako data DSZO. Souřadnice jsou v S-JTSK, na mapě jen vlaky
-// uvnitř oblasti. Náhradní zdroje (mapy IDZK a IDS JMK) posílají rovnou lat/lon; vlaky z mapy IDS JMK
+// uvnitř oblasti. Náhradní zdroje (mapy IDZK, ODIS a IDS JMK) posílají rovnou lat/lon; vlaky z mapy IDS JMK
 // nemají číslo, to dohledá identifyTrain v train-trip.js.
 import { krovakToWgs } from './krovak.js';
 import { regionContains } from './region.js';

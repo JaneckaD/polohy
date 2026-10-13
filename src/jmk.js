@@ -198,8 +198,12 @@ export class JmkLive {
     this.dirty = this.raw.size > 0;
   }
 
-  /** Funguje proud? (false, když se nepřipojí: pak se vozy IDS JMK odhadnou podle jízdního řádu) */
+  /**
+   * Nejsou živé polohy? (true, dokud nepřijde první dávka proudu, ta chodí jen jednou za půl minuty,
+   * a když se proud nepřipojí: vozy IDS JMK se pak odhadnou podle jízdního řádu, ať je mapa plná hned.)
+   */
   get down() {
+    if (!this.raw.size) return true;
     return this.failedSince != null && Date.now() - this.failedSince > 45000 && Date.now() - this.lastMessage > STALE_MS;
   }
 
