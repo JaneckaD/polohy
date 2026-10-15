@@ -266,10 +266,11 @@ export function parseOdis(t, { P = null, region = null, date, min } = {}) {
  * Doplní vozu spoj z dat vyhledávání: zastávky, příští zastávku a trasu. Příští zastávka podle názvu
  * z mapy (next), jinak podle jízdního řádu a zpoždění; standing = vůz stojí (u zastávky do 80 m).
  */
-export function attachTrip(v, P, match, { next = null, standing = false, min }) {
+export function attachTrip(v, P, match, { next = null, nextIndex = null, standing = false, min }) {
   const { calls, segments } = tripCalls(P, match.trip, v.city, v.type === 'tram');
   const now = min + match.shift - Math.max(0, Math.round((v.delay ?? 0) / 60));
-  let ni = next ? calls.findIndex((c, i) => i > 0 && sameStop(next, c.raw)) : -1;
+  // nextIndex: pořadí příští zastávky přímo (podobné názvy jako Masarykovo nám. dolní/horní by se spletly).
+  let ni = nextIndex != null && nextIndex > 0 && nextIndex < calls.length ? nextIndex : next ? calls.findIndex((c, i) => i > 0 && sameStop(next, c.raw)) : -1;
   if (ni < 0) {
     ni = match.trip.times.findIndex((tt) => tt > now);
     if (ni < 0) ni = calls.length - 1;

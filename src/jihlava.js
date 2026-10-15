@@ -72,6 +72,6 @@ export function parseJih(a, { P = null, date, min } = {}) {
     updated: null,
     live: 'jih',
   };
-  if (match) attachTrip(v, P, match, { next: P.stops[pat.s[match.last + 1]]?.name ?? null, min });
+  if (match) attachTrip(v, P, match, { nextIndex: match.last + 1, min });
   return v;
 }
