@@ -14,6 +14,8 @@ const hm = (s) => {
   return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
 };
 const text = (x) => (x == null ? '' : String(x).trim());
+// Názvy zastávek z mapy jsou ve tvaru jízdních řádů: „Pardubice,,Hlavní nádraží“ = obec, (část), zastávka.
+const stopText = (x) => text(x).replace(/,\s*,/g, ',').replace(/,\s*$/, '');
 
 // Slovo na začátku názvu spoje, které jen říká druh vozu („Bus 12“, „Tram 2“, „Trol 25“).
 const KIND_WORD = /^(?:bus|autobus|tram|tramvaj|trol|trolejbus|mhd|linka)\b\.?\s*/i;
@@ -23,7 +25,8 @@ export function idsokNumbers(name) {
   const s = text(name).replace(KIND_WORD, '');
   const licence = /(?<!\d)(\d{6})(?!\d)/.exec(s)?.[1] ?? null;
   const rest = licence ? s.replace(licence, ' ') : s;
-  const trip = /(?:\/|spoj|#)\s*(\d{1,5})(?!\d)/i.exec(rest)?.[1] ?? null;
+  // „700923 13“ (mapa IREDO, CestujOK): licence a za ní rovnou číslo spoje.
+  const trip = /(?:\/|spoj|#)\s*(\d{1,5})(?!\d)/i.exec(rest)?.[1] ?? (licence ? /^\s*(\d{1,5})\s*$/.exec(rest)?.[1] : null) ?? null;
   const line = licence ? lineLabel(licence) : (/(?<![\d:\w])(\d{1,3}|[A-Z]{1,2}\d{1,3}|[A-Z])(?![\d:\w])/.exec(rest.replace(/(?:\/|spoj|#)\s*\d+/gi, ' '))?.[1] ?? null);
   return { licence, trip, line };
 }
@@ -62,8 +65,8 @@ function parseConnection(s, { P = null, region = null, date, min } = {}, { kraj,
   const match =
     P && date
       ? (matchOdisTrip(P, licence, trip, date, min, Math.round((delay ?? 0) / 60)) ??
-        matchByDeparture(P, licence, text(s.dep), hm(s.depTime), date, min) ??
-        matchByEnds(P, { dep: text(s.dep), depMin: hm(s.depTime), dest: text(s.dest), destMin: hm(s.destTime), line, tram: isTram(s) }, date, min))
+        matchByDeparture(P, licence, stopText(s.dep), hm(s.depTime), date, min) ??
+        matchByEnds(P, { dep: stopText(s.dep), depMin: hm(s.depTime), dest: stopText(s.dest), destMin: hm(s.destTime), line, tram: isTram(s) }, date, min))
       : null;
   const pat = match?.trip.pattern;
   // lineType A = městská linka (MHD), V/Z/D = regionální, mezikrajská, dálková.
@@ -84,10 +87,10 @@ function parseConnection(s, { P = null, region = null, date, min } = {}, { kraj,
     bearing: Number.isFinite(Number(s.angle)) && s.angle !== '' && s.angle != null ? Number(s.angle) : null,
     stop: null,
     next: null,
-    from: s.dep ? cityStopName(city, text(s.dep)) : null,
-    headsign: s.dest ? cityStopName(city, text(s.dest)) : null,
+    from: s.dep ? cityStopName(city, stopText(s.dep)) : null,
+    headsign: s.dest ? cityStopName(city, stopText(s.dest)) : null,
     rawStop: null,
-    rawHeadsign: text(s.dest) || null,
+    rawHeadsign: stopText(s.dest) || null,
     tripNo: trip,
     operatorName: pat?.o ?? (carrierName(text(s.operator)) || null),
     lowFloor: null,

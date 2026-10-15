@@ -217,35 +217,41 @@ async function kromerizBuses() {
   }
 }
 
-// MHD Pardubice (DPMP): mapa online.dpmp.cz čte api.mhdonline.cz s hlavičkou x-app-protocol, kterou má
-// ve svém skriptu. Když ji server odmítne (nová verze mapy), najdeme si v aktuálním skriptu mapy novou.
+// MHD Pardubice (DPMP): mapa online.dpmp.cz čte api.mhdonline.cz s hlavičkou X-App-Protocol: HMAC-SHA256
+// veřejného klíče ze skriptu mapy nad číslem čtvrthodiny. Když ji server odmítne (nová verze mapy),
+// najdeme si klíč v aktuálním skriptu mapy.
 const PCE_API = 'https://api.mhdonline.cz/pardubice/vehicles';
 const PCE_SITE = 'https://online.dpmp.cz';
-let pceProtocol = '26dc2897acef979d863df737827fc1ca8e88c389fba00a253a6d1ee7fe4ecabe';
+let pceSeed = 'your-public-protocol-seed';
 
-async function pceProtocols() {
+export async function pceProtocol(seed, now = Date.now()) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(seed), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(String(Math.floor(now / 900000))));
+  return [...new Uint8Array(sig)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+async function pceScrapeSeed() {
   const html = await (await fetch(`${PCE_SITE}/`, { signal: AbortSignal.timeout(6000) })).text();
   const src = /<script[^>]+src="([^"]+\.js)"/.exec(html)?.[1];
-  if (!src) return [];
+  if (!src) return null;
   const js = await (await fetch(new URL(src, PCE_SITE).href, { signal: AbortSignal.timeout(6000) })).text();
-  return [...new Set(js.match(/\b[0-9a-f]{64}\b/g) ?? [])].slice(0, 5);
+  return /"([^"]{4,100})",\w+=15\*60\*1e3/.exec(js)?.[1] ?? null;
 }
 
 async function pardubiceBuses() {
-  const get = (key) =>
+  const get = async (seed) =>
     fetch(PCE_API, {
-      headers: { Accept: 'application/json', Origin: PCE_SITE, Referer: `${PCE_SITE}/`, 'x-app-protocol': key, 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' },
+      headers: { Accept: 'application/json', Origin: PCE_SITE, Referer: `${PCE_SITE}/`, 'X-App-Protocol': await pceProtocol(seed), 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' },
       signal: AbortSignal.timeout(6000),
     });
   try {
-    let res = await get(pceProtocol);
+    let res = await get(pceSeed);
     if (res.status === 401 || res.status === 403) {
-      for (const key of await pceProtocols()) {
-        res = await get(key);
-        if (res.ok) {
-          pceProtocol = key;
-          break;
-        }
+      const seed = await pceScrapeSeed();
+      if (seed && seed !== pceSeed) {
+        res = await get(seed);
+        if (res.ok) pceSeed = seed;
       }
     }
     if (!res.ok) return [];

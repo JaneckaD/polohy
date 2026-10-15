@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildPlannerFromTrips } from '../scripts/planner-data.mjs';
 import { preparePlanner } from '../src/planner.js';
-import { parseIredo } from '../src/idsok.js';
+import { parseIredo, idsokNumbers } from '../src/idsok.js';
 import { parsePce, isoDelay } from '../src/pardubice.js';
 import { krajOf } from '../src/region.js';
 
@@ -45,7 +45,10 @@ test('vůz MHD Pardubice: trolejbus podle jízdního řádu', () => {
 
 test('spoj z mapy IREDO: regionální autobus v Pardubickém kraji', () => {
   const s = { id: 'S-700923-13', name: '700923 13', vehicleType: 'A', sourceType: 'S', delay: 2, operator: 'BusLine Pardubicko s.r.o.', dep: 'Vysoké Mýto,,aut.nádr.', dest: 'Proseč,,nám.', depTime: '17:15', destTime: '17:56', lat: 49.86067, lon: 16.11545, lineNumber: 700923, angle: 133, lineType: 'V' };
-  const v = parseIredo({ ...s, serviceNumber: 13 }, { P, region, date: '2026-10-15', min: 1061 });
+  assert.equal(idsokNumbers(s.name).trip, '13');
+  const v = parseIredo(s, { P, region, date: '2026-10-15', min: 1061 });
+  assert.equal(v.tripNo, '13');
+  assert.equal(v.headsign, 'Proseč, nám.');
   assert.equal(v.live, 'iredo');
   assert.equal(v.city, 'other');
   assert.equal(v.line, '923');

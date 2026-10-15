@@ -162,7 +162,7 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   assert.equal(data.odis[0].cat, 3);
   // MHD Pardubice z mapy dopravního podniku (s hlavičkou x-app-protocol).
   assert.equal(pce.url, 'https://api.mhdonline.cz/pardubice/vehicles');
-  assert.equal(pce.init.headers['x-app-protocol'].length, 64);
+  assert.equal(pce.init.headers['X-App-Protocol'].length, 64);
   assert.equal(data.pce.length, 1);
   assert.equal(data.pce[0].lineId, '28');
   fetchMock.mock.restore();
