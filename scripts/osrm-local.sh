@@ -5,8 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMAGE=ghcr.io/project-osrm/osrm-backend:v5.27.1
-# Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj s okolím.
-BBOX=15.4,48.5,18.95,50.5
+# Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj s okolím.
+BBOX=15.15,48.5,18.95,50.5
 mkdir -p osrm
 if [ ! -f osrm/region.osrm.mldgr ]; then
   rm -f osrm/*

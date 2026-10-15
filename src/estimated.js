@@ -9,7 +9,8 @@ import { cityStopName, lineLabel } from './cities.js';
 // Sítě, jejichž vozy nemají jinou polohu. FlixBus a RegioJet mají vlastní zdroj uvnitř Zlínského kraje,
 // jinde (Jihomoravský kraj) je odhadneme také z jízdního řádu. Linky IDS JMK (regionální i MHD) jedou živě
 // z proudu KORDIS (src/jmk.js); odhadem jen, když proud nefunguje.
-// MHD Olomouckého a Moravskoslezského kraje (town) a regionální linky (other) mohou jet živě z mapy ODIS:
+// MHD Olomouckého, Moravskoslezského a Pardubického kraje (town) a regionální linky (other) mohou jet živě
+// z map ODIS, IDSOK, IREDO a MHD Pardubice:
 // spoj, jehož vůz je na mapě živě, se odhadem neukazuje (setLiveTrips).
 const ESTIMATED = new Set(['other', 'coach', 'flix', 'rj', 'town']);
 const JMK_FALLBACK = new Set(['jmk', 'brno', 'jmkmhd']);
@@ -17,13 +18,21 @@ const OWN_SOURCE = new Set(['flix', 'rj']);
 let jmkDown = false;
 let liveTrips = new Set();
 let liveKraje = new Set();
+let liveTowns = new Set();
+// MHD měst s vlastní živou mapou (mimo mapu kraje): jedou živě, jen když jejich mapa právě posílá vozy.
+const OWN_TOWN_MAPS = new Set(['MHD Pardubice']);
 /**
- * Kraje, kde mapa (ODIS v Moravskoslezském, IDSOK v Olomouckém) právě posílá vozy: regionální linky a MHD
- * se tam neodhadují (jedou živě, jako linky IDZK ve Zlínském kraji); vůz, ke kterému se spoj nenašel,
- * by se jinak ukázal dvakrát.
+ * Kraje, kde mapa (ODIS v Moravskoslezském, IDSOK v Olomouckém, IREDO v Pardubickém) právě posílá vozy:
+ * regionální linky a MHD se tam neodhadují (jedou živě, jako linky IDZK ve Zlínském kraji); vůz, ke kterému
+ * se spoj nenašel, by se jinak ukázal dvakrát. towns = MHD měst s vlastní mapou, která právě posílá vozy.
  */
-export function setLiveKraje(kraje) {
+export function setLiveKraje(kraje, towns = []) {
   liveKraje = new Set(kraje);
+  liveTowns = new Set(towns);
+}
+function liveNow(pattern, kraj) {
+  if (pattern.c === 'town' && OWN_TOWN_MAPS.has(pattern.o)) return liveTowns.has(pattern.o);
+  return (pattern.c === 'town' || pattern.c === 'other') && liveKraje.has(kraj);
 }
 /** Spoje (id spoje v datech vyhledávání), které právě jedou živě: jejich odhad se neukáže. */
 export function setLiveTrips(ids) {
@@ -117,7 +126,7 @@ export function estimatedVehicles(P, region, date, min) {
         pos = line?.length > 1 ? along(line, f) : along([[a.lon, a.lat], [b.lon, b.lat]], f);
       }
       if (region && !regionContains(region, pos.lon, pos.lat)) continue;
-      if (liveKraje.size && region && (pattern.c === 'town' || pattern.c === 'other') && liveKraje.has(krajOf(region, pos.lon, pos.lat))) continue;
+      if ((liveKraje.size || liveTowns.size) && region && (pattern.c === 'town' || pattern.c === 'other') && liveNow(pattern, krajOf(region, pos.lon, pos.lat))) continue;
       // FlixBus a RegioJet uvnitř Zlínského kraje ukazují vlastní zdroje.
       if (OWN_SOURCE.has(pattern.c) && (!region || krajOf(region, pos.lon, pos.lat) === 'zlk')) continue;
       const calls = callsOf(P, trip);

@@ -2,12 +2,15 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí oblasti (Zlínský, Jihomoravský,
-//          Olomoucký a Moravskoslezský kraj); když mapa vlaků neodpoví, vlaky z map IDZK, ODIS a IDS JMK,
+//          Olomoucký, Moravskoslezský a Pardubický kraj); když mapa vlaků neodpoví, vlaky z map IDZK, ODIS, IDS JMK,
+//          IREDO a IDSOK,
 //          jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
-//       Navíc (pole odis) vozy z mapy ODIS (Moravskoslezský kraj: regionální autobusy a MHD měst včetně Ostravy).
+//       Navíc (pole odis) vozy z mapy ODIS (Moravskoslezský kraj: regionální autobusy a MHD měst včetně Ostravy)
+//       a (pole pce) MHD Pardubice z mapy dopravního podniku (online.dpmp.cz).
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
+// /iredo: vozy z mapy IREDO (iredo.online, Pardubický kraj: regionální autobusy, MHD menších měst a vlaky).
 // /jmk: poslední dávka živých poloh IDS JMK (otevřená data KORDIS JMK, CC BY). Proud je posílá jen jednou
 //       za půl minuty, proxy si poslední dávku drží, aby aplikace měla vozy hned po startu.
 
@@ -21,7 +24,7 @@ const CORS = {
 
 // Polohy všech osobních vlaků v ČR (souřadnice S-JTSK, EPSG:5514).
 const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load';
-// Obdélník kolem oblasti (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) v S-JTSK (s rezervou pár kilometrů),
+// Obdélník kolem oblasti (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj) v S-JTSK (s rezervou pár kilometrů),
 // přesně ořízne aplikace.
 const ZK_BOX = { minX: -690000, maxX: -415000, minY: -1230000, maxY: -1030000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
@@ -76,6 +79,21 @@ async function mpvTrains(url, body) {
 
 const idzkTrains = () => mpvTrains(MPV_URL, MPV_BODY);
 const odisTrains = () => mpvTrains(ODIS_URL, ODIS_BODY);
+
+/** Vlaky (sourceType K) z map IREDO a IDSOK ve stejných polích jako od SŽ: „R19 (R 864 Svitava)“, „Os 15311“. */
+function connectionTrains(list) {
+  return (list ?? [])
+    .filter((s) => s.sourceType === 'K' && Number.isFinite(s.lat) && Number.isFinite(s.lon))
+    .map((s) => {
+      const name = String(s.name ?? '');
+      const inner = /\(([^)]+)\)/.exec(name)?.[1] ?? name;
+      const [tt = '', tn = ''] = inner.trim().split(/\s+/);
+      const line = s.extLineName ?? (/^(\S+)\s*\(/.exec(name)?.[1] || '');
+      return { lat: s.lat, lon: s.lon, tt, tn: String(s.trainNumber ?? tn), line, na: '', fn: s.dep ?? '', ln: s.dest ?? '', cna: '', d: s.operator ?? '', de: Number.isFinite(s.delay) ? s.delay : '', a: Number.isFinite(s.angle) ? s.angle : '' };
+    });
+}
+const iredoTrains = () => iredoList().then(connectionTrains, () => null);
+const idsokTrains = () => idsokBuses().then((body) => connectionTrains(JSON.parse(body).list), () => null);
 
 // Mapa IDS JMK (mapa.idsjmk.cz): API chce přístupový klíč, který stránka mapy posílá v HTML
 // (initializeApplication('…')). Klíč si pamatujeme a při odmítnutí si stáhneme nový.
@@ -141,11 +159,11 @@ async function trains() {
   const cache = globalThis.caches?.default;
   const data = await fetchTrains();
   if (!data) {
-    const [idzk, odis, jmk] = await Promise.all([idzkTrains(), odisTrains(), jmkTrains()]);
-    if (idzk || odis || jmk) {
-      // Vlak na hranici krajů ukazují obě mapy: jen jednou (podle druhu a čísla).
+    const [idzk, odis, jmk, iredo, ok] = await Promise.all([idzkTrains(), odisTrains(), jmkTrains(), iredoTrains(), idsokTrains()]);
+    if (idzk || odis || jmk || iredo || ok) {
+      // Vlak na hranici krajů ukazuje víc map: jen jednou (podle čísla vlaku).
       const seen = new Set();
-      const list = [...(idzk ?? []), ...(odis ?? [])].filter((t) => !t.tn || (!seen.has(`${t.tt} ${t.tn}`) && seen.add(`${t.tt} ${t.tn}`)));
+      const list = [...(idzk ?? []), ...(odis ?? []), ...(iredo ?? []), ...(ok ?? [])].filter((t) => !t.tn || (!seen.has(t.tn) && seen.add(t.tn)));
       return new Response(JSON.stringify({ trains: [...list, ...(jmk ?? [])], source: 'idzk', at: new Date().toISOString() }), {
         headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
       });
@@ -196,6 +214,44 @@ async function kromerizBuses() {
     return data.success ? (data.data ?? []) : [];
   } catch {
     return []; // výpadek Kroměříže nesmí shodit ostatní města
+  }
+}
+
+// MHD Pardubice (DPMP): mapa online.dpmp.cz čte api.mhdonline.cz s hlavičkou x-app-protocol, kterou má
+// ve svém skriptu. Když ji server odmítne (nová verze mapy), najdeme si v aktuálním skriptu mapy novou.
+const PCE_API = 'https://api.mhdonline.cz/pardubice/vehicles';
+const PCE_SITE = 'https://online.dpmp.cz';
+let pceProtocol = '26dc2897acef979d863df737827fc1ca8e88c389fba00a253a6d1ee7fe4ecabe';
+
+async function pceProtocols() {
+  const html = await (await fetch(`${PCE_SITE}/`, { signal: AbortSignal.timeout(6000) })).text();
+  const src = /<script[^>]+src="([^"]+\.js)"/.exec(html)?.[1];
+  if (!src) return [];
+  const js = await (await fetch(new URL(src, PCE_SITE).href, { signal: AbortSignal.timeout(6000) })).text();
+  return [...new Set(js.match(/\b[0-9a-f]{64}\b/g) ?? [])].slice(0, 5);
+}
+
+async function pardubiceBuses() {
+  const get = (key) =>
+    fetch(PCE_API, {
+      headers: { Accept: 'application/json', Origin: PCE_SITE, Referer: `${PCE_SITE}/`, 'x-app-protocol': key, 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' },
+      signal: AbortSignal.timeout(6000),
+    });
+  try {
+    let res = await get(pceProtocol);
+    if (res.status === 401 || res.status === 403) {
+      for (const key of await pceProtocols()) {
+        res = await get(key);
+        if (res.ok) {
+          pceProtocol = key;
+          break;
+        }
+      }
+    }
+    if (!res.ok) return [];
+    return (await res.json()).vehicles ?? [];
+  } catch {
+    return []; // výpadek MHD Pardubice nesmí shodit ostatní
   }
 }
 
@@ -253,8 +309,40 @@ async function idsok() {
   }
 }
 
+// Pardubický kraj (IREDO): mapa spojů iredo.online. Stejný formát spojů jako mapa IDSOK (regionální autobusy,
+// MHD menších měst, vlaky); poslední odpověď se drží 10 s.
+const IREDO_URL = 'https://iredo.online/map/mapData';
+const IREDO_BODY = JSON.stringify({ w: 15.25, s: 49.5, e: 16.95, n: 50.3, zoom: 13, showStops: false, mapFilterId: null });
+let iredoLast = null; // { at, list }
+
+async function iredoList() {
+  if (iredoLast && Date.now() - iredoLast.at < 10000) return iredoLast.list;
+  const res = await fetch(IREDO_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Referer: 'https://iredo.online/', 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' },
+    body: IREDO_BODY,
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const list = (await res.json()).connections;
+  if (!Array.isArray(list)) throw new Error('neočekávaná odpověď');
+  iredoLast = { at: Date.now(), list };
+  return list;
+}
+
+async function iredo() {
+  try {
+    const list = await iredoList();
+    return new Response(JSON.stringify({ at: iredoLast.at, list }), {
+      headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    return new Response(`IREDO: ${err.message}`, { status: 502, headers: CORS });
+  }
+}
+
 async function cityBuses() {
-  const [upstream, km, odis] = await Promise.all([
+  const [upstream, km, odis, pce] = await Promise.all([
     fetch(MPV_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
@@ -262,6 +350,7 @@ async function cityBuses() {
     }),
     kromerizBuses(),
     odisBuses(),
+    pardubiceBuses(),
   ]);
   if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
   const data = await upstream.json();
@@ -269,7 +358,7 @@ async function cityBuses() {
     .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)) || (t.cat === 2 && CARRIERS.test(t.cr ?? '')))
     // Z kódu stačí prvních 12 polí (linka, spoj, zastávky, cíl, nízkopodlažnost, SPZ), zbytek jsou nuly.
     .map(({ cn, x, y, ico, ds, tm, cr }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, tm, cr }));
-  return new Response(JSON.stringify({ vehicles, km, odis }), {
+  return new Response(JSON.stringify({ vehicles, km, odis, pce }), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });
 }
@@ -447,6 +536,7 @@ export default {
     if (request.method === 'GET' && url.pathname === '/mhd') return cityBuses();
     if (request.method === 'GET' && url.pathname === '/jmk') return jmkSnapshot(ctx);
     if (request.method === 'GET' && url.pathname === '/idsok') return idsok();
+    if (request.method === 'GET' && url.pathname === '/iredo') return iredo();
     if (request.method === 'GET' && url.pathname === '/flix') return flixBuses();
     if (request.method === 'GET' && url.pathname === '/flix/route') return flixRoute(url.searchParams.get('id'));
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {

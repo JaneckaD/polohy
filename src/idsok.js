@@ -1,4 +1,5 @@
-// Živé polohy Olomouckého kraje (IDSOK): mapa spojů CestujOK (cestujok.cz/idspublic) přes proxy /idsok.
+// Živé polohy Olomouckého kraje (IDSOK): mapa spojů CestujOK (cestujok.cz/idspublic) přes proxy /idsok,
+// a Pardubického kraje (IREDO): mapa spojů iredo.online přes proxy /iredo. Obě mapy mají stejný formát.
 // Mapa posílá spoj (linku a číslo spoje, výchozí a cílovou zastávku s časy, zpoždění, dopravce) a polohu;
 // spoj se dohledá v datech vyhledávání (celostátní jízdní řády) podle licence a čísla spoje, jinak podle
 // licence a odjezdu z výchozí zastávky.
@@ -34,12 +35,21 @@ const isTram = (s) => vtype(s) === 'E' || /TRAM/.test(vtype(s)) || /^tram/i.test
 const isTrolley = (s) => vtype(s) === 'T' || /TROL/.test(vtype(s)) || /^trol/i.test(text(s.name));
 
 /** Spoj z mapy IDSOK → vůz pro mapu (stejný tvar jako vozy ODIS), nebo null (vlak, spoj mimo kraj, bez polohy). */
-export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
+export function parseIdsok(s, ctx = {}) {
+  return parseConnection(s, ctx, { kraj: 'olk', live: 'idsok' });
+}
+
+/** Spoj z mapy IREDO (Pardubický kraj) → vůz pro mapu, nebo null. */
+export function parseIredo(s, ctx = {}) {
+  return parseConnection(s, ctx, { kraj: 'pak', live: 'iredo' });
+}
+
+function parseConnection(s, { P = null, region = null, date, min } = {}, { kraj, live }) {
   const lat = Number(s?.lat);
   const lon = Number(s?.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !lat || isTrain(s)) return null;
-  // Spoje do sousedních krajů ukazují jejich vlastní mapy (IDZK, ODIS, IDS JMK).
-  if (region && krajOf(region, lon, lat) !== 'olk') return null;
+  // Spoje do sousedních krajů ukazují jejich vlastní mapy (IDZK, ODIS, IDS JMK, IDSOK, IREDO).
+  if (region && krajOf(region, lon, lat) !== kraj) return null;
   // Mapa posílá licenci linky (lineNumber) a číslo spoje (serviceNumber); z názvu jen když chybí.
   const parsed = idsokNumbers(s.name);
   const licence = /^\d{6}$/.test(text(s.lineNumber)) ? text(s.lineNumber) : parsed.licence;
@@ -63,7 +73,7 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
   const label = pat ? lineLabel(pat.r) : (line ?? (licence ? lineLabel(licence) : null));
   if (!label) return null;
   const v = {
-    id: `idsok-${s.id ?? `${licence}-${trip}`}`,
+    id: `${live}-${s.id ?? `${licence}-${trip}`}`,
     type,
     city,
     line: label,
@@ -86,7 +96,7 @@ export function parseIdsok(s, { P = null, region = null, date, min } = {}) {
     delay,
     delayText: formatDelay(delay),
     updated: null,
-    live: 'idsok',
+    live,
   };
   if (match) attachTrip(v, P, match, { min });
   return v;

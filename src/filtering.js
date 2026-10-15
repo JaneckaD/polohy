@@ -20,6 +20,7 @@ export const REGIONS = {
   jmk: { name: 'Jihomoravský kraj' },
   olk: { name: 'Olomoucký kraj' },
   msk: { name: 'Moravskoslezský kraj' },
+  pak: { name: 'Pardubický kraj' },
 };
 
 // Obrys oblasti s kraji (region.json), podle něj se pozná kraj vlaků, regionálních a dálkových autobusů.

@@ -106,6 +106,7 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   let req = null;
   let km = null;
   let odis = null;
+  let pce = null;
   const fetchMock = mock.method(globalThis, 'fetch', async (url, init) => {
     if (String(url).includes('/odis/')) {
       odis = { url: String(url), init };
@@ -116,6 +117,10 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
           { t: 'E', cn: 1066, x: 49.5, y: 18.2, cat: 0 },
         ],
       });
+    }
+    if (String(url).includes('mhdonline.cz/pardubice')) {
+      pce = { url: String(url), init };
+      return Response.json({ time: '2026-10-15T15:44:19Z', vehicles: [{ vid: '102', lineId: '28', destinationName: 'Hostovice', nextStopName: 'Černá za Bory,silo', gpsLat: 50.0267, gpsLon: 15.8104, currentDelay: '-PT4S' }] });
     }
     if (String(url).includes('kromeriz')) {
       km = { url: String(url), init };
@@ -155,16 +160,21 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   assert.equal(data.odis.length, 1);
   assert.equal(data.odis[0].cn, '12|12|132|||Hrabůvka,Poliklinika|157|1119|Hranečník|Dubina|1|Ev. č. 1721');
   assert.equal(data.odis[0].cat, 3);
+  // MHD Pardubice z mapy dopravního podniku (s hlavičkou x-app-protocol).
+  assert.equal(pce.url, 'https://api.mhdonline.cz/pardubice/vehicles');
+  assert.equal(pce.init.headers['x-app-protocol'].length, 64);
+  assert.equal(data.pce.length, 1);
+  assert.equal(data.pce[0].lineId, '28');
   fetchMock.mock.restore();
 });
 
 test('proxy /mhd: výpadek mapy Kroměříže neshodí ostatní města', async () => {
   const fetchMock = mock.method(globalThis, 'fetch', async (url) =>
-    String(url).includes('kromeriz') ? new Response('Internal Server Error', { status: 500 }) : Response.json({ transmitters: [] }),
+    String(url).includes('kromeriz') || String(url).includes('mhdonline.cz/pardubice') ? new Response('Internal Server Error', { status: 500 }) : Response.json({ transmitters: [] }),
   );
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/mhd'));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { vehicles: [], km: [], odis: [] });
+  assert.deepEqual(await res.json(), { vehicles: [], km: [], odis: [], pce: [] });
   fetchMock.mock.restore();
 });
 

@@ -2,7 +2,8 @@
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
 import { parseOdis } from './odis.js';
-import { parseIdsok } from './idsok.js';
+import { parseIdsok, parseIredo } from './idsok.js';
+import { parsePce } from './pardubice.js';
 
 // Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
@@ -21,7 +22,7 @@ export const CITIES = {
   // a MHD ostatních měst kraje (město je u spoje jako „MHD Znojmo“).
   brno: { name: 'Brno', licence: null, jmk: true, ...MHD },
   jmkmhd: { name: null, licence: null, jmk: true, ...MHD },
-  // MHD měst Olomouckého a Moravskoslezského kraje (jízdní řády CIS JŘ, město je u spoje jako „MHD Ostrava“),
+  // MHD měst Olomouckého, Moravskoslezského a Pardubického kraje (jízdní řády CIS JŘ, město je u spoje jako „MHD Ostrava“),
   // tramvaje, trolejbusy a autobusy; živě z mapy ODIS, jinak odhadem podle jízdního řádu.
   town: { name: null, licence: null, lazy: true, ...MHD },
 };
@@ -178,21 +179,31 @@ export function parseKmBus(b) {
   };
 }
 
-/** Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK); ctx = { P, region, date, min } pro spoje ODIS a IDSOK. */
+/**
+ * Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK, IREDO, MHD Pardubice);
+ * ctx = { P, region, date, min } pro dohledání spojů v jízdních řádech.
+ */
 export async function fetchCityBuses(proxy, ctx = {}) {
-  // Olomoucký kraj (IDSOK) má vlastní adresu: jeho výpadek nebo pomalá odpověď nesmí zdržet ostatní.
-  const idsok = fetch(`${proxy}/idsok`, { cache: 'no-store' })
-    .then((r) => (r.ok ? r.json() : null))
-    .catch(() => null);
+  // Olomoucký (IDSOK) a Pardubický kraj (IREDO) mají vlastní adresy: jejich výpadek nebo pomalá odpověď
+  // nesmí zdržet ostatní.
+  const own = (path) =>
+    fetch(`${proxy}${path}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  const idsok = own('/idsok');
+  const iredo = own('/iredo');
   const res = await fetch(`${proxy}/mhd`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`/mhd: HTTP ${res.status}`);
   const data = await res.json();
   const ok = (await idsok)?.list ?? [];
+  const pak = (await iredo)?.list ?? [];
   return [
     ...(data.vehicles ?? []).map(parseCityBus),
     ...(data.km ?? []).map(parseKmBus),
     ...(data.odis ?? []).map((t) => parseOdis(t, ctx)),
     ...ok.map((s) => parseIdsok(s, ctx)),
+    ...pak.map((s) => parseIredo(s, ctx)),
+    ...(data.pce ?? []).map((b) => parsePce(b, ctx)),
   ].filter(Boolean);
 }
 

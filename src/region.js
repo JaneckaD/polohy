@@ -1,4 +1,4 @@
-// Oblast aplikace (Zlínský, Jihomoravský, Olomoucký a Moravskoslezský kraj) a železniční tratě.
+// Oblast aplikace (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj) a železniční tratě.
 // Vlaky a koleje jsou v celé oblasti (dřív jen ve Zlínském a Jihomoravském kraji: properties.rail, když ho region.json má).
 // Vše mimo oblast je šrafované, tam aplikace zatím nesahá.
 // Obrys oblasti: sjednocené hranice obou krajů z dat ČÚZK (github.com/siwekm/czech-geojson), viz public/region.json
