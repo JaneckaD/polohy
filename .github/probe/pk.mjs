@@ -13,3 +13,4 @@ for (let round = 0; round < 3; round++) {
   await new Promise((r) => setTimeout(r, 40000));
   ctx.min += 0; const p2 = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((p) => [p.type, p.value])); ctx.min = Number(p2.hour) * 60 + Number(p2.minute);
 }
+// 1792092334
