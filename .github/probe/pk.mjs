@@ -1,11 +1,32 @@
-const KEY = 'apiKey=7781b8fa-07cf-4ab7-8b62-1f3178523ba0';
-const H = { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'cs' };
-const show = async (label, url) => { try { const r = await fetch(url, { headers: H }); const t = await r.text(); console.log(label, r.status, t.slice(0, 2500)); return t; } catch (e) { console.log(label, 'ERR', e.message); return ''; } };
-const iso = (ms) => new Date(ms).toISOString();
-const now = Date.now();
-await show('TT', `https://global.api.flixbus.com/gis/v2/timetable/dcc3cb3d-9603-11e6-9066-549f350fcb0c/departures?from=${iso(now - 3 * 3600e3)}&to=${iso(now + 3 * 3600e3)}&${KEY}`);
-for (const q of ['Jihlava', 'Pardubice', 'Havlíčkův Brod', 'Velké Meziříčí', 'Humpolec', 'Třebíč', 'Žďár nad Sázavou', 'Pelhřimov']) {
-  const t = await show(`AC ${q}`, `https://global.api.flixbus.com/search/autocomplete/cities?q=${encodeURIComponent(q)}&lang=cs&country=cz&flixbus_cities_only=false&stations=true&popular_stations=true`);
+// Ověření Kraje Vysočina na skutečných datech: proxy /vdv (lokálně) proti nasazeným jízdním řádům.
+import { preparePlanner } from '../../src/planner.js';
+import { parseVdv } from '../../src/idsok.js';
+import worker from '../../proxy/worker.js';
+const LIVE = 'https://janeckad.github.io/polohy/';
+const P = preparePlanner(await (await fetch(LIVE + 'tt/planner.json')).json());
+const region = await (await fetch(LIVE + 'region.json')).json();
+console.log('region parts', Object.keys(region.properties.parts));
+const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((p) => [p.type, p.value]));
+const ctx = { P, region, date: `${parts.year}-${parts.month}-${parts.day}`, min: Number(parts.hour) * 60 + Number(parts.minute) };
+const tally = (list, f) => JSON.stringify(Object.entries(list.reduce((m, x) => ((m[f(x)] = (m[f(x)] ?? 0) + 1), m), {})).sort((a, b) => b[1] - a[1]));
+const ctxw = { waitUntil() {} };
+let data;
+for (let i = 0; i < 8; i++) {
+  const t0 = Date.now();
+  const res = await worker.fetch(new Request('https://x.workers.dev/vdv'), {}, ctxw);
+  data = await res.json();
+  console.log('round', i, res.status, data.list.length, 'se spojem', data.list.filter((s) => s.serviceNumber).length, Date.now() - t0, 'ms');
+  await new Promise((r) => setTimeout(r, 10500));
 }
-await show('ST1', `https://global.api.flixbus.com/gis/v1/stations?${KEY}&city=Jihlava`);
-await show('ST2', `https://global.api.flixbus.com/search/autocomplete/stations?q=Jihlava&lang=cs`);
+const vv = data.list.map((s) => parseVdv(s, ctx)).filter(Boolean);
+console.log(`VDV: ${data.list.length} spojů, ${vv.length} vozů na Vysočině, se spojem ${vv.filter((v) => v.tripId != null).length}, číslo spoje ${vv.filter((v) => v.tripNo).length}`);
+console.log('city/type', tally(vv, (v) => `${v.city}/${v.type}`), 'op', tally(vv, (v) => v.operatorName));
+for (const v of vv.filter((v) => v.tripId == null).slice(0, 15)) { const s = data.list.find((x) => `vdv-${x.id}` === v.id); console.log('  bez spoje', JSON.stringify(s)); }
+for (const v of vv.slice(0, 4)) console.log('  vzor', JSON.stringify({ line: v.line, type: v.type, next: v.next, headsign: v.headsign, op: v.operatorName, delay: v.delayText, tripNo: v.tripNo }));
+const trains = await (await worker.fetch(new Request('https://x.workers.dev/trains'), {}, ctxw)).json();
+console.log('trains', trains.source ?? 'sz', trains.trains.length, 'west of 15.5:', trains.trains.filter((t) => t.x < -650000 || t.lon < 15.5).length);
+const vys = P.trips.filter((t) => { const s = P.stops[t.pattern.s[0]]; return s.lat && s.lon < 16 && s.lon > 15 && s.lat > 49 && s.lat < 49.7; });
+console.log('jízdní řády kolem Jihlavy', vys.length, tally(vys, (t) => `${t.pattern.c}/${t.pattern.y ?? ''}`).slice(0, 300));
+console.log('MHD Jihlava', tally(P.trips.filter((t) => /Jihlav/i.test(t.pattern.o ?? '')), (t) => `${t.pattern.o}/${t.pattern.y}`));
+const flix = await (await worker.fetch(new Request('https://x.workers.dev/flix'), {}, ctxw)).json();
+console.log('flix', flix.buses.length, flix.buses.map((b) => `${b.code} ${b.lat.toFixed(2)},${b.lon.toFixed(2)}`).join(' | '));
