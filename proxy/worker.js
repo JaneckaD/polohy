@@ -446,7 +446,9 @@ async function vdvList(ctx) {
   if (got.length && cache && ctx?.waitUntil) {
     ctx.waitUntil(cache.put(VDV_CACHE, new Response(JSON.stringify([...vdvTrips]), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=14400' } })).catch(() => {}));
   }
-  const list = points.map((p) => vdvConnection(p, vdvTrips.get(String(p.id))));
+  // Vůz bez zpoždění, jehož poslední spoj skončil před víc než půl hodinou, stojí mimo provoz.
+  const parked = (p, t) => !(Math.abs(Number(p.delay)) < 1000) && t?.destTime && (nowMin - hmMin(t.destTime) + 1440) % 1440 > 30 && (nowMin - hmMin(t.destTime) + 1440) % 1440 < 720;
+  const list = points.filter((p) => !parked(p, vdvTrips.get(String(p.id)))).map((p) => vdvConnection(p, vdvTrips.get(String(p.id))));
   vdvLast = { at: now, list };
   return list;
 }
