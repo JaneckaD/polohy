@@ -82,3 +82,20 @@ test('proxy /vdv: vozy se spoji, jízdní řád jen jednou na vůz', async () =>
   assert.equal(urls.filter((u) => u.includes('GetTimetable')).length, 1);
   fetchMock.mock.restore();
 });
+
+test('vůz MHD Jihlava: trolejbus podle poslední projeté zastávky, písmeno linky', async () => {
+  const { parseJih, jihLicence } = await import('../src/jihlava.js');
+  const { lineLabel } = await import('../src/cities.js');
+  const st = [['Jihlava,Hlavní nádraží', 49.4089, 15.5665], ['Jihlava,Na Dolech', 49.4058, 15.5606], ['Jihlava,Vysoká škola polytechnická', 49.3967, 15.5803], ['Jihlava,Masarykovo nám.horní', 49.3985, 15.5905]];
+  const PJ = preparePlanner(buildPlannerFromTrips({ startDate: '2026-10-15', days: 3, rawTrips: [{ ref: '765102', type: 'trolleybus', city: 'town', operator: 'MHD Jihlava', number: '7', mask, times: [1260, 1264, 1270, 1274], stops: st }] }));
+  assert.equal(jihLicence(202), '765102');
+  assert.equal(jihLicence(104), '765004');
+  const v = parseJih({ carnum: 232, delayinmins: 1, latitude: 49.401, longitude: 15.575, lineid: 202, linka: 'B', konecna: 'Masarykovo nám.horní', posledni: 'Na Dolech', typ: 'trolejbus', azimut: 120, speed: 30 }, { P: PJ, date: '2026-10-15', min: 1267 });
+  assert.equal(v.type, 'trolleybus');
+  assert.equal(v.line, 'B');
+  assert.equal(v.delay, 60);
+  assert.equal(v.live, 'jih');
+  assert.ok(v.tripId != null, 'spoj dohledaný podle poslední zastávky');
+  assert.equal(v.next, 'Jihlava, Vysoká škola polytechnická');
+  assert.equal(lineLabel('765102'), 'B');
+});

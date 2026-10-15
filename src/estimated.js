@@ -20,7 +20,9 @@ let liveTrips = new Set();
 let liveKraje = new Set();
 let liveTowns = new Set();
 // MHD měst s vlastní živou mapou (mimo mapu kraje): jedou živě, jen když jejich mapa právě posílá vozy.
-const OWN_TOWN_MAPS = new Set(['MHD Pardubice']);
+// MHD Jihlava: linky 2, 8 a 12 jsou v jízdních řádech jako MHD Velký Beranov a Hybrálec.
+export const JIHLAVA_TOWNS = ['MHD Jihlava', 'MHD Velký Beranov', 'MHD Hybrálec'];
+const OWN_TOWN_MAPS = new Set(['MHD Pardubice', ...JIHLAVA_TOWNS]);
 // Kraje, jejichž mapa MHD měst neukazuje (VDV na Vysočině jen regionální linky): MHD se tam dál odhaduje.
 const MAP_WITHOUT_TOWNS = new Set(['vys']);
 /**

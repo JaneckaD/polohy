@@ -118,6 +118,9 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
         ],
       });
     }
+    if (String(url).includes('gis.jihlava-city.cz')) {
+      return Response.json({ features: [{ attributes: { carnum: 77, linka: 'G', lineid: 209, latitude: 49.42, longitude: 15.6, posledni: 'Kronospan', konecna: 'Masarykovo nám.horní', typ: 'trolejbus', delayinmins: 2 } }] });
+    }
     if (String(url).includes('mhdonline.cz/pardubice')) {
       pce = { url: String(url), init };
       return Response.json({ time: '2026-10-15T15:44:19Z', vehicles: [{ vid: '102', lineId: '28', destinationName: 'Hostovice', nextStopName: 'Černá za Bory,silo', gpsLat: 50.0267, gpsLon: 15.8104, currentDelay: '-PT4S' }] });
@@ -165,16 +168,17 @@ test('proxy /mhd: vozy MHD měst a regionálních autobusů vybraných dopravců
   assert.equal(pce.init.headers['X-App-Protocol'].length, 64);
   assert.equal(data.pce.length, 1);
   assert.equal(data.pce[0].lineId, '28');
+  assert.equal(data.jih[0].linka, 'G');
   fetchMock.mock.restore();
 });
 
 test('proxy /mhd: výpadek mapy Kroměříže neshodí ostatní města', async () => {
   const fetchMock = mock.method(globalThis, 'fetch', async (url) =>
-    String(url).includes('kromeriz') || String(url).includes('mhdonline.cz/pardubice') ? new Response('Internal Server Error', { status: 500 }) : Response.json({ transmitters: [] }),
+    String(url).includes('kromeriz') || String(url).includes('mhdonline.cz/pardubice') || String(url).includes('jihlava') ? new Response('Internal Server Error', { status: 500 }) : Response.json({ transmitters: [] }),
   );
   const res = await worker.fetch(new Request('https://dszo-proxy.example.workers.dev/mhd'));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { vehicles: [], km: [], odis: [], pce: [] });
+  assert.deepEqual(await res.json(), { vehicles: [], km: [], odis: [], pce: [], jih: [] });
   fetchMock.mock.restore();
 });
 

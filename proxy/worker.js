@@ -8,7 +8,8 @@
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
 //       Navíc (pole odis) vozy z mapy ODIS (Moravskoslezský kraj: regionální autobusy a MHD měst včetně Ostravy)
-//       a (pole pce) MHD Pardubice z mapy dopravního podniku (online.dpmp.cz).
+//       a (pole pce) MHD Pardubice z mapy dopravního podniku (online.dpmp.cz), (pole jih) MHD Jihlava z online
+//       mapy města (gis.jihlava-city.cz).
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
 // /iredo: vozy z mapy IREDO (iredo.online, Pardubický kraj: regionální autobusy, MHD menších měst a vlaky).
 // /vdv: vozy z mapy VDV (mapavdv.kr-vysocina.cz, Kraj Vysočina: regionální autobusy a vlaky) se spoji.
@@ -464,8 +465,22 @@ async function vdv(ctx) {
   }
 }
 
+// MHD Jihlava (DPMJ): online mapa města (sgis.jihlava-city.cz) čte vrstvu ArcGIS s polohami vozů
+// (linka, číslo vozu, cíl, poslední projetá zastávka, zpoždění v minutách, azimut, druh vozu).
+const JIH_URL = 'https://gis.jihlava-city.cz/server1/rest/services/verejnost/Ji_MHD_aktualni/MapServer/47/query?where=1%3D1&outFields=*&returnGeometry=false&f=json';
+
+async function jihlavaBuses() {
+  try {
+    const res = await fetch(JIH_URL, { headers: { Referer: 'https://sgis.jihlava-city.cz/', 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' }, signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return [];
+    return ((await res.json()).features ?? []).map((f) => f.attributes).filter(Boolean);
+  } catch {
+    return []; // výpadek MHD Jihlava nesmí shodit ostatní
+  }
+}
+
 async function cityBuses() {
-  const [upstream, km, odis, pce] = await Promise.all([
+  const [upstream, km, odis, pce, jih] = await Promise.all([
     fetch(MPV_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://mpvnet.cz', 'User-Agent': 'mhd-zlin-live (github.com/JaneckaD/polohy)' },
@@ -474,6 +489,7 @@ async function cityBuses() {
     kromerizBuses(),
     odisBuses(),
     pardubiceBuses(),
+    jihlavaBuses(),
   ]);
   if (!upstream.ok) return new Response('Upstream error', { status: 502, headers: CORS });
   const data = await upstream.json();
@@ -481,7 +497,7 @@ async function cityBuses() {
     .filter((t) => CITY_LICENCES.some((l) => String(t.cn ?? '').startsWith(l)) || (t.cat === 2 && CARRIERS.test(t.cr ?? '')))
     // Z kódu stačí prvních 12 polí (linka, spoj, zastávky, cíl, nízkopodlažnost, SPZ), zbytek jsou nuly.
     .map(({ cn, x, y, ico, ds, tm, cr }) => ({ cn: String(cn ?? '').split('|').slice(0, 12).join('|'), x, y, ico, ds, tm, cr }));
-  return new Response(JSON.stringify({ vehicles, km, odis, pce }), {
+  return new Response(JSON.stringify({ vehicles, km, odis, pce, jih }), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
   });
 }

@@ -78,6 +78,7 @@ const CULL_MS = 200; // jak často během posunu mapy přepočítat, které zna�
 // (WebGL), které posun mapy nezpomalí. Kolečka s čísly linek se vrátí po přiblížení.
 const DOT_LIMIT = 250; // nejvíc koleček (prvků stránky) ve výřezu
 const DOT_MAX_ZOOM = 14; // od tohoto přiblížení vždy kolečka
+const DOT_ALWAYS_ZOOM = 10; // pod tímto přiblížením vždy tečky (celé kraje)
 const SRC_DOTS = 'vehicle-dots';
 
 function dotFeature(v) {
@@ -97,6 +98,7 @@ export class VehicleLayer {
     this.frame = null;
     this.view = null;
     this.dots = false; // režim teček (mapa kreslí vozy sama)
+    this.modeZoom = 0; // přiblížení, při kterém se zapnuly tečky
     this.dotsDirty = true;
     let last = 0;
     map.on('move', () => {
@@ -180,12 +182,20 @@ export class VehicleLayer {
 
   /** Kolečka, nebo tečky: podle přiblížení a počtu vozů ve výřezu. */
   chooseMode() {
+    const zoom = this.map.getZoom();
     let dots = false;
-    if (this.map.getZoom() < DOT_MAX_ZOOM && this.map.getSource(SRC_DOTS)) {
-      let n = 0;
-      for (const item of this.items.values()) if (this.inView(item.pos) && ++n > DOT_LIMIT) break;
-      dots = n > DOT_LIMIT;
+    if (zoom < DOT_MAX_ZOOM && this.map.getSource(SRC_DOTS)) {
+      if (zoom < DOT_ALWAYS_ZOOM) dots = true;
+      // Posun mapy bez změny přiblížení nemění tečky na kolečka (jinak by se při rychlém pohledu
+      // do řidšího kraje objevila velká kolečka); kolečka se vrátí až po přiblížení.
+      else if (this.dots && Math.abs(zoom - this.modeZoom) < 0.05) dots = true;
+      else {
+        let n = 0;
+        for (const item of this.items.values()) if (this.inView(item.pos) && ++n > DOT_LIMIT) break;
+        dots = n > DOT_LIMIT;
+      }
     }
+    if (dots) this.modeZoom = zoom;
     if (dots !== this.dots) {
       this.dots = dots;
       this.dotsDirty = true;

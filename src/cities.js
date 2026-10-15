@@ -4,6 +4,7 @@ import { formatDelay } from './dszo.js';
 import { parseOdis } from './odis.js';
 import { parseIdsok, parseIredo, parseVdv } from './idsok.js';
 import { parsePce } from './pardubice.js';
+import { parseJih } from './jihlava.js';
 
 // Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
 // regionální autobusy oranžová. Kdo vůz provozuje, je napsané v detailu.
@@ -67,7 +68,21 @@ export const lazyRoutes = (key) => isCarrier(key) || isCoach(key) || !!CITIES[ke
 export const networkLabel = (key) => (CITIES[key] ? (CITIES[key].name ? `MHD ${CITIES[key].name}` : 'MHD') : (CARRIERS[key] ?? COACHES[key])?.short ?? '');
 
 /** Číslo linky pro zobrazení: šestimístná licence z jízdních řádů („726504“) → číslo linky („504“), jako u linek IDZK. */
+// Názvy linek, které z licence nepoznáme (trolejbusy MHD Jihlava jezdí jako A, B, C…): podle živých dat.
+const LINE_NAMES = new Map([
+  ['765102', 'B'],
+  ['765104', 'C'],
+  ['765109', 'G'],
+  ['765110', 'H'],
+]);
+export function setLineName(ref, name) {
+  if (ref && name) LINE_NAMES.set(String(ref), String(name));
+}
+export const lineNames = () => Object.fromEntries(LINE_NAMES);
+
 export function lineLabel(ref) {
+  const named = LINE_NAMES.get(String(ref ?? ''));
+  if (named) return named;
   const m = /^(\d{3})(\d{3})$/.exec(String(ref ?? ''));
   return m ? String(Number(m[2])) || m[2] : String(ref ?? '');
 }
@@ -180,7 +195,7 @@ export function parseKmBus(b) {
 }
 
 /**
- * Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK, IREDO, VDV, MHD Pardubice);
+ * Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK, IREDO, VDV, MHD Pardubice a Jihlava);
  * ctx = { P, region, date, min } pro dohledání spojů v jízdních řádech.
  */
 export async function fetchCityBuses(proxy, ctx = {}) {
@@ -207,6 +222,7 @@ export async function fetchCityBuses(proxy, ctx = {}) {
     ...pak.map((s) => parseIredo(s, ctx)),
     ...vys.map((s) => parseVdv(s, ctx)),
     ...(data.pce ?? []).map((b) => parsePce(b, ctx)),
+    ...(data.jih ?? []).map((a) => parseJih(a, ctx)),
   ].filter(Boolean);
 }
 

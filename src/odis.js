@@ -78,6 +78,50 @@ export function matchOdisByStop(P, line, next, headsign, date, min, delayMin = 0
 }
 
 /** Jízda spoje, která teď jede (dnešní, nebo včerejší přes půlnoc): { trip, shift } nebo null. */
+// Spoje podle licence linky (MHD Jihlava posílá linku, cíl a poslední projetou zastávku, bez čísla spoje).
+const licenceIndex = new WeakMap();
+function tripsByLicence(P) {
+  if (!licenceIndex.has(P)) {
+    const idx = new Map();
+    for (const trip of P.trips) {
+      if (!NETS.has(trip.pattern.c)) continue;
+      if (!idx.has(trip.pattern.r)) idx.set(trip.pattern.r, []);
+      idx.get(trip.pattern.r).push(trip);
+    }
+    licenceIndex.set(P, idx);
+  }
+  return licenceIndex.get(P);
+}
+
+/**
+ * Spoj podle licence linky, poslední projeté zastávky a cíle: vůz už má zastávku podle jízdního řádu
+ * a zpoždění projetou a do příští ještě nedojel. Vrací { trip, shift, last } (last = pořadí zastávky).
+ */
+export function matchByLastStop(P, licence, last, headsign, date, min, delayMin = 0) {
+  if (!P || !licence || !last) return null;
+  const di = dayIndex(P.startDate, date);
+  let best = null;
+  for (const trip of tripsByLicence(P).get(String(licence)) ?? []) {
+    const s = trip.pattern.s;
+    if (headsign && stopSimilarity(headsign, P.stops[s.at(-1)].name) < 0.6) continue;
+    for (const [day, shift] of [[di, 0], [di - 1, 1440]]) {
+      if (day < 0 || day >= P.days || trip.mask[day] !== '1') continue;
+      const t = min + shift - Math.max(0, delayMin);
+      if (t < trip.arr[0] - 30 || t > trip.times.at(-1) + 5) continue;
+      for (let k = 0; k < s.length - 1; k++) {
+        if (!sameStop(last, P.stops[s[k]].name)) continue;
+        // Mezi odjezdem z poslední zastávky a příjezdem na příští (s rezervou pár minut).
+        const late = t - trip.times[k];
+        const early = trip.arr[k + 1] - t;
+        if (late < -3 || early < -3) continue;
+        const score = Math.max(0, -late) + Math.max(0, -early) + (k === 0 ? 0.5 : 0);
+        if (!best || score < best.score) best = { score, trip, shift, last: k };
+      }
+    }
+  }
+  return best;
+}
+
 export function matchOdisTrip(P, licence, tripNo, date, min, delayMin = 0) {
   if (!P || !licence || !tripNo) return null;
   const di = dayIndex(P.startDate, date);

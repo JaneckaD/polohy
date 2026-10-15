@@ -8,7 +8,7 @@ import { fetchVehicles, fetchTrip, fetchRegionTrains, fetchCityVehicles, fetchRe
 import { coachTrip, coachPosition, COACH_REFRESH_MS } from './coaches.js';
 import { cityTrip, timeTripPosition, isCoach } from './cities.js';
 import { loadRegioJet, regioJetVehicles } from './regiojet.js';
-import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown, setLiveTrips, setLiveKraje } from './estimated.js';
+import { estimatedVehicles, setBusRoutes, hasBusRoutes, segmentsOf, setJmkDown, setLiveTrips, setLiveKraje, JIHLAVA_TOWNS } from './estimated.js';
 import { setOdisSegments } from './odis.js';
 import { JmkLive, setJmkSegments } from './jmk.js';
 import { currentTripIndex } from './route-match.js';
@@ -448,7 +448,7 @@ async function refreshCities() {
   try {
     const list = await fetchCityVehicles({ P: jmkPlanner, region: jmkRegion, ...pragueNow() });
     // Spoje ODIS, IDSOK, IREDO a MHD Pardubice, které jedou živě, se neukážou ještě jednou odhadem podle jízdního řádu.
-    const live = list.filter((v) => v.live === 'odis' || v.live === 'idsok' || v.live === 'iredo' || v.live === 'vdv' || v.live === 'pce');
+    const live = list.filter((v) => v.live === 'odis' || v.live === 'idsok' || v.live === 'iredo' || v.live === 'vdv' || v.live === 'pce' || v.live === 'jih');
     setLiveTrips(new Set(live.filter((v) => v.tripId != null).map((v) => v.tripId)));
     const count = (src) => list.filter((v) => v.live === src).length;
     const kraje = [];
@@ -456,7 +456,7 @@ async function refreshCities() {
     if (count('idsok') > 20) kraje.push('olk');
     if (count('iredo') > 20) kraje.push('pak');
     if (count('vdv') > 20) kraje.push('vys');
-    setLiveKraje(kraje, count('pce') > 10 ? ['MHD Pardubice'] : []);
+    setLiveKraje(kraje, [...(count('pce') > 10 ? ['MHD Pardubice'] : []), ...(count('jih') > 3 ? JIHLAVA_TOWNS : [])]);
     store.setCityBuses(list);
   } catch (err) {
     // MHD dalších měst je doplněk (starší proxy bez /mhd): Zlín funguje dál.

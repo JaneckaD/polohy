@@ -39,8 +39,9 @@ a jízdní řád spoje s časy.
   Jízdní řády (regionální linky i MHD včetně trolejbusů) z celostátních dat CIS JŘ.
 - **Kraj Vysočina (VDV) živě:** mapa vozidel VDV (`mapavdv.kr-vysocina.cz/Ajax/GetPoints`) přes proxy `/vdv`;
   číslo spoje a výchozí a cílovou zastávku si proxy u každého vozu jednou načte z jeho jízdního řádu
-  (`/Ajax/GetTimetable`) a pošle je ve stejném formátu jako IREDO. MHD měst (Jihlava i s trolejbusy, Třebíč…)
-  živou mapu nemá, ukazuje se odhadem podle celostátních jízdních řádů.
+  (`/Ajax/GetTimetable`) a pošle je ve stejném formátu jako IREDO. MHD Jihlava (i trolejbusy) živě z online mapy
+  města (vrstva ArcGIS `gis.jihlava-city.cz/.../Ji_MHD_aktualni/MapServer/47`, proxy `/mhd`, pole `jih`,
+  [`src/jihlava.js`](src/jihlava.js)); spoj se dohledá podle licence linky, poslední projeté zastávky a cíle.
 - **Olomoucký a Moravskoslezský kraj, jízdní řády:** regionální linky a MHD menších měst z celostátních dat
   CIS JŘ v GTFS (data.jr.ggu.cz; licence a čísla spojů sedí na polohy ODIS). MHD dopravních podniků Ostravy,
   Olomouce a Opavy (i tramvaje a trolejbusy, které celostátní data nemají) a polohy zastávek, které tam chybí,
