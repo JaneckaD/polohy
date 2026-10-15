@@ -47,7 +47,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: osrm
-          key: osrm-${{ steps.week.outputs.week }}-v4
+          key: osrm-${{ steps.week.outputs.week }}-v5
       - name: Vlastní OSRM
         run: scripts/osrm-local.sh
         continue-on-error: true
