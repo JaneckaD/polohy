@@ -37,12 +37,16 @@ a jízdní řád spoje s časy.
   přes proxy `/iredo`: regionální autobusy a MHD menších měst; MHD Pardubice z mapy dopravního podniku
   (`api.mhdonline.cz/pardubice/vehicles`, proxy `/mhd`, pole `pce`, [`src/pardubice.js`](src/pardubice.js)).
   Jízdní řády (regionální linky i MHD včetně trolejbusů) z celostátních dat CIS JŘ.
+- **Kraj Vysočina (VDV) živě:** mapa vozidel VDV (`mapavdv.kr-vysocina.cz/Ajax/GetPoints`) přes proxy `/vdv`;
+  číslo spoje a výchozí a cílovou zastávku si proxy u každého vozu jednou načte z jeho jízdního řádu
+  (`/Ajax/GetTimetable`) a pošle je ve stejném formátu jako IREDO. MHD měst (Jihlava i s trolejbusy, Třebíč…)
+  živou mapu nemá, ukazuje se odhadem podle celostátních jízdních řádů.
 - **Olomoucký a Moravskoslezský kraj, jízdní řády:** regionální linky a MHD menších měst z celostátních dat
   CIS JŘ v GTFS (data.jr.ggu.cz; licence a čísla spojů sedí na polohy ODIS). MHD dopravních podniků Ostravy,
   Olomouce a Opavy (i tramvaje a trolejbusy, které celostátní data nemají) a polohy zastávek, které tam chybí,
   jsou z GTFS [Spojenky](https://www.spojenka.cz/jrdata) (MFF UK, volně pro nekomerční užití).
-  Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou v celé oblasti (všech pět krajů);
-  když mapa vlaků SŽ neodpoví, vlaky z map IDZK, ODIS, IDS JMK, IREDO a CestujOK.
+  Co nejede živě, ukazuje se odhadem podle jízdního řádu. Vlaky a koleje jsou v celé oblasti (všech šest krajů);
+  když mapa vlaků SŽ neodpoví, vlaky z map IDZK, ODIS, IDS JMK, IREDO, CestujOK a VDV.
 - **Mapa:** vektorové dlaždice [OpenFreeMap](https://openfreemap.org) (data © OpenStreetMap) s vlastním
   minimalistickým stylem v [`src/style.js`](src/style.js): bílý podklad, světlé ulice, jen názvy obcí.
 

@@ -27,8 +27,8 @@ test('vlak v kraji: druh, dopravce, zpoždění, směr', () => {
   assert.equal(Math.round(v.bearing), 117);
 });
 
-test('vlak mimo oblast (Jihlava) se neukáže, prázdný směr = neznámý', () => {
-  assert.equal(parseTrain({ x: -670000, y: -1125000, tt: 'Os', tn: '3734', de: 0, d: 'České dráhy, a.s.', a: '' }, region), null);
+test('vlak mimo oblast (Tábor) se neukáže, prázdný směr = neznámý', () => {
+  assert.equal(parseTrain({ x: -738000, y: -1137000, tt: 'Os', tn: '3734', de: 0, d: 'České dráhy, a.s.', a: '' }, region), null);
   const v = parseTrain({ x: -524630.2, y: -1187194.27, tt: 'Os', tn: '4313', de: '', d: 'ARRIVA vlaky s.r.o.', a: '' }, region);
   assert.equal(v.bearing, null);
   assert.equal(v.delay, null);

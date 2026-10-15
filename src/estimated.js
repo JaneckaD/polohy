@@ -21,8 +21,10 @@ let liveKraje = new Set();
 let liveTowns = new Set();
 // MHD měst s vlastní živou mapou (mimo mapu kraje): jedou živě, jen když jejich mapa právě posílá vozy.
 const OWN_TOWN_MAPS = new Set(['MHD Pardubice']);
+// Kraje, jejichž mapa MHD měst neukazuje (VDV na Vysočině jen regionální linky): MHD se tam dál odhaduje.
+const MAP_WITHOUT_TOWNS = new Set(['vys']);
 /**
- * Kraje, kde mapa (ODIS v Moravskoslezském, IDSOK v Olomouckém, IREDO v Pardubickém) právě posílá vozy:
+ * Kraje, kde mapa (ODIS v Moravskoslezském, IDSOK v Olomouckém, IREDO v Pardubickém, VDV na Vysočině) právě posílá vozy:
  * regionální linky a MHD se tam neodhadují (jedou živě, jako linky IDZK ve Zlínském kraji); vůz, ke kterému
  * se spoj nenašel, by se jinak ukázal dvakrát. towns = MHD měst s vlastní mapou, která právě posílá vozy.
  */
@@ -32,6 +34,7 @@ export function setLiveKraje(kraje, towns = []) {
 }
 function liveNow(pattern, kraj) {
   if (pattern.c === 'town' && OWN_TOWN_MAPS.has(pattern.o)) return liveTowns.has(pattern.o);
+  if (pattern.c === 'town' && MAP_WITHOUT_TOWNS.has(kraj)) return false;
   return (pattern.c === 'town' || pattern.c === 'other') && liveKraje.has(kraj);
 }
 /** Spoje (id spoje v datech vyhledávání), které právě jedou živě: jejich odhad se neukáže. */

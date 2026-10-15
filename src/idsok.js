@@ -1,5 +1,6 @@
 // Živé polohy Olomouckého kraje (IDSOK): mapa spojů CestujOK (cestujok.cz/idspublic) přes proxy /idsok,
-// a Pardubického kraje (IREDO): mapa spojů iredo.online přes proxy /iredo. Obě mapy mají stejný formát.
+// Pardubického kraje (IREDO): mapa spojů iredo.online přes proxy /iredo, a Kraje Vysočina (VDV): mapa
+// mapavdv.kr-vysocina.cz přes proxy /vdv (proxy ji převede do stejného formátu). Mapy mají stejný formát.
 // Mapa posílá spoj (linku a číslo spoje, výchozí a cílovou zastávku s časy, zpoždění, dopravce) a polohu;
 // spoj se dohledá v datech vyhledávání (celostátní jízdní řády) podle licence a čísla spoje, jinak podle
 // licence a odjezdu z výchozí zastávky.
@@ -45,6 +46,11 @@ export function parseIdsok(s, ctx = {}) {
 /** Spoj z mapy IREDO (Pardubický kraj) → vůz pro mapu, nebo null. */
 export function parseIredo(s, ctx = {}) {
   return parseConnection(s, ctx, { kraj: 'pak', live: 'iredo' });
+}
+
+/** Spoj z mapy VDV (Kraj Vysočina) → vůz pro mapu, nebo null. */
+export function parseVdv(s, ctx = {}) {
+  return parseConnection(s, ctx, { kraj: 'vys', live: 'vdv' });
 }
 
 function parseConnection(s, { P = null, region = null, date, min } = {}, { kraj, live }) {

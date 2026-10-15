@@ -2,7 +2,7 @@
 import { nameSimilarity } from './names.js';
 import { formatDelay } from './dszo.js';
 import { parseOdis } from './odis.js';
-import { parseIdsok, parseIredo } from './idsok.js';
+import { parseIdsok, parseIredo, parseVdv } from './idsok.js';
 import { parsePce } from './pardubice.js';
 
 // Barvy jsou podle druhu dopravy, ne podle města nebo dopravce: MHD modrá (jako autobusy DSZO),
@@ -180,11 +180,11 @@ export function parseKmBus(b) {
 }
 
 /**
- * Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK, IREDO, MHD Pardubice);
+ * Vozy MHD měst a regionálních autobusů (IDZK, Kroměříž, ODIS, IDSOK, IREDO, VDV, MHD Pardubice);
  * ctx = { P, region, date, min } pro dohledání spojů v jízdních řádech.
  */
 export async function fetchCityBuses(proxy, ctx = {}) {
-  // Olomoucký (IDSOK) a Pardubický kraj (IREDO) mají vlastní adresy: jejich výpadek nebo pomalá odpověď
+  // Olomoucký (IDSOK), Pardubický kraj (IREDO) a Vysočina (VDV) mají vlastní adresy: jejich výpadek nebo pomalá odpověď
   // nesmí zdržet ostatní.
   const own = (path) =>
     fetch(`${proxy}${path}`, { cache: 'no-store' })
@@ -192,17 +192,20 @@ export async function fetchCityBuses(proxy, ctx = {}) {
       .catch(() => null);
   const idsok = own('/idsok');
   const iredo = own('/iredo');
+  const vdv = own('/vdv');
   const res = await fetch(`${proxy}/mhd`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`/mhd: HTTP ${res.status}`);
   const data = await res.json();
   const ok = (await idsok)?.list ?? [];
   const pak = (await iredo)?.list ?? [];
+  const vys = (await vdv)?.list ?? [];
   return [
     ...(data.vehicles ?? []).map(parseCityBus),
     ...(data.km ?? []).map(parseKmBus),
     ...(data.odis ?? []).map((t) => parseOdis(t, ctx)),
     ...ok.map((s) => parseIdsok(s, ctx)),
     ...pak.map((s) => parseIredo(s, ctx)),
+    ...vys.map((s) => parseVdv(s, ctx)),
     ...(data.pce ?? []).map((b) => parsePce(b, ctx)),
   ].filter(Boolean);
 }

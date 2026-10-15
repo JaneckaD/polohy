@@ -8,13 +8,16 @@ import { describe as describeVehicle, matchesFilter, setFilterRegion, normalizeF
 
 const region = JSON.parse(readFileSync(new URL('../public/region.json', import.meta.url), 'utf8'));
 
-test('oblast: Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj, kraj podle polohy', () => {
+test('oblast: Zlínský, Jihomoravský, Olomoucký, Moravskoslezský, Pardubický kraj a Vysočina, kraj podle polohy', () => {
   assert.ok(regionContains(region, 17.6667, 49.2265)); // Zlín
   assert.ok(regionContains(region, 16.6068, 49.1951)); // Brno
   assert.ok(regionContains(region, 16.0487, 48.8555)); // Znojmo
   assert.ok(regionContains(region, 17.2509, 49.5938)); // Olomouc
   assert.ok(regionContains(region, 18.2625, 49.8346)); // Ostrava
-  assert.ok(!regionContains(region, 15.5870, 49.3961)); // Jihlava
+  assert.ok(regionContains(region, 15.5870, 49.3961)); // Jihlava (Vysočina)
+  assert.ok(regionContains(region, 15.2, 49.42)); // Pelhřimov
+  assert.ok(!regionContains(region, 14.7, 49.3)); // Tábor (Jihočeský kraj)
+  assert.equal(krajOf(region, 15.5870, 49.3961), 'vys');
   assert.ok(regionContains(region, 16.2, 49.95)); // Choceň (Pardubický kraj)
   assert.ok(!regionContains(region, 15.83, 50.21)); // Hradec Králové
   assert.equal(krajOf(region, 17.6667, 49.2265), 'zlk');

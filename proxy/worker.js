@@ -2,8 +2,8 @@
 // DSZO neposílá CORS hlavičky, proto to prohlížeč přímo nedovolí.
 // Proxy pouští jen tři veřejné adresy DSZO, nejde ji zneužít na nic jiného.
 // /trains: polohy osobních vlaků od Správy železnic (mapa vlaků), zúžené na okolí oblasti (Zlínský, Jihomoravský,
-//          Olomoucký, Moravskoslezský a Pardubický kraj); když mapa vlaků neodpoví, vlaky z map IDZK, ODIS, IDS JMK,
-//          IREDO a IDSOK,
+//          Olomoucký, Moravskoslezský, Pardubický kraj a Vysočina); když mapa vlaků neodpoví, vlaky z map IDZK, ODIS,
+//          IDS JMK, IREDO, IDSOK a VDV,
 //          jinak poslední úspěšná odpověď.
 // /mhd: polohy vozů MHD dalších měst kraje a regionálních autobusů vybraných dopravců z mapy IDZK (mpvnet.cz),
 //       MHD Kroměříž z její vlastní mapy (kromeriz.mhdonline.cz), na mapě IDZK není.
@@ -11,6 +11,7 @@
 //       a (pole pce) MHD Pardubice z mapy dopravního podniku (online.dpmp.cz).
 // /flix: dálkové autobusy FlixBus, které zastavují v kraji (sledování spojů FlixBus), /flix/route jejich trasa.
 // /iredo: vozy z mapy IREDO (iredo.online, Pardubický kraj: regionální autobusy, MHD menších měst a vlaky).
+// /vdv: vozy z mapy VDV (mapavdv.kr-vysocina.cz, Kraj Vysočina: regionální autobusy a vlaky) se spoji.
 // /jmk: poslední dávka živých poloh IDS JMK (otevřená data KORDIS JMK, CC BY). Proud je posílá jen jednou
 //       za půl minuty, proxy si poslední dávku drží, aby aplikace měla vozy hned po startu.
 
@@ -24,9 +25,9 @@ const CORS = {
 
 // Polohy všech osobních vlaků v ČR (souřadnice S-JTSK, EPSG:5514).
 const TRAINS_URL = 'https://mapy.spravazeleznic.cz/serverside/request2.php?module=Layers%5COsVlaky&&action=load';
-// Obdélník kolem oblasti (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj) v S-JTSK (s rezervou pár kilometrů),
+// Obdélník kolem oblasti (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský, Pardubický kraj a Vysočina) v S-JTSK (s rezervou pár kilometrů),
 // přesně ořízne aplikace.
-const ZK_BOX = { minX: -690000, maxX: -415000, minY: -1230000, maxY: -1030000 };
+const ZK_BOX = { minX: -735000, maxX: -415000, minY: -1230000, maxY: -1030000 };
 const TRAIN_FIELDS = ['tt', 'tn', 'na', 'fn', 'ln', 'cna', 'nsn', 'nst', 'nsp', 'cp', 'cr', 'de', 'd', 'a'];
 
 // Mapa vlaků SŽ z Cloudflaru často neodpoví (z jiných sítí ano). Čekáme na ni proto jen chvíli
@@ -93,6 +94,7 @@ function connectionTrains(list) {
     });
 }
 const iredoTrains = () => iredoList().then(connectionTrains, () => null);
+const vdvTrains = () => vdvList().then(connectionTrains, () => null);
 const idsokTrains = () => idsokBuses().then((body) => connectionTrains(JSON.parse(body).list), () => null);
 
 // Mapa IDS JMK (mapa.idsjmk.cz): API chce přístupový klíč, který stránka mapy posílá v HTML
@@ -159,11 +161,11 @@ async function trains() {
   const cache = globalThis.caches?.default;
   const data = await fetchTrains();
   if (!data) {
-    const [idzk, odis, jmk, iredo, ok] = await Promise.all([idzkTrains(), odisTrains(), jmkTrains(), iredoTrains(), idsokTrains()]);
-    if (idzk || odis || jmk || iredo || ok) {
+    const [idzk, odis, jmk, iredo, ok, vys] = await Promise.all([idzkTrains(), odisTrains(), jmkTrains(), iredoTrains(), idsokTrains(), vdvTrains()]);
+    if (idzk || odis || jmk || iredo || ok || vys) {
       // Vlak na hranici krajů ukazuje víc map: jen jednou (podle čísla vlaku).
       const seen = new Set();
-      const list = [...(idzk ?? []), ...(odis ?? []), ...(iredo ?? []), ...(ok ?? [])].filter((t) => !t.tn || (!seen.has(t.tn) && seen.add(t.tn)));
+      const list = [...(idzk ?? []), ...(odis ?? []), ...(iredo ?? []), ...(ok ?? []), ...(vys ?? [])].filter((t) => !t.tn || (!seen.has(t.tn) && seen.add(t.tn)));
       return new Response(JSON.stringify({ trains: [...list, ...(jmk ?? [])], source: 'idzk', at: new Date().toISOString() }), {
         headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
       });
@@ -347,6 +349,119 @@ async function iredo() {
   }
 }
 
+// Kraj Vysočina (VDV): mapa vozů mapavdv.kr-vysocina.cz. Seznam vozů posílá licenci linky, zpoždění (min),
+// cíl a druh (BUS, TRAIN); číslo spoje a zastávky s časy jsou až v jízdním řádu vozu (HTML), ten si proxy
+// u každého vozu načte jednou (nejvýš VDV_DETAILS najednou) a drží do konce spoje. Ven jde stejný formát
+// spojů jako z map IREDO a IDSOK.
+const VDV_SITE = 'https://mapavdv.kr-vysocina.cz';
+const VDV_HEADERS = { 'X-Requested-With': 'XMLHttpRequest', Referer: `${VDV_SITE}/`, 'User-Agent': 'Mozilla/5.0 (compatible; mhd-zlin-live; github.com/JaneckaD/polohy)' };
+const VDV_DETAILS = 30;
+const VDV_CACHE = 'https://dszo-proxy.internal/vdv-trips';
+let vdvLast = null; // { at, list }
+let vdvTrips = null; // Map id → { lic, trip, dep, depTime, dest, destTime, until }
+
+const pragueMin = (now = Date.now()) => {
+  const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now).split(':').map(Number);
+  return h * 60 + m;
+};
+const hmMin = (s) => {
+  const m = /(\d{1,2}):(\d{2})/.exec(s ?? '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+};
+const htmlText = (s) =>
+  String(s ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Jízdní řád vozu z mapy VDV (HTML) → { lic, trip, dep, depTime, dest, destTime } nebo null. */
+export function parseVdvTimetable(html) {
+  const label = htmlText(/id="currentLineRouteLabel"[^>]*>([\s\S]*?)<\/span>/.exec(html)?.[1]);
+  const m = /^(\d+)\s*\/\s*(\d+)$/.exec(label);
+  if (!m) return null;
+  const cur = html.split(/id="timetableNextContainer"/)[0].split(/id="timetableCurrentContainer"/)[1] ?? '';
+  const rows = [...cur.matchAll(/<tr>\s*<td>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g)].map((r) => r.slice(1).map(htmlText));
+  if (rows.length < 2) return { lic: m[1], trip: m[2], dep: null, depTime: null, dest: null, destTime: null };
+  const [first, last] = [rows[0], rows.at(-1)];
+  return { lic: m[1], trip: m[2], dep: first[0], depTime: first[2] || first[1], dest: last[0], destTime: last[1] || last[2] };
+}
+
+async function vdvTimetable(id) {
+  const res = await fetch(`${VDV_SITE}/Ajax/GetTimetable?vehicleNumber=${encodeURIComponent(id)}&currentStopId=0`, { headers: VDV_HEADERS, signal: AbortSignal.timeout(6000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseVdvTimetable(await res.text());
+}
+
+/** Vůz z mapy VDV (+ jeho spoj) → spoj ve formátu map IREDO a IDSOK. */
+export function vdvConnection(p, t) {
+  const train = p.traction === 'TRAIN';
+  const delay = Number(p.delay);
+  const dest = /^-?\d+ N\/a$/.test(String(p.finalStopName ?? '')) ? null : p.finalStopName;
+  return {
+    id: p.id,
+    lat: p.lat,
+    lon: p.lng,
+    name: train ? '' : `${t?.lic ?? p.text} ${t?.trip ?? ''}`.trim(),
+    lineNumber: t?.lic ?? String(p.text ?? ''),
+    serviceNumber: train ? null : (t?.trip ?? null),
+    sourceType: train ? 'K' : 'S',
+    vehicleType: train ? 'V' : 'A',
+    trainNumber: train ? String(p.text ?? '') : undefined,
+    dep: t?.dep ?? null,
+    depTime: t?.depTime ?? null,
+    dest: t?.dest ?? dest,
+    destTime: t?.destTime ?? null,
+    delay: Number.isFinite(delay) && Math.abs(delay) < 1000 ? delay : null,
+  };
+}
+
+async function vdvList(ctx) {
+  if (vdvLast && Date.now() - vdvLast.at < 10000) return vdvLast.list;
+  const cache = globalThis.caches?.default;
+  const res = await fetch(`${VDV_SITE}/Ajax/GetPoints`, { headers: VDV_HEADERS, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // Záporná čísla vozů jsou spoje IDS JMK, ty má aplikace z vlastního zdroje.
+  const all = await res.json();
+  if (!Array.isArray(all)) throw new Error('neočekávaná odpověď');
+  const points = all.filter((p) => Number(p.id) > 0 || p.traction === 'TRAIN');
+  if (!vdvTrips) {
+    vdvTrips = new Map();
+    const saved = await cache?.match(VDV_CACHE).then((r) => r?.json()).catch(() => null);
+    for (const [id, t] of saved ?? []) vdvTrips.set(String(id), t);
+  }
+  const now = Date.now();
+  const nowMin = pragueMin(now);
+  for (const [id, t] of vdvTrips) if (t.until < now) vdvTrips.delete(id);
+  const todo = points.filter((p) => p.traction !== 'TRAIN' && /^\d{6}$/.test(String(p.text)) && vdvTrips.get(String(p.id))?.lic !== String(p.text)).slice(0, VDV_DETAILS);
+  const got = await Promise.all(todo.map((p) => vdvTimetable(p.id).then((t) => [p, t], () => [p, null])));
+  for (const [p, t] of got) {
+    // Spoj platí do půl hodiny po příjezdu do cíle (nejvýš 4 h); bez jízdního řádu to zkusíme za 5 min.
+    const left = t?.destTime ? (hmMin(t.destTime) - nowMin + 1440) % 1440 : NaN;
+    const until = now + (t?.trip ? Math.min(240, (Number.isFinite(left) && left < 1200 ? left : 120) + 30) : 5) * 60000;
+    vdvTrips.set(String(p.id), { ...(t ?? { lic: String(p.text) }), until });
+  }
+  if (got.length && cache && ctx?.waitUntil) {
+    ctx.waitUntil(cache.put(VDV_CACHE, new Response(JSON.stringify([...vdvTrips]), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=14400' } })).catch(() => {}));
+  }
+  const list = points.map((p) => vdvConnection(p, vdvTrips.get(String(p.id))));
+  vdvLast = { at: now, list };
+  return list;
+}
+
+async function vdv(ctx) {
+  try {
+    const list = await vdvList(ctx);
+    return new Response(JSON.stringify({ at: vdvLast.at, list }), {
+      headers: { ...CORS, 'Content-Type': 'application/json; charset=UTF-8', 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    return new Response(`VDV: ${err.message}`, { status: 502, headers: CORS });
+  }
+}
+
 async function cityBuses() {
   const [upstream, km, odis, pce] = await Promise.all([
     fetch(MPV_URL, {
@@ -381,8 +496,17 @@ const FLIX_STATIONS = [
   '28d94a3b-cfe4-4dc4-86a5-b3e484cc326c',
   '0dca7499-d85a-41f6-ab4b-7377f25f795f',
 ];
+// Další zastávky na projíždějících linkách (Jihlava AN a Brtnická, Třebíč AN, Humpolec, Pardubice AN): stačí
+// odjezdy (spoje tudy projíždějí), ať se vejdeme do limitu dotazů workeru.
+const FLIX_THROUGH = [
+  'dcc272ee-9603-11e6-9066-549f350fcb0c',
+  '9e581b7d-02d9-4819-898f-b555619acc49',
+  '788d12d5-f922-4534-8389-d5e8d32cc9fb',
+  '066fecd8-d91d-47bf-a55e-4339cdea0e11',
+  '10776137-5278-4d4f-a308-9415d8a3c4c5',
+];
 // Obdélník kolem oblasti (WGS84), přesně ořízne aplikace.
-const ZK_WGS = { s: 48.55, n: 49.75, w: 15.5, e: 18.7 };
+const ZK_WGS = { s: 48.5, n: 50.35, w: 14.7, e: 18.95 };
 const FLIX_UUID = /^[0-9a-f-]{36}$/;
 
 async function flixJson(url, ttl) {
@@ -401,8 +525,8 @@ async function flixBuses() {
   const t = Math.floor(Date.now() / step) * step;
   const iso = (ms) => new Date(ms).toISOString();
   const lists = await Promise.allSettled(
-    FLIX_STATIONS.flatMap((st) =>
-      ['departures', 'arrivals'].map((kind) => flixJson(`${FLIX}/v2/timetable/${st}/${kind}?from=${iso(t - 3 * 3600e3)}&to=${iso(t + 3 * 3600e3)}&${FLIX_KEY}`, 300)),
+    [...FLIX_STATIONS.flatMap((st) => [[st, 'departures'], [st, 'arrivals']]), ...FLIX_THROUGH.map((st) => [st, 'departures'])].map(([st, kind]) =>
+      flixJson(`${FLIX}/v2/timetable/${st}/${kind}?from=${iso(t - 3 * 3600e3)}&to=${iso(t + 3 * 3600e3)}&${FLIX_KEY}`, 300),
     ),
   );
   const ids = new Set();
@@ -543,6 +667,7 @@ export default {
     if (request.method === 'GET' && url.pathname === '/jmk') return jmkSnapshot(ctx);
     if (request.method === 'GET' && url.pathname === '/idsok') return idsok();
     if (request.method === 'GET' && url.pathname === '/iredo') return iredo();
+    if (request.method === 'GET' && url.pathname === '/vdv') return vdv(ctx);
     if (request.method === 'GET' && url.pathname === '/flix') return flixBuses();
     if (request.method === 'GET' && url.pathname === '/flix/route') return flixRoute(url.searchParams.get('id'));
     if (request.method !== 'GET' || !ALLOWED_PATHS.has(url.pathname)) {

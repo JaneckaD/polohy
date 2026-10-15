@@ -39,7 +39,7 @@ function group(title, rows) {
 
 function render() {
   body.replaceChildren(
-    h('p', 'info-lead', 'Doprava živě ukazuje, kde právě jedou autobusy, trolejbusy, tramvaje a vlaky na Moravě, ve Slezsku a na Pardubicku (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský a Pardubický kraj), a hledá spojení. Data se stahují jen při otevřené aplikaci.'),
+    h('p', 'info-lead', 'Doprava živě ukazuje, kde právě jedou autobusy, trolejbusy, tramvaje a vlaky na Moravě, ve Slezsku, na Pardubicku a na Vysočině (Zlínský, Jihomoravský, Olomoucký, Moravskoslezský, Pardubický kraj a Kraj Vysočina), a hledá spojení. Data se stahují jen při otevřené aplikaci.'),
     group('Polohy vozidel', [
       row('MHD Zlín – Otrokovice', 'Veřejná mapa DSZO ', ['dszo.cz/online', 'https://www.dszo.cz/online/'], ', obnova asi po 15 s.'),
       row('Zlínský kraj', 'Mapa IDZK ', ['mpvnet.cz', 'https://mpvnet.cz/zlin/map'], ' (regionální autobusy a MHD měst), MHD Kroměříž z ', ['kromeriz.mhdonline.cz', 'https://kromeriz.mhdonline.cz'], '.'),
@@ -47,7 +47,8 @@ function render() {
       row('Moravskoslezský kraj', 'Mapa poloh vozidel ODIS ', ['mpvnet.cz/odis', 'https://mpvnet.cz/odis/map'], ' (regionální autobusy a MHD měst včetně Ostravy a Opavy), koordinátor ', ['KODIS', 'https://www.kodis.cz'], '.'),
       row('Olomoucký kraj', 'Mapa spojů ', ['CestujOK', 'https://www.cestujok.cz/idspublic/'], ' koordinátora ', ['KIDSOK', 'https://www.kidsok.cz'], '; když nefunguje, odhad podle jízdního řádu.'),
       row('Pardubický kraj', 'Mapa spojů ', ['IREDO', 'https://iredo.online'], ' (regionální autobusy a MHD menších měst), koordinátor ', ['OREDO', 'https://www.oredo.cz'], '; MHD Pardubice z mapy ', ['DPMP', 'https://online.dpmp.cz'], '.'),
-      row('Vlaky', 'Mapa vlaků ', ['Správy železnic', 'https://mapy.spravazeleznic.cz/vlaky'], ', náhradou mapy IDZK, ODIS, IDS JMK, IREDO a CestujOK.'),
+      row('Kraj Vysočina', 'Mapa vozidel ', ['VDV', 'https://mapavdv.kr-vysocina.cz'], ' (regionální autobusy), koordinátor ', ['KORID', 'https://www.korid.cz'], '; MHD měst odhadem podle jízdního řádu.'),
+      row('Vlaky', 'Mapa vlaků ', ['Správy železnic', 'https://mapy.spravazeleznic.cz/vlaky'], ', náhradou mapy IDZK, ODIS, IDS JMK, IREDO, CestujOK a VDV.'),
       row('Dálkové autobusy', 'Sledování spojů ', ['FlixBus', 'https://www.flixbus.cz/track'], '. Ostatní dálkové a regionální linky bez živých poloh odhadem podle jízdního řádu (v detailu vozu je to napsané).'),
     ]),
     group('Jízdní řády a vyhledávání', [
@@ -55,6 +56,7 @@ function render() {
       row('Jihomoravský kraj', ['GTFS KORDIS JMK', 'https://kordis-jmk.cz/gtfs/'], '.'),
       row('Olomoucký a Moravskoslezský kraj', 'MHD Ostravy, Olomouce a Opavy (i tramvaje a trolejbusy) a polohy zastávek z jízdních řádů ', ['Spojenky', 'https://www.spojenka.cz/jrdata'], ' (MFF UK, pro nekomerční užití); regionální linky z celostátních jízdních řádů.'),
       row('Pardubický kraj', 'Regionální linky a MHD měst (i trolejbusy Pardubic) z celostátních jízdních řádů.'),
+      row('Kraj Vysočina', 'Regionální linky a MHD měst (i trolejbusy Jihlavy) z celostátních jízdních řádů.'),
       row('Celostátní autobusy', 'Jízdní řády CIS JŘ převedené do GTFS (', ['data.jr.ggu.cz', 'https://data.jr.ggu.cz'], '), RegioJet z ', ['regiojet.cz', 'https://regiojet.cz'], '.'),
       row('Vlaky', 'Celostátní jízdní řád ', ['CIS JŘ', 'https://portal.cisjr.cz'], ' (časy, výbava vlaků).'),
     ]),

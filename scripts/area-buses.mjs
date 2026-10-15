@@ -190,10 +190,10 @@ export function knownEvents(rawTrips) {
 
 // Druhy linek v celostátních datech (GTFS route_type): 701 regionální, 202 dálková, 201 mezinárodní,
 // 704 městská (autobus), 800 trolejbus, 900 tramvaj. MHD bereme jen v krajích bez vlastních dat
-// (Olomoucký, Moravskoslezský a Pardubický kraj); MHD Zlínského kraje je z IDZK a DSZO, Jihomoravského z KORDIS.
+// (Olomoucký, Moravskoslezský, Pardubický kraj a Vysočina); MHD Zlínského kraje je z IDZK a DSZO, Jihomoravského z KORDIS.
 const NATIONAL_TYPES = new Set(['701', '202', '201', '704', '800', '900']);
 const MHD_TYPES = { 704: 'bus', 800: 'trolleybus', 900: 'tram' };
-const MHD_KRAJE = new Set(['olk', 'msk', 'pak']);
+const MHD_KRAJE = new Set(['olk', 'msk', 'pak', 'vys']);
 // Městské dopravní podniky: jejich MHD (i tramvaje a trolejbusy) je ze Spojenky, ostatní MHD a regionální
 // linky z celostátních dat (licence a čísla spojů sedí na živé polohy ODIS).
 const CITY_DP = /dopravní podnik/i;
@@ -304,7 +304,7 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
       continue;
     }
     if (mhd) {
-      // MHD jen v Olomouckém, Moravskoslezském a Pardubickém kraji (jinde ji máme z IDZK, DSZO a KORDIS).
+      // MHD jen v Olomouckém, Moravskoslezském, Pardubickém kraji a na Vysočině (jinde ji máme z IDZK, DSZO a KORDIS).
       if (idx.filter((i) => MHD_KRAJE.has(all[i].kraj)).length * 2 < idx.length) {
         otherMhd++;
         continue;
@@ -350,7 +350,7 @@ export function nationalTrips(zipBytes, { startDate, days, region, known = new S
   }
   log(`Celostátní data: regionální ${kinds[701]}, dálkové ${kinds[202]}, mezinárodní ${kinds[201]} spojů v oblasti; už v datech (přeskočeno) ${duplicates}${regrouped ? `, rozdělené spoje ${regrouped}` : ''}${skipKraje ? `, MHD dopravních podniků ze Spojenky přeskočeno ${skipped} (${Object.entries(skippedBy).map(([a, n]) => `${a} ${n}`).join(', ')})` : ''}${coords ? `, polohy zastávek ze Spojenky ${filled}` : ''}.`);
   const mhdOut = out.filter((t) => t.city === 'town');
-  log(`MHD Olomouckého, Moravskoslezského a Pardubického kraje: ${mhdOut.length} spojů (autobusy ${kinds[704]}, trolejbusy ${kinds[800]}, tramvaje ${kinds[900]}); MHD jinde přeskočeno ${otherMhd}. Města: ${[...new Set(mhdOut.map((t) => t.operator))].join(', ')}`);
+  log(`MHD Olomouckého, Moravskoslezského, Pardubického kraje a Vysočiny: ${mhdOut.length} spojů (autobusy ${kinds[704]}, trolejbusy ${kinds[800]}, tramvaje ${kinds[900]}); MHD jinde přeskočeno ${otherMhd}. Města: ${[...new Set(mhdOut.map((t) => t.operator))].join(', ')}`);
   const byOperator = {};
   for (const t of out) byOperator[t.operator] = (byOperator[t.operator] ?? 0) + 1;
   log(`Dopravci: ${Object.entries(byOperator).sort((a, b) => b[1] - a[1]).map(([o, n]) => `${o} ${n}`).join(', ')}`);

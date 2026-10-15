@@ -208,7 +208,7 @@ test('proxy /flix: jen jedoucí spoje FlixBusu, které jsou v kraji', async () =
   assert.equal(data.buses[0].code, '856');
   assert.equal(data.buses[0].dev, 300);
   assert.deepEqual(data.buses[0].calls[1], { seq: 2, name: 'Kroměříž', lat: 49.29, lon: 17.39, arr: '2026-10-12T07:40:00Z', dep: '2026-10-12T07:40:00Z' });
-  assert.equal(urls.filter((u) => u.includes('/v2/timetable/')).length, 12);
+  assert.equal(urls.filter((u) => u.includes('/v2/timetable/')).length, 17);
   assert.ok(!urls.some((u) => u.includes('nesmysl')));
   fetchMock.mock.restore();
 });
